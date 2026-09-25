@@ -26,4 +26,5 @@ fi
 codesign --verify --deep --strict "$app_dir"
 "$app_dir/Contents/MacOS/Assetboard" --test-store
 "$app_dir/Contents/MacOS/Assetboard" --test-cloudflare
+"$app_dir/Contents/MacOS/Assetboard" --test-github
 printf '%s\n' "$app_dir"

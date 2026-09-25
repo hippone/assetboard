@@ -71,6 +71,82 @@ final class CloudflareConnector {
     }
 }
 
+final class GitHubConnector {
+    private let service = "studio.assetboard.local.github"
+    private let account = "metadata-read-token"
+    private let session: URLSession
+
+    init(session: URLSession = .shared) { self.session = session }
+
+    func token() -> String? {
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account, kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    func saveToken(_ token: String) -> Bool {
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
+        let data = Data(token.utf8)
+        if SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary) == errSecSuccess { return true }
+        var item = query
+        item[kSecValueData as String] = data
+        item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        return SecItemAdd(item as CFDictionary, nil) == errSecSuccess
+    }
+
+    func disconnect() -> Bool {
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
+        let status = SecItemDelete(query as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
+    }
+
+    func listRepositories(token: String, completion: @escaping ([[String: Any]]?, String?) -> Void) {
+        var all: [[String: Any]] = []
+        func page(_ number: Int) {
+            var components = URLComponents(string: "https://api.github.com/user/repos")!
+            components.queryItems = [URLQueryItem(name: "per_page", value: "100"), URLQueryItem(name: "page", value: String(number)), URLQueryItem(name: "sort", value: "full_name")]
+            var request = URLRequest(url: components.url!)
+            request.httpMethod = "GET"
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+            request.setValue("2026-03-10", forHTTPHeaderField: "X-GitHub-Api-Version")
+            request.timeoutInterval = 20
+            session.dataTask(with: request) { data, response, error in
+                if error != nil { completion(nil, "网络请求失败，请检查连接后重试。"); return }
+                guard let http = response as? HTTPURLResponse else { completion(nil, "未收到有效的平台响应。"); return }
+                if http.statusCode == 401 { completion(nil, "GitHub 令牌无效或已过期。"); return }
+                if http.statusCode == 403 { completion(nil, "GitHub 拒绝访问：检查仓库范围、组织审批或 API 限流。"); return }
+                guard http.statusCode == 200, let data,
+                      let repositories = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+                    completion(nil, "GitHub 仓库列表响应不完整，同步未写入资产板。"); return
+                }
+                for repository in repositories {
+                    guard let id = repository["id"] as? Int, id > 0,
+                          let name = repository["full_name"] as? String, !name.isEmpty,
+                          let owner = (repository["owner"] as? [String: Any])?["login"] as? String,
+                          let rawURL = repository["html_url"] as? String,
+                          let url = URL(string: rawURL), url.scheme == "https", url.host == "github.com",
+                          url.path == "/" + name, url.user == nil, url.password == nil,
+                          url.query == nil, url.fragment == nil else {
+                        completion(nil, "GitHub 仓库数据缺少标识、归属或有效链接，同步未写入资产板。"); return
+                    }
+                    all.append(["id": String(id), "name": name, "owner": owner, "url": rawURL,
+                                "description": repository["description"] as? String ?? "",
+                                "private": repository["private"] as? Bool ?? false,
+                                "archived": repository["archived"] as? Bool ?? false])
+                }
+                if repositories.count == 100 {
+                    guard number < 100 else { completion(nil, "仓库列表超过当前分页上限，同步未写入资产板。"); return }
+                    page(number + 1)
+                } else { completion(all, nil) }
+            }.resume()
+        }
+        page(1)
+    }
+}
+
 // A local-only host. No HTTP server, remote renderer, or account is required.
 final class BoardStore {
     let directory: URL
@@ -81,7 +157,7 @@ final class BoardStore {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     }
     func validate(_ value: Any) throws -> [String: Any] {
-        let categories: Set<String> = ["domain", "server", "subscription", "database", "license"]
+        let categories: Set<String> = ["domain", "server", "subscription", "database", "license", "repository"]
         guard let board = value as? [String: Any],
               let blocks = board["blocks"] as? [[String: Any]],
               let assets = board["assets"] as? [[String: Any]],
@@ -111,6 +187,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     var webView: WKWebView!
     var store: BoardStore!
     let cloudflare = CloudflareConnector()
+    let github = GitHubConnector()
     var localRoot: URL!
     let searchField = NSSearchField(frame: NSRect(x: 0, y: 0, width: 200, height: 28))
     var layoutButton: NSButton!
@@ -122,7 +199,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             guard let root = Bundle.main.resourceURL?.appendingPathComponent("Board", isDirectory: true) else { return }
             localRoot = root
             let controller = WKUserContentController()
-            let initial: [String: Any] = ["data": saved as Any? ?? NSNull(), "cloudflareConnected": cloudflare.token() != nil]
+            let initial: [String: Any] = ["data": saved as Any? ?? NSNull(), "cloudflareConnected": cloudflare.token() != nil, "githubConnected": github.token() != nil]
             let json = String(data: try JSONSerialization.data(withJSONObject: initial), encoding: .utf8)!
             controller.addUserScript(WKUserScript(source: "window.__ASSETBOARD_NATIVE__ = \(json);", injectionTime: .atDocumentStart, forMainFrameOnly: true))
             controller.add(self, name: "assetboard")
@@ -226,12 +303,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     @objc func focusSearch() { window.makeFirstResponder(searchField) }
     @objc func openTheme() { webView.evaluateJavaScript("themeDialog()") }
     @objc func openCloudflare() { webView.evaluateJavaScript("cloudflareDialog()") }
+    @objc func openGitHub() { webView.evaluateJavaScript("githubDialog()") }
 
     func cloudflareResult(_ result: [String: Any]) {
         DispatchQueue.main.async {
             guard let data = try? JSONSerialization.data(withJSONObject: result),
                   let json = String(data: data, encoding: .utf8) else { return }
             self.webView.evaluateJavaScript("window.assetboardCloudflareResult(\(json))")
+        }
+    }
+    func githubResult(_ result: [String: Any]) {
+        DispatchQueue.main.async {
+            guard let data = try? JSONSerialization.data(withJSONObject: result),
+                  let json = String(data: data, encoding: .utf8) else { return }
+            self.webView.evaluateJavaScript("window.assetboardGitHubResult(\(json))")
         }
     }
 
@@ -282,6 +367,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             }
             return
         }
+        if body["action"] as? String == "githubDisconnect" {
+            if github.disconnect() { githubResult(["ok": true, "disconnected": true]) }
+            else { githubResult(["ok": false, "error": "无法从 macOS 钥匙串删除令牌，请重试。"]) }
+            return
+        }
+        if body["action"] as? String == "githubSync" {
+            let supplied = (body["token"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard supplied.isEmpty || (supplied.count <= 256 && !supplied.contains(where: { $0.isWhitespace })) else {
+                githubResult(["ok": false, "error": "令牌格式无效。"]) ; return
+            }
+            guard let token = supplied.isEmpty ? github.token() : supplied else {
+                githubResult(["ok": false, "error": "请填写 GitHub 细粒度只读令牌。"]) ; return
+            }
+            github.listRepositories(token: token) { repositories, error in
+                if let error { self.githubResult(["ok": false, "error": error]); return }
+                if !supplied.isEmpty && !self.github.saveToken(supplied) {
+                    self.githubResult(["ok": false, "error": "无法将令牌保存到 macOS 钥匙串，同步未写入资产板。"]) ; return
+                }
+                self.githubResult(["ok": true, "repositories": repositories ?? [], "connected": true])
+            }
+            return
+        }
         guard body["action"] as? String == "save", let sequence = body["sequence"] as? Int, let data = body["data"] else { return }
         do {
             try store.save(data)
@@ -318,6 +425,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         let cloudflareItem = NSMenuItem(title: "Cloudflare 只读接入…", action: #selector(openCloudflare), keyEquivalent: "")
         cloudflareItem.target = self
         fileMenu.addItem(cloudflareItem)
+        let githubItem = NSMenuItem(title: "GitHub 只读接入…", action: #selector(openGitHub), keyEquivalent: "")
+        githubItem.target = self
+        fileMenu.addItem(githubItem)
         let folderItem = NSMenuItem(title: "打开本地数据文件夹", action: #selector(openDataFolder), keyEquivalent: "")
         folderItem.target = self
         fileMenu.addItem(folderItem)
@@ -361,7 +471,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
 }
 
 final class MockCloudflareProtocol: URLProtocol {
-    static var reply: ((URLRequest) -> (Int, [String: Any]))!
+    static var reply: ((URLRequest) -> (Int, Any))!
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
@@ -378,7 +488,7 @@ func testCloudflare() {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [MockCloudflareProtocol.self]
     let connector = CloudflareConnector(session: URLSession(configuration: configuration))
-    func run(_ reply: @escaping (URLRequest) -> (Int, [String: Any])) -> ([[String: String]]?, String?) {
+    func run(_ reply: @escaping (URLRequest) -> (Int, Any)) -> ([[String: String]]?, String?) {
         MockCloudflareProtocol.reply = reply
         let done = DispatchSemaphore(value: 0)
         var result: ([[String: String]]?, String?) = (nil, nil)
@@ -404,6 +514,44 @@ func testCloudflare() {
     let empty = run { _ in (200, ["success": true, "result_info": ["total_pages": 0], "result": []]) }
     precondition(empty.0?.isEmpty == true && empty.1 == nil)
     print("PASS: Cloudflare GET-only auth header, pagination, denial, partial response, empty result")
+}
+
+func testGitHub() {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [MockCloudflareProtocol.self]
+    let connector = GitHubConnector(session: URLSession(configuration: configuration))
+    func run(_ reply: @escaping (URLRequest) -> (Int, Any)) -> ([[String: Any]]?, String?) {
+        MockCloudflareProtocol.reply = reply
+        let done = DispatchSemaphore(value: 0)
+        var result: ([[String: Any]]?, String?) = (nil, nil)
+        connector.listRepositories(token: "test-token") { repositories, error in result = (repositories, error); done.signal() }
+        precondition(done.wait(timeout: .now() + 5) == .success)
+        return result
+    }
+    func repository(_ id: Int) -> [String: Any] {
+        ["id": id, "full_name": "owner/repo-\(id)", "owner": ["login": "owner"],
+         "html_url": "https://github.com/owner/repo-\(id)", "private": true, "archived": false]
+    }
+    let success = run { request in
+        precondition(request.httpMethod == "GET" && request.url?.host == "api.github.com" && request.url?.path == "/user/repos")
+        precondition(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-token")
+        precondition(request.value(forHTTPHeaderField: "Accept") == "application/vnd.github+json")
+        let page = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!.queryItems!.first { $0.name == "page" }!.value!
+        return (200, page == "1" ? (1...100).map(repository) : [repository(101)])
+    }
+    precondition(success.1 == nil && success.0?.count == 101 && success.0?.last?["id"] as? String == "101")
+    let denied = run { _ in (403, ["message": "Resource not accessible by personal access token"]) }
+    precondition(denied.0 == nil && denied.1?.contains("GitHub 拒绝访问") == true)
+    let malformed = run { _ in (200, [["id": 1, "full_name": "owner/repo", "owner": ["login": "owner"], "html_url": "https://evil.example/repo"]]) }
+    precondition(malformed.0 == nil && malformed.1 != nil)
+    let partial = run { request in
+        let page = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!.queryItems!.first { $0.name == "page" }!.value!
+        return page == "1" ? (200, (1...100).map(repository)) : (200, [["id": 101, "full_name": "owner/broken"]])
+    }
+    precondition(partial.0 == nil && partial.1 != nil)
+    let empty = run { _ in (200, [[String: Any]]()) }
+    precondition(empty.0?.isEmpty == true && empty.1 == nil)
+    print("PASS: GitHub GET-only auth header, pagination, denial, invalid URL, partial response, empty result")
 }
 
 func makeIcon(at path: String) {
@@ -446,6 +594,8 @@ if CommandLine.arguments.contains("--make-icon"), let target = CommandLine.argum
     } catch { fputs("Store test failed: \(error)\n", stderr); exit(1) }
 } else if CommandLine.arguments.contains("--test-cloudflare") {
     testCloudflare()
+} else if CommandLine.arguments.contains("--test-github") {
+    testGitHub()
 } else {
     let app = NSApplication.shared
     let delegate = AppDelegate()

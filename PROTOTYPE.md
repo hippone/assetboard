@@ -8,7 +8,7 @@
 
 资产与布局保存到 `~/Library/Application Support/Assetboard/board.json`，每次保存前保留 `board.previous.json`。保存使用原子写入；无法读取原文件时停止加载，不用演示数据覆盖损坏文件。数据是本机明文 JSON，不上传到云端。
 
-App 菜单“文件”支持导出 JSON 备份、打开数据文件夹，以及 Cloudflare 只读接入。内置资产仍是演示资料；新录入的资产可使用自定义图标和真实管理链接。Cloudflare 仅同步 DNS Zone 列表，API Token 经权限验证后保存在 macOS 钥匙串。此连接器尚未用真实账号完成端到端验证。
+App 菜单“文件”支持导出 JSON 备份、打开数据文件夹，以及 Cloudflare 和 GitHub 只读接入。内置资产仍是演示资料；新录入的资产可使用自定义图标和真实管理链接。两个连接器只读取各自授权范围内的资源列表，令牌经读取权限验证后保存在 macOS 钥匙串。尚未用真实账号完成端到端验证。
 
 本机构建：`./desktop/build.sh`，使用临时签名。使用 Developer ID Application 证书构建并生成 ZIP：`SIGNING_IDENTITY='Developer ID Application: 名称 (TEAMID)' ./desktop/package.sh`。分发前仍需完成 Apple 公证；仅签名不会消除其他 Mac 上的 Gatekeeper 提示。
 
@@ -28,4 +28,4 @@ v0.1.0 发布包已于 2026-09-25 通过 Apple 公证（submission ID `56128736-
 
 验证（2026-09-24）：桌面浏览器实测折叠与恢复、详情、搜索、拖动排序、缩放、撤销、添加与修改、刷新保留记录；390px 视口实测文档宽度 390px，无横向溢出。未进行真实设备测试或用户可用性研究。
 
-已知原型边界：固定高度区块只显示完整卡片，其他资产通过查看全部进入；内置演示记录的链接不跳转；演示日期不代表实际账户；未实现后端和多设备同步。Cloudflare 连接器仅在 macOS App 中可用，只能发现 Zone，不提供注册到期或费用数据。
+已知原型边界：固定高度区块只显示完整卡片，其他资产通过查看全部进入；内置演示记录的链接不跳转；演示日期不代表实际账户；未实现后端和多设备同步。Cloudflare 和 GitHub 连接器仅在 macOS App 中可用；前者只能发现 Zone，后者只能发现授权范围内的仓库元数据，均不提供账单数据。

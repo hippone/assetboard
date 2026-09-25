@@ -20,6 +20,7 @@ UI / UX 已提升为首要研究主线。新增的 NN/g、Carbon、Linear 与 W3
 |---|---|---|---|
 | [GitHub Apps](https://docs.github.com/en/apps/using-github-apps/about-using-github-apps) | 安装时可限定仓库和权限 | 连接状态必须说明覆盖范围，不能说找到全部仓库 | 精确端点权限、组织限制、多账号与分页 |
 | [GitHub 权限说明](https://docs.github.com/en/enterprise-cloud%40latest/apps/creating-github-apps/registering-a-github-app/choosing-permissions-for-a-github-app) | 按端点和功能选择权限 | 清单需求先核对必要权限 | 最小权限端到端 PoC |
+| [GitHub 仓库列表](https://docs.github.com/en/rest/repos/repos#list-repositories-for-the-authenticated-user) | `GET /user/repos` 支持细粒度个人访问令牌，所需仓库权限为 Metadata Read；支持分页 | 本机试点只读仓库元数据，按仓库 ID 同步 | 真实账号授权范围、组织审批和分页实测 |
 | [Cloudflare OAuth Client](https://developers.cloudflare.com/fundamentals/oauth/create-an-oauth-client/) | 可注册第三方 OAuth client；支持授权码；公开可见需域名验证 | Connect 体验可规划，但应用配置有前置工作 | 所需 scopes、账户覆盖、token 生命周期 |
 | [Cloudflare Zones](https://developers.cloudflare.com/api/resources/zones/methods/list/) | 存在列出 zones 的 API | DNS 托管站点可作为发现来源 | 账号范围、分页、所需权限 |
 | [Cloudflare Registrar](https://developers.cloudflare.com/api/resources/registrar/subresources/registrations/methods/list/) | 注册记录接口包括注册到期信息 | 注册记录与 DNS zone 分开映射；不能由 zone 直接推断续费日 | 对目标账号的资源覆盖、权限及实际字段 |
