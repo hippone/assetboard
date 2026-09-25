@@ -20,4 +20,31 @@ function removeUntouchedDemo(board){
  return {board:{...board,assets,blocks},removed:board.assets.length-assets.length,removedBlocks:removeBlocks?legacyDefaultBlocks.length:0};
 }
 
-if(typeof module!=='undefined')module.exports={assetFingerprint,removeUntouchedDemo};
+function repositoryGroups(assets, preferredIds, limit=6){
+ const repositories=assets.filter(asset=>asset.type==='repository').sort((left,right)=>{
+  const difference=(Date.parse(right.updatedAt)||0)-(Date.parse(left.updatedAt)||0);
+  return difference||left.name.localeCompare(right.name);
+ });
+ const byId=new Map(repositories.map(asset=>[asset.id,asset]));
+ const preferred=Array.isArray(preferredIds)?preferredIds.filter(id=>byId.has(id)):[];
+ const featuredIds=[...new Set(preferred)].slice(0,limit);
+ for(const asset of repositories)if(featuredIds.length<limit&&!featuredIds.includes(asset.id))featuredIds.push(asset.id);
+ const featured=featuredIds.map(id=>byId.get(id));
+ return {featured,compact:repositories.filter(asset=>!featuredIds.includes(asset.id))};
+}
+
+function swapRepositoryDisplay(assets,preferredIds,id,limit=6){
+ const {featured,compact}=repositoryGroups(assets,preferredIds,limit);
+ const ids=featured.map(asset=>asset.id);
+ const position=ids.indexOf(id);
+ if(position>=0){
+  ids.splice(position,1);
+  if(compact[0])ids.splice(position,0,compact[0].id);
+ }else if(compact.some(asset=>asset.id===id)){
+  if(ids.length>=limit)ids.pop();
+  ids.unshift(id);
+ }
+ return ids;
+}
+
+if(typeof module!=='undefined')module.exports={assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay};

@@ -6,9 +6,9 @@
 
 打开 `dist/Assetboard.app`。这是本机 Apple Silicon 构建的原型，使用原生 macOS 窗口和内置 WebKit，无需网页服务器或安装 Node/Electron。可以将 App 移到自己的应用程序文件夹。
 
-资产与布局保存到 `~/Library/Application Support/Assetboard/board.json`，每次保存前保留 `board.previous.json`。保存使用原子写入；无法读取原文件时停止加载，不用演示数据覆盖损坏文件。数据是本机明文 JSON，不上传到云端。
+资产与布局以 `~/Library/Application Support/Assetboard/assetboard.sqlite` 为准，同时维护 `board.json` 和 `board.previous.json` 镜像备份。旧 JSON 首次打开时迁入 SQLite；无法读取旧文件时停止加载，不用演示数据覆盖损坏文件。数据仅保存在本机，不上传到 Assetboard 服务。
 
-App 菜单“文件”支持导出 JSON 备份、打开数据文件夹，以及 Cloudflare 和 GitHub 只读接入。当前源码构建的资产板从空白开始；首次导入页可手动录入或选择 GitHub、Cloudflare。升级时仅移除完全未修改的旧版演示记录和默认区块，保留自定义布局与编辑过的记录；保存前的原文件进入 `board.previous.json`。新录入资产可使用自定义图标和真实管理链接。两个连接器只读取各自授权范围内的资源列表。手动填写的令牌经读取权限验证后保存在 macOS 钥匙串；GitHub 也可使用本机已登录的 `gh`，不另存其令牌。Cloudflare 尚未用真实账号完成端到端验证。
+App 菜单“文件”支持导出 JSON 备份、打开数据文件夹、Cloudflare/GitHub 只读接入、本机 OCR 和 Gmail 筛选导入。当前源码构建的资产板从空白开始；首次导入页可手动录入或选择平台及 OCR。升级时仅移除完全未修改的旧版演示记录和默认区块，保留自定义布局与编辑过的记录。新录入资产可使用自定义图标和真实管理链接。GitHub 已用本机 `gh` 真实读取 37 个授权范围内仓库；最近更新的 6 个展开，其余以图标和名称显示，可互换。Cloudflare 可列出 Zone、Pages 项目、Worker 脚本及 R2 Bucket；Cloudflare 和 Gmail 尚无本机授权，因此真实账号同步未验证。OCR 用本机生成的样本图片通过了 Vision 识别测试。
 
 本机构建：`./desktop/build.sh`，使用临时签名。使用 Developer ID Application 证书构建并生成 ZIP：`SIGNING_IDENTITY='Developer ID Application: 名称 (TEAMID)' ./desktop/package.sh`。分发前仍需完成 Apple 公证；仅签名不会消除其他 Mac 上的 Gatekeeper 提示。
 
@@ -28,4 +28,4 @@ v0.1.0 发布包已于 2026-09-25 通过 Apple 公证（submission ID `56128736-
 
 验证（2026-09-24）：桌面浏览器实测折叠与恢复、详情、搜索、拖动排序、缩放、撤销、添加与修改、刷新保留记录；390px 视口实测文档宽度 390px，无横向溢出。未进行真实设备测试或用户可用性研究。
 
-已知原型边界：固定高度区块只显示完整卡片，其他资产通过查看全部进入；未实现后端和多设备同步。Cloudflare 和 GitHub 连接器仅在 macOS App 中可用；前者只能发现 Zone，后者只能发现授权范围内的仓库元数据，均不提供账单数据。v0.1.0 已发布包仍包含当时的演示数据，本节新行为仅适用于当前源码构建。
+已知原型边界：固定高度区块只显示完整卡片，其他资产通过查看全部进入；未实现后端和多设备同步。Cloudflare、GitHub、Gmail 和 OCR 仅在 macOS App 中可用。Cloudflare 与 GitHub 只发现授权范围内的资源列表元数据，不提供账单数据；Gmail 导入的匹配邮件与 OCR 文字先作为可核对资料保存，不自动创建资产。v0.1.0 已发布包仍包含当时的演示数据，本节新行为仅适用于当前源码构建。

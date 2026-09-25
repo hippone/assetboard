@@ -1,6 +1,8 @@
 import Cocoa
 import WebKit
 import Security
+import CryptoKit
+import UniformTypeIdentifiers
 
 final class CloudflareConnector {
     private let service = "studio.assetboard.local.cloudflare"
@@ -106,7 +108,7 @@ final class GitHubConnector {
         var all: [[String: Any]] = []
         func page(_ number: Int) {
             var components = URLComponents(string: "https://api.github.com/user/repos")!
-            components.queryItems = [URLQueryItem(name: "per_page", value: "100"), URLQueryItem(name: "page", value: String(number)), URLQueryItem(name: "sort", value: "full_name")]
+            components.queryItems = [URLQueryItem(name: "per_page", value: "100"), URLQueryItem(name: "page", value: String(number)), URLQueryItem(name: "sort", value: "updated"), URLQueryItem(name: "direction", value: "desc")]
             var request = URLRequest(url: components.url!)
             request.httpMethod = "GET"
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -134,6 +136,7 @@ final class GitHubConnector {
                     }
                     all.append(["id": String(id), "name": name, "owner": owner, "url": rawURL,
                                 "description": repository["description"] as? String ?? "",
+                                "updatedAt": repository["updated_at"] as? String ?? "",
                                 "private": repository["private"] as? Bool ?? false,
                                 "archived": repository["archived"] as? Bool ?? false])
                 }
@@ -151,13 +154,15 @@ final class GitHubConnector {
 final class BoardStore {
     let directory: URL
     let file: URL
+    let database: LocalDatabase
     init(root: URL? = nil) throws {
         directory = root ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Assetboard", isDirectory: true)
         file = directory.appendingPathComponent("board.json")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        database = try LocalDatabase(file: directory.appendingPathComponent("assetboard.sqlite"))
     }
     func validate(_ value: Any) throws -> [String: Any] {
-        let categories: Set<String> = ["domain", "server", "subscription", "database", "license", "repository"]
+        let categories: Set<String> = ["domain", "server", "subscription", "database", "license", "repository", "deployment", "storage"]
         guard let board = value as? [String: Any],
               let blocks = board["blocks"] as? [[String: Any]],
               let assets = board["assets"] as? [[String: Any]],
@@ -168,17 +173,29 @@ final class BoardStore {
         return board
     }
     func load() throws -> [String: Any]? {
+        if let saved = try database.loadBoard() { return try validate(saved) }
         guard FileManager.default.fileExists(atPath: file.path) else { return nil }
-        return try validate(JSONSerialization.jsonObject(with: Data(contentsOf: file)))
+        let legacy = try validate(JSONSerialization.jsonObject(with: Data(contentsOf: file)))
+        try database.saveBoard(legacy)
+        return legacy
     }
     func save(_ value: Any) throws {
         let board = try validate(value)
         let bytes = try JSONSerialization.data(withJSONObject: board, options: [.prettyPrinted, .sortedKeys])
-        if FileManager.default.fileExists(atPath: file.path) {
-            let previous = try Data(contentsOf: file)
-            try previous.write(to: directory.appendingPathComponent("board.previous.json"), options: .atomic)
+        try database.saveBoard(board)
+        do {
+            if FileManager.default.fileExists(atPath: file.path) {
+                let previous = try Data(contentsOf: file)
+                let backup = directory.appendingPathComponent("board.previous.json")
+                try previous.write(to: backup, options: .atomic)
+                try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backup.path)
+            }
+            try bytes.write(to: file, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+        } catch {
+            // SQLite is the source of truth; a failed JSON mirror must not report a lost save.
+            NSLog("Assetboard JSON mirror could not be updated: %@", error.localizedDescription)
         }
-        try bytes.write(to: file, options: .atomic)
     }
 }
 
@@ -199,7 +216,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             guard let root = Bundle.main.resourceURL?.appendingPathComponent("Board", isDirectory: true) else { return }
             localRoot = root
             let controller = WKUserContentController()
-            let initial: [String: Any] = ["data": saved as Any? ?? NSNull(), "cloudflareConnected": cloudflare.token() != nil, "githubConnected": github.token() != nil]
+            let initial: [String: Any] = ["data": saved as Any? ?? NSNull(), "cloudflareConnected": cloudflare.token() != nil, "githubConnected": github.token() != nil,
+                                          "gmailConfigured": FileManager.default.fileExists(atPath: store.directory.appendingPathComponent("gmail-client.json").path)]
             let json = String(data: try JSONSerialization.data(withJSONObject: initial), encoding: .utf8)!
             controller.addUserScript(WKUserScript(source: "window.__ASSETBOARD_NATIVE__ = \(json);", injectionTime: .atDocumentStart, forMainFrameOnly: true))
             controller.add(self, name: "assetboard")
@@ -304,6 +322,103 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     @objc func openTheme() { webView.evaluateJavaScript("themeDialog()") }
     @objc func openCloudflare() { webView.evaluateJavaScript("cloudflareDialog()") }
     @objc func openGitHub() { webView.evaluateJavaScript("githubDialog()") }
+    @objc func openGmail() { webView.evaluateJavaScript("gmailDialog()") }
+    func gmailResult(_ result: [String: Any]) {
+        DispatchQueue.main.async {
+            guard let data = try? JSONSerialization.data(withJSONObject: result), let json = String(data: data, encoding: .utf8) else { return }
+            self.webView.evaluateJavaScript("window.assetboardGmailResult(\(json))")
+        }
+    }
+    func syncGmail(configure: Bool = false) {
+        let clientFile = store.directory.appendingPathComponent("gmail-client.json")
+        if configure || !FileManager.default.fileExists(atPath: clientFile.path) {
+            let panel = NSOpenPanel()
+            panel.allowedContentTypes = [.json]
+            panel.message = "选择从 Google Cloud 下载的桌面应用 OAuth 客户端 JSON。"
+            panel.beginSheetModal(for: window) { response in
+                guard response == .OK, let url = panel.url else {
+                    self.gmailResult(["ok": false, "error": "尚未选择 OAuth 客户端 JSON。"])
+                    return
+                }
+                do {
+                    let data = try Data(contentsOf: url)
+                    guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let installed = root["installed"] as? [String: Any],
+                          installed["client_id"] as? String != nil,
+                          installed["client_secret"] as? String != nil else {
+                        self.gmailResult(["ok": false, "error": "请选择 Google Cloud 中桌面应用类型的 OAuth 客户端 JSON。"])
+                        return
+                    }
+                    try data.write(to: clientFile, options: .atomic)
+                    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: clientFile.path)
+                    self.runGmailImport(clientFile: clientFile)
+                } catch { self.gmailResult(["ok": false, "error": "无法保存本机 OAuth 配置：\(error.localizedDescription)"]) }
+            }
+        } else { runGmailImport(clientFile: clientFile) }
+    }
+    func runGmailImport(clientFile: URL) {
+        guard let script = Bundle.main.resourceURL?.appendingPathComponent("Board/gmail_local.py"),
+              FileManager.default.fileExists(atPath: script.path) else {
+            gmailResult(["ok": false, "error": "应用缺少 Gmail 本地同步脚本，请重新构建。"])
+            return
+        }
+        let databaseFile = store.database.file
+        let tokenFile = store.directory.appendingPathComponent("gmail-oauth.json")
+        DispatchQueue.global(qos: .userInitiated).async {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+            process.arguments = [script.path, "--credentials", clientFile.path, "--database", databaseFile.path, "--token-file", tokenFile.path]
+            process.standardError = FileHandle.nullDevice
+            let output = Pipe()
+            process.standardOutput = output
+            do { try process.run() } catch {
+                self.gmailResult(["ok": false, "error": "无法启动本机 Gmail 同步。"])
+                return
+            }
+            let bytes = output.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            guard bytes.count < 10000,
+                  let result = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any] else {
+                self.gmailResult(["ok": false, "error": "本机 Gmail 同步没有返回有效结果。"])
+                return
+            }
+            self.gmailResult(result)
+        }
+    }
+    @objc func importDocumentOCR() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [UTType.png, .jpeg, .pdf] + [UTType(filenameExtension: "webp")].compactMap { $0 }
+        panel.allowsMultipleSelection = false
+        panel.message = "选择截图或 PDF；文字只在此 Mac 识别和保存。"
+        panel.beginSheetModal(for: window) { response in
+            guard response == .OK, let url = panel.url else { return }
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let text = try OCRImporter.recognize(at: url)
+                    let digest = SHA256.hash(data: try Data(contentsOf: url)).map { String(format: "%02x", $0) }.joined()
+                    DispatchQueue.main.async {
+                        do {
+                            try self.store.database.saveEvidence(id: "ocr-" + digest, kind: "ocr", source: url.lastPathComponent, title: url.lastPathComponent, body: text)
+                            self.ocrResult(["ok": true, "title": url.lastPathComponent, "body": String(text.prefix(2000))])
+                        } catch { self.ocrResult(["ok": false, "error": error.localizedDescription]) }
+                    }
+                } catch {
+                    DispatchQueue.main.async { self.ocrResult(["ok": false, "error": error.localizedDescription]) }
+                }
+            }
+        }
+    }
+    @objc func showImportedEvidence() {
+        do {
+            let rows = try store.database.listEvidence()
+            guard let data = try? JSONSerialization.data(withJSONObject: rows), let json = String(data: data, encoding: .utf8) else { return }
+            webView.evaluateJavaScript("window.assetboardEvidenceResult(\(json))")
+        } catch { ocrResult(["ok": false, "error": error.localizedDescription]) }
+    }
+    func ocrResult(_ result: [String: Any]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: result), let json = String(data: data, encoding: .utf8) else { return }
+        webView.evaluateJavaScript("window.assetboardOCRResult(\(json))")
+    }
 
     func cloudflareResult(_ result: [String: Any]) {
         DispatchQueue.main.async {
@@ -390,12 +505,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             guard let token = supplied.isEmpty ? cloudflare.token() : supplied else {
                 cloudflareResult(["ok": false, "error": "请填写只读 API 令牌。"]) ; return
             }
-            cloudflare.listZones(token: token) { zones, error in
-                if let error { self.cloudflareResult(["ok": false, "error": error]); return }
-                if !supplied.isEmpty && !self.cloudflare.saveToken(supplied) {
-                    self.cloudflareResult(["ok": false, "error": "无法将令牌保存到 macOS 钥匙串，同步未写入资产板。"]) ; return
-                }
-                self.cloudflareResult(["ok": true, "zones": zones ?? [], "connected": true])
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    var inventory = try CloudflareInventory().discover(token: token)
+                    if !supplied.isEmpty && !self.cloudflare.saveToken(supplied) {
+                        self.cloudflareResult(["ok": false, "error": "无法将令牌保存到 macOS 钥匙串，同步未写入资产板。"])
+                        return
+                    }
+                    inventory["ok"] = true
+                    inventory["connected"] = true
+                    self.cloudflareResult(inventory)
+                } catch { self.cloudflareResult(["ok": false, "error": error.localizedDescription]) }
             }
             return
         }
@@ -406,6 +526,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         }
         if body["action"] as? String == "githubSyncLocal" {
             syncGitHubWithLocalCLI()
+            return
+        }
+        if body["action"] as? String == "ocrImport" {
+            importDocumentOCR()
+            return
+        }
+        if body["action"] as? String == "gmailSync" {
+            syncGmail(configure: body["configure"] as? Bool == true)
             return
         }
         if body["action"] as? String == "githubSync" {
@@ -464,6 +592,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         let githubItem = NSMenuItem(title: "GitHub 只读接入…", action: #selector(openGitHub), keyEquivalent: "")
         githubItem.target = self
         fileMenu.addItem(githubItem)
+        let gmailItem = NSMenuItem(title: "Gmail 账单与服务通知…", action: #selector(openGmail), keyEquivalent: "")
+        gmailItem.target = self
+        fileMenu.addItem(gmailItem)
+        let ocrItem = NSMenuItem(title: "导入截图或 PDF（本地识别）…", action: #selector(importDocumentOCR), keyEquivalent: "")
+        ocrItem.target = self
+        fileMenu.addItem(ocrItem)
+        let evidenceItem = NSMenuItem(title: "查看导入资料…", action: #selector(showImportedEvidence), keyEquivalent: "")
+        evidenceItem.target = self
+        fileMenu.addItem(evidenceItem)
         let folderItem = NSMenuItem(title: "打开本地数据文件夹", action: #selector(openDataFolder), keyEquivalent: "")
         folderItem.target = self
         fileMenu.addItem(folderItem)
@@ -491,7 +628,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let destination = panel.url else { return }
             do {
-                let data = try Data(contentsOf: self.store.file)
+                guard let board = try self.store.load() else { return }
+                let data = try JSONSerialization.data(withJSONObject: board, options: [.prettyPrinted, .sortedKeys])
                 try data.write(to: destination, options: .atomic)
             } catch {
                 let alert = NSAlert(error: error)
@@ -590,6 +728,44 @@ func testGitHub() {
     print("PASS: GitHub GET-only auth header, pagination, denial, invalid URL, partial response, empty result")
 }
 
+func testCloudflareInventory() {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [MockCloudflareProtocol.self]
+    let inventory = CloudflareInventory(session: URLSession(configuration: configuration))
+    let accountId = String(repeating: "a", count: 32)
+    MockCloudflareProtocol.reply = { request in
+        precondition(request.httpMethod == "GET")
+        precondition(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-token")
+        switch request.url!.path {
+        case "/client/v4/zones":
+            return (200, ["success": true, "result": [["id": "zone-1", "name": "example.org", "status": "active"]], "result_info": ["total_pages": 1]])
+        case "/client/v4/accounts":
+            return (200, ["success": true, "result": [["id": accountId, "name": "My account"]], "result_info": ["total_pages": 1]])
+        case "/client/v4/accounts/\(accountId)/pages/projects":
+            return (200, ["success": true, "result": [["name": "my-pages"]], "result_info": ["total_pages": 1]])
+        case "/client/v4/accounts/\(accountId)/workers/scripts":
+            return (200, ["success": true, "result": [["id": "my-worker"]]])
+        case "/client/v4/accounts/\(accountId)/r2/buckets":
+            return (200, ["success": true, "result": ["buckets": [["name": "my-bucket"]]], "result_info": [:]])
+        default: fatalError("Unexpected Cloudflare endpoint")
+        }
+    }
+    do {
+        let result = try inventory.discover(token: "test-token")
+        precondition((result["resources"] as? [[String: String]])?.count == 4)
+        precondition(Set(result["queriedKinds"] as? [String] ?? []) == Set(["zone", "pages", "worker", "r2"]))
+        MockCloudflareProtocol.reply = { request in
+            request.url!.path == "/client/v4/zones"
+                ? (200, ["success": true, "result": [], "result_info": ["total_pages": 1]])
+                : (403, ["success": false])
+        }
+        let partial = try inventory.discover(token: "test-token")
+        precondition((partial["queriedKinds"] as? [String]) == ["zone"])
+        precondition(!(partial["warnings"] as? [String] ?? []).isEmpty)
+        print("PASS: Cloudflare Zone, Pages, Workers, R2 discovery and partial permission handling")
+    } catch { fputs("Cloudflare inventory test failed: \(error)\n", stderr); exit(1) }
+}
+
 func makeIcon(at path: String) {
     let image = NSImage(size: NSSize(width: 1024, height: 1024))
     image.lockFocus()
@@ -607,6 +783,8 @@ func makeIcon(at path: String) {
     try? png.write(to: URL(fileURLWithPath: path))
 }
 
+@main struct AssetboardMain {
+static func main() {
 if CommandLine.arguments.contains("--make-icon"), let target = CommandLine.arguments.last {
     makeIcon(at: target)
 } else if CommandLine.arguments.contains("--test-store") {
@@ -621,21 +799,57 @@ if CommandLine.arguments.contains("--make-icon"), let target = CommandLine.argum
         let reopened = try BoardStore(root: root)
         let loaded = try reopened.load()
         precondition((loaded?["assets"] as? [[String: Any]])?.count == 1)
+        let storedCount = try reopened.database.assetCount()
+        precondition(storedCount == 1)
+        try reopened.database.saveEvidence(id: "ocr-sample", kind: "ocr", source: "sample.png", title: "Sample", body: "Renewal notice")
+        let evidence = try reopened.database.listEvidence()
+        precondition(evidence.count == 1 && evidence[0]["body"] == "Renewal notice")
         try reopened.save(data)
         precondition(FileManager.default.fileExists(atPath: root.appendingPathComponent("board.previous.json").path))
         do { try reopened.save(["invalid": true]); fatalError("Invalid data accepted") } catch {}
         let afterInvalid = try reopened.load()
         precondition((afterInvalid?["assets"] as? [[String: Any]])?.count == 1)
-        print("PASS: new store, atomic save, reopen, backup, reject invalid data")
+        let oldRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: oldRoot) }
+        try FileManager.default.createDirectory(at: oldRoot, withIntermediateDirectories: true)
+        try JSONSerialization.data(withJSONObject: data).write(to: oldRoot.appendingPathComponent("board.json"))
+        let migrated = try BoardStore(root: oldRoot)
+        let migratedBoard = try migrated.load()
+        let migratedCount = try migrated.database.assetCount()
+        precondition((migratedBoard?["assets"] as? [[String: Any]])?.count == 1)
+        precondition(migratedCount == 1)
+        print("PASS: SQLite save, JSON migration and backup, reopen, reject invalid data")
     } catch { fputs("Store test failed: \(error)\n", stderr); exit(1) }
 } else if CommandLine.arguments.contains("--test-cloudflare") {
     testCloudflare()
 } else if CommandLine.arguments.contains("--test-github") {
     testGitHub()
+} else if CommandLine.arguments.contains("--test-cloudflare-inventory") {
+    testCloudflareInventory()
+} else if CommandLine.arguments.contains("--test-ocr") {
+    let sample = NSImage(size: NSSize(width: 900, height: 180))
+    sample.lockFocus()
+    NSColor.white.setFill()
+    NSRect(x: 0, y: 0, width: 900, height: 180).fill()
+    ("ASSETBOARD 123" as NSString).draw(at: NSPoint(x: 35, y: 65), withAttributes: [.font: NSFont.systemFont(ofSize: 70), .foregroundColor: NSColor.black])
+    sample.unlockFocus()
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".png")
+    defer { try? FileManager.default.removeItem(at: url) }
+    guard let tiff = sample.tiffRepresentation,
+          let bitmap = NSBitmapImageRep(data: tiff),
+          let png = bitmap.representation(using: .png, properties: [:]) else { fatalError("OCR sample generation failed") }
+    do {
+        try png.write(to: url)
+        let recognized = try OCRImporter.recognize(at: url)
+        precondition(recognized.contains("ASSETBOARD"))
+        print("PASS: local Vision image recognition")
+    } catch { fputs("OCR test failed: \(error)\n", stderr); exit(1) }
 } else {
     let app = NSApplication.shared
     let delegate = AppDelegate()
     app.delegate = delegate
     app.setActivationPolicy(.regular)
     app.run()
+}
+}
 }

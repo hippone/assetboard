@@ -142,9 +142,21 @@ body{background:rgb(var(--tone-canvas));color:var(--ink)}
 .native-app .welcome{min-height:100vh}
 .welcome h1{font-size:clamp(26px,3vw,38px);font-weight:550;letter-spacing:-.04em;margin:15px 0 12px}
 .welcome>p{color:var(--muted);line-height:1.7;margin:0;max-width:540px}
-.welcome-choices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;width:100%;margin:34px 0 20px}
+.welcome-choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px;width:100%;margin:34px 0 20px}
 .welcome-choice{min-height:128px;padding:22px;text-align:left;border:1px solid rgba(var(--tone-ink),.10);border-radius:14px;background:rgba(var(--tone-card),.55);box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 6px 18px rgba(var(--tone-ink),.055);display:flex;flex-direction:column;gap:13px}
 .welcome-choice:hover{background:rgba(var(--tone-card),.78);transform:translateY(-2px)}
 .welcome-choice strong{font-size:14px;font-weight:600}.welcome-choice span{color:var(--muted);font-size:11px;line-height:1.6}
 .welcome .welcome-note{font-size:11px}
 @media(max-width:760px){.welcome{padding:48px 20px}.welcome-choices{grid-template-columns:1fr;margin-top:28px}.welcome-choice{min-height:80px;padding:16px;gap:6px}}
+.repository .compact-repositories{grid-column:1/-1;padding:10px 8px 14px;border-top:1px solid rgba(var(--tone-ink),.12)}
+.compact-repositories-title{font-size:11px;color:var(--muted);margin:0 0 10px 4px}
+.compact-repositories-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:5px}
+.compact-repo{display:flex;align-items:center;min-width:0;min-height:46px;padding:4px;border:1px solid rgba(var(--tone-ink),.08);border-radius:8px;background:rgba(var(--tone-card),.24)}
+.compact-repo-open{display:flex;align-items:center;gap:8px;min-width:0;flex:1;text-align:left;font-size:11px}
+.compact-repo-open svg{width:21px;height:21px;flex:none;color:var(--muted)}
+.compact-repo-open span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.repo-swap{flex:none;padding:5px 7px;border-radius:6px;color:var(--muted);font-size:10px}
+.repo-swap:hover{background:rgba(var(--tone-card),.55);color:var(--ink)}
+.imported-text{white-space:pre-wrap;overflow-wrap:anywhere;max-height:48vh;overflow:auto;padding:12px;border-radius:8px;background:rgba(var(--tone-card),.32);font-size:11px;line-height:1.6}
+.evidence-item{padding:9px 0;border-bottom:1px solid rgba(var(--tone-ink),.1)}
+.evidence-item summary{cursor:pointer;font-size:12px}.evidence-item small{color:var(--muted);margin-left:5px}
