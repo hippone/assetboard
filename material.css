@@ -160,3 +160,30 @@ body{background:rgb(var(--tone-canvas));color:var(--ink)}
 .imported-text{white-space:pre-wrap;overflow-wrap:anywhere;max-height:48vh;overflow:auto;padding:12px;border-radius:8px;background:rgba(var(--tone-card),.32);font-size:11px;line-height:1.6}
 .evidence-item{padding:9px 0;border-bottom:1px solid rgba(var(--tone-ink),.1)}
 .evidence-item summary{cursor:pointer;font-size:12px}.evidence-item small{color:var(--muted);margin-left:5px}
+
+/* Content-sized board: long inventories must not stretch their neighbors. */
+:root .board,.native-app .board{min-height:0;align-items:flex-start;align-content:flex-start}
+:root .block{align-self:flex-start}
+:root .block:not(.fixed):not(.collapsed) .cards{flex:none;grid-auto-rows:max-content}
+.asset-card{min-height:0}
+.card-open .art{flex:none;height:112px;min-height:0}
+.source-art{color:rgb(var(--tone-primary));place-items:center}
+.source-art svg{width:54px;height:54px;max-width:none;opacity:.72}
+.block.collapsed .source-art svg{width:26px;height:26px;transform:none}
+.asset-count{font-size:10px;font-weight:500;color:var(--muted);padding:1px 6px;border-radius:6px;background:rgba(var(--tone-card),.48)}
+.repository .compact-repositories-grid{max-height:222px;overflow-y:auto;scrollbar-width:thin;align-content:start;padding-right:3px}
+.block.repository.collapsed .cards{max-height:264px;overflow-y:auto;scrollbar-width:thin;align-content:start}
+.compact-repo-open span{direction:ltr}
+@media(max-width:760px){:root .block.collapsed{min-width:0;width:100%!important}.repository .compact-repositories-grid{max-height:230px}}
+.asset-drag-handle{position:absolute;z-index:2;right:8px;top:8px;display:grid;place-items:center;width:28px;height:28px;border-radius:7px;background:rgba(var(--tone-card),.88);border:1px solid var(--line);color:var(--muted);font-size:16px;cursor:grab;touch-action:none}
+.asset-drag-handle:active{cursor:grabbing}
+.compact-repo{position:relative}
+.compact-repo .asset-drag-handle{position:static;flex:none;width:24px;height:28px;margin-right:4px;background:transparent;border:0}
+.block.collapsed .asset-drag-handle{left:3px;right:auto;top:14px}
+.block.collapsed .card-open{padding-left:32px}
+.asset-drop-target{outline:2px solid rgb(var(--tone-primary));outline-offset:-2px}
+.asset-dragging{opacity:.45}
+.editing .resize-handle{width:34px;height:34px;right:2px;bottom:2px;z-index:3}
+.editing .resize-handle:after{font-size:20px;right:5px;bottom:3px}
+body:not(.editing) .block:has(.block-empty){width:min(25%,320px);min-width:220px}
+@media(max-width:760px){body:not(.editing) .block:has(.block-empty){width:100%;min-width:0}}

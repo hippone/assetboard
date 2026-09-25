@@ -208,6 +208,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     var localRoot: URL!
     let searchField = NSSearchField(frame: NSRect(x: 0, y: 0, width: 200, height: 28))
     var layoutButton: NSButton!
+    var connectionStateJSON: String?
+    var boardLoaded = false
+
+    func publishConnectionState() {
+        guard boardLoaded, let connectionStateJSON else { return }
+        webView.evaluateJavaScript("window.assetboardConnectionState?.(\(connectionStateJSON))")
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        boardLoaded = true
+        publishConnectionState()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
@@ -216,7 +228,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             guard let root = Bundle.main.resourceURL?.appendingPathComponent("Board", isDirectory: true) else { return }
             localRoot = root
             let controller = WKUserContentController()
-            let initial: [String: Any] = ["data": saved as Any? ?? NSNull(), "cloudflareConnected": cloudflare.token() != nil, "githubConnected": github.token() != nil,
+            let initial: [String: Any] = ["data": saved as Any? ?? NSNull(), "cloudflareConnected": false, "githubConnected": false,
+                                          "cloudflareChecking": true, "githubChecking": true,
                                           "gmailConfigured": FileManager.default.fileExists(atPath: store.directory.appendingPathComponent("gmail-client.json").path)]
             let json = String(data: try JSONSerialization.data(withJSONObject: initial), encoding: .utf8)!
             controller.addUserScript(WKUserScript(source: "window.__ASSETBOARD_NATIVE__ = \(json);", injectionTime: .atDocumentStart, forMainFrameOnly: true))
@@ -267,6 +280,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             webView.loadFileURL(root.appendingPathComponent("index.html"), allowingReadAccessTo: root)
             window.makeKeyAndOrderFront(nil)
             NSApplication.shared.activate(ignoringOtherApps: true)
+            DispatchQueue.global(qos: .utility).async {
+                let connections: [String: Any] = ["cloudflareConnected": self.cloudflare.token() != nil, "githubConnected": self.github.token() != nil,
+                                                  "cloudflareChecking": false, "githubChecking": false]
+                guard let bytes = try? JSONSerialization.data(withJSONObject: connections),
+                      let json = String(data: bytes, encoding: .utf8) else { return }
+                DispatchQueue.main.async { self.connectionStateJSON = json; self.publishConnectionState() }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
+                if self.connectionStateJSON == nil {
+                    self.connectionStateJSON = "{\"cloudflareChecking\":false,\"githubChecking\":false,\"keychainUnavailable\":true}"
+                    self.publishConnectionState()
+                }
+            }
         } catch {
             let alert = NSAlert()
             alert.messageText = "无法打开本地资产板"

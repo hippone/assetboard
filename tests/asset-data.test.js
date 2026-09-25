@@ -1,6 +1,6 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
-const {removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay}=require('../asset-data.js');
+const {removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset}=require('../asset-data.js');
 
 const sample={id:'a1',type:'domain',name:'halfnote.studio',provider:'Cloudflare',account:'个人账号',purpose:'写作工具',event:'12 天后到期',date:'2026-10-06',cost:'¥ 89 / 年',warn:true,art:'note',url:'https://example.com',notes:'主站域名，记录每一个从想法到作品的瞬间。'};
 
@@ -37,4 +37,12 @@ test('shows recently updated repositories first and swaps a compact one into the
  const swapped=swapRepositoryDisplay(assets,initial.featured.map(asset=>asset.id),'repo-0');
  assert.deepEqual(repositoryGroups(assets,swapped).featured.map(asset=>asset.id),['repo-0','repo-7','repo-6','repo-5','repo-4','repo-3']);
  assert.equal(repositoryGroups(assets,swapped).compact.length,2);
+});
+
+test('preserves a user card order and places newly synced cards afterward',()=>{
+ const assets=[{id:'new'},{id:'first'},{id:'second'}];
+ const ids=moveAsset(['first','second'],'second','first');
+ assert.deepEqual(ids,['second','first']);
+ assert.deepEqual(orderAssets(assets,ids).map(asset=>asset.id),['second','first','new']);
+ assert.deepEqual(moveAsset(ids,'second','second'),ids);
 });

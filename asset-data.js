@@ -47,4 +47,17 @@ function swapRepositoryDisplay(assets,preferredIds,id,limit=6){
  return ids;
 }
 
-if(typeof module!=='undefined')module.exports={assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay};
+function orderAssets(assets,ids){
+ if(!Array.isArray(ids)||!ids.length)return assets;
+ const rank=new Map(ids.map((id,index)=>[id,index]));
+ return [...assets].sort((left,right)=>(rank.get(left.id)??Infinity)-(rank.get(right.id)??Infinity));
+}
+
+function moveAsset(ids,movingId,targetId,after=false){
+ if(movingId===targetId||!ids.includes(movingId)||!ids.includes(targetId))return ids;
+ const next=ids.filter(id=>id!==movingId);
+ next.splice(next.indexOf(targetId)+(after?1:0),0,movingId);
+ return next;
+}
+
+if(typeof module!=='undefined')module.exports={assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset};

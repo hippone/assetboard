@@ -14,6 +14,14 @@ const cats = {domain:{name:'域名',hint:'网站的地址，也是创作的起�
 const seed={blocks:[],assets:[]};
 const key='assetboard-prototype-v1';
 const nativeStore=window.__ASSETBOARD_NATIVE__;
+window.assetboardConnectionState=connections=>{
+ if(!nativeStore)return;
+ Object.assign(nativeStore,connections);
+ const cloudflareStatus=$('#cloudflare-status');
+ if(cloudflareStatus)cloudflareStatus.textContent=nativeStore.cloudflareConnected?'已连接 · 可重新同步':nativeStore.keychainUnavailable?'本机钥匙串暂未响应，可重新输入令牌同步':'尚未连接';
+ const githubStatus=$('#github-status');
+ if(githubStatus)githubStatus.textContent=nativeStore.githubConnected?'已连接 · 可重新同步':nativeStore.keychainUnavailable?'本机钥匙串暂未响应，可使用 gh 同步':'尚未连接';
+};
 let state=structuredClone(seed),editing=false,query='',focusCategory=null,history=[],activeAsset=null,lastFocus=null,toastTimer;
 let migratedLegacyData=false;
 try{const saved=nativeStore?nativeStore.data:JSON.parse(localStorage.getItem(key));if(saved&&Array.isArray(saved.blocks)&&Array.isArray(saved.assets)&&saved.blocks.every(b=>cats[b.id])){const migration=removeUntouchedDemo(saved);state=migration.board;migratedLegacyData=!!(migration.removed||migration.removedBlocks);}}catch{}
@@ -25,6 +33,7 @@ function toast(message){clearTimeout(toastTimer);$('#toast').textContent=message
 function icon(type){return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">${icons[type]}</svg>`;}
 function art(asset){
  if(typeof asset.iconData==='string'&&/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(asset.iconData)&&asset.iconData.length<400000)return `<div class="art custom-art" aria-hidden="true"><img src="${asset.iconData}" alt="" draggable="false"></div>`;
+ if(asset.source==='github'||asset.source==='cloudflare')return `<div class="art source-art" aria-hidden="true">${icon(asset.type)}</div>`;
  if(['note','orbit','build','rack','rack2','figma','claude','db','db2'].includes(asset.art))return `<div class="art" aria-hidden="true"><img src="assets/${asset.art}.png" alt="" width="320" height="320" draggable="false"></div>`;
  const wrap=(bg,body)=>`<div class="art" style="background:${bg}" aria-hidden="true"><svg viewBox="0 0 220 130" fill="none">${body}</svg></div>`;
  switch(asset.art){
@@ -40,19 +49,21 @@ function art(asset){
 }
 function matches(a){return !query||[a.name,a.provider,a.purpose,a.account,cats[a.type]?.name].join(' ').toLowerCase().includes(query.toLowerCase());}
 function safeManagementUrl(value){try{const url=new URL(value);return ['https:','http:'].includes(url.protocol)&&url.hostname&&!url.username&&!url.password?url.href:null;}catch{return null;}}
-function card(a,canDemote=false){const link=safeManagementUrl(a.url);return `<article class="asset-card" data-asset="${esc(a.id)}"><button class="card-open" data-action="detail" data-id="${esc(a.id)}" aria-label="查看 ${esc(a.name)} 详情">${art(a)}<div class="card-copy"><span class="card-name">${esc(a.name)}</span><span class="card-provider">${esc(a.provider)} · ${esc(a.account)}</span><span class="card-purpose">${esc(a.purpose||'用途待补充')}</span></div></button><div class="card-foot"><span class="card-event ${a.warn||a.syncMissing?'warn':''}"><i class="dot"></i>${esc(a.syncMissing?'本次未返回':a.event||'日期待补充')}</span>${canDemote?`<button class="repo-swap" data-action="repo-swap" data-id="${esc(a.id)}" aria-label="将 ${esc(a.name)} 换到精简区">收起</button>`:''}${link&&new URL(link).hostname!=='example.com'?`<button class="open-link" data-action="external" data-id="${esc(a.id)}" aria-label="打开 ${esc(a.name)} 管理链接">↗</button>`:''}</div></article>`;}
-function compactRepository(a){return `<div class="compact-repo"><button class="compact-repo-open" data-action="detail" data-id="${esc(a.id)}" aria-label="查看 ${esc(a.name)} 详情">${icon('repository')}<span>${esc(a.name)}</span></button><button class="repo-swap" data-action="repo-swap" data-id="${esc(a.id)}" aria-label="将 ${esc(a.name)} 换到展开区">展开</button></div>`;}
+function displayName(a){return a.source==='github'&&a.name.includes('/')?a.name.slice(a.name.indexOf('/')+1):a.name;}
+function card(a,canDemote=false){const link=safeManagementUrl(a.url);return `<article class="asset-card" data-asset="${esc(a.id)}">${editing?`<button class="asset-drag-handle" draggable="true" aria-label="拖动 ${esc(a.name)} 排序，也可用方向键">⠿</button>`:''}<button class="card-open" data-action="detail" data-id="${esc(a.id)}" aria-label="查看 ${esc(a.name)} 详情">${art(a)}<div class="card-copy"><span class="card-name" title="${esc(a.name)}">${esc(displayName(a))}</span><span class="card-provider">${esc(a.provider)} · ${esc(a.account)}</span><span class="card-purpose">${esc(a.purpose||'用途待补充')}</span></div></button><div class="card-foot"><span class="card-event ${a.warn||a.syncMissing?'warn':''}"><i class="dot"></i>${esc(a.syncMissing?'本次未返回':a.event||'日期待补充')}</span>${canDemote?`<button class="repo-swap" data-action="repo-swap" data-id="${esc(a.id)}" aria-label="将 ${esc(a.name)} 换到精简区">收起</button>`:''}${link&&new URL(link).hostname!=='example.com'?`<button class="open-link" data-action="external" data-id="${esc(a.id)}" aria-label="打开 ${esc(a.name)} 管理链接">↗</button>`:''}</div></article>`;}
+function compactRepository(a){return `<div class="compact-repo" data-asset="${esc(a.id)}">${editing?`<button class="asset-drag-handle" draggable="true" aria-label="拖动 ${esc(a.name)} 排序，也可用方向键">⠿</button>`:''}<button class="compact-repo-open" data-action="detail" data-id="${esc(a.id)}" aria-label="查看 ${esc(a.name)} 详情" title="${esc(a.name)}">${icon('repository')}<span>${esc(displayName(a))}</span></button><button class="repo-swap" data-action="repo-swap" data-id="${esc(a.id)}" aria-label="将 ${esc(a.name)} 换到展开区">展开</button></div>`;}
 function renderBlock(b){
- const assets=state.assets.filter(a=>a.type===b.id&&matches(a));
+ const assets=orderAssets(state.assets.filter(a=>a.type===b.id&&matches(a)),state.cardOrder?.[b.id]);
  const collapsed=b.collapsed&&!query&&!focusCategory;
  const fixed=b.height&&!collapsed&&!focusCategory&&!query;
  const warning=assets.some(a=>a.warn);
  const repositoryLayout=b.id==='repository'&&!query&&!focusCategory&&!collapsed&&assets.length>6;
- const groups=repositoryLayout?repositoryGroups(assets,state.featuredRepositoryIds):null;
+ const rawGroups=repositoryLayout?repositoryGroups(assets,state.featuredRepositoryIds):null;
+ const groups=rawGroups?{featured:orderAssets(rawGroups.featured,state.cardOrder?.repository),compact:orderAssets(rawGroups.compact,state.cardOrder?.repository)}:null;
  const cardsHtml=groups?`${groups.featured.map(a=>card(a,true)).join('')}<div class="compact-repositories"><div class="compact-repositories-title">较早更新 · ${groups.compact.length} 个仓库</div><div class="compact-repositories-grid">${groups.compact.map(compactRepository).join('')}</div></div>`:assets.map(a=>card(a)).join('');
  return `<section class="block ${b.id} ${collapsed?'collapsed':''} ${fixed?'fixed':''}" data-block="${b.id}" style="--width:${b.width};--compact-columns:${Math.min(2,Math.max(1,assets.length))}">
  <header class="block-head"><button class="drag-handle icon-button" draggable="true" aria-label="拖动${cats[b.id].name}区块">⠿</button>
- <button class="block-title" data-action="collapse" data-id="${b.id}" aria-expanded="${!collapsed}" aria-controls="cards-${b.id}" title="${collapsed?'展开资产卡片':'切换为图标与名称'}"><span>${cats[b.id].name}</span><span class="chevron">${collapsed?'⌄':'⌃'}</span></button>
+ <button class="block-title" data-action="collapse" data-id="${b.id}" aria-expanded="${!collapsed}" aria-controls="cards-${b.id}" title="${collapsed?'展开资产卡片':'切换为图标与名称'}"><span>${cats[b.id].name}</span><span class="asset-count">${assets.length}</span><span class="chevron">${collapsed?'⌄':'⌃'}</span></button>
  ${warning?'<span class="block-summary">即将到期</span>':''}
  <div class="block-actions"><button class="text-button" data-action="all" data-id="${b.id}" aria-label="查看全部${cats[b.id].name}" hidden>查看全部</button><button class="icon-button" data-action="add-asset" data-id="${b.id}" aria-label="添加${cats[b.id].name}资产">＋</button><button class="icon-button" data-action="settings" data-id="${b.id}" aria-label="${cats[b.id].name}区块设置">⋯</button></div></header>
  <div class="cards" id="cards-${b.id}" ${fixed?`style="height:${b.height}px"`:''}>${cardsHtml||'<div class="block-empty">添加你的第一项资产</div>'}</div>
@@ -104,7 +115,7 @@ function assetForm(type,id){const a=id?state.assets.find(a=>a.id===id):null,link
 function cloudflareDialog(){
  if(!nativeStore){toast('Cloudflare 同步仅在 macOS App 中可用');return;}
  const connected=nativeStore.cloudflareConnected;
- modal('Cloudflare · 只读同步',`<div class="form"><p class="form-note">使用 Cloudflare API Token。按需授予 Zone Read、Account Read、Pages Read、Workers Scripts Read 和 R2 Storage Read。应用只列出授权范围内的 Zone、Pages 项目、Worker 脚本与 R2 Bucket，不读取脚本代码、对象内容或账单。权限不足的类别会明确跳过。</p><button class="button" data-action="setup-cloudflare">前往 Cloudflare 网页创建只读 Token ↗</button><label>${connected?'更换令牌（留空则使用已保存令牌）':'只读 API 令牌'}<input id="cloudflare-token" type="password" autocomplete="off" spellcheck="false" placeholder="${connected?'留空使用现有令牌':'粘贴令牌'}"></label><p id="cloudflare-status" class="form-note">${connected?'已连接 · 可重新同步或更换令牌':'尚未连接'}</p><button id="cloudflare-sync" class="button primary">${connected?'重新同步':'验证权限并同步'}</button>${connected?'<button id="cloudflare-disconnect" class="button">断开本机连接</button>':''}<p class="form-note">令牌经验证后存入 macOS 钥匙串。断开不会撤销 Cloudflare 后台的令牌，已同步资产仍保留。</p></div>`);
+ modal('Cloudflare · 只读同步',`<div class="form"><p class="form-note">使用 Cloudflare API Token。按需授予 Zone Read、Account Read、Pages Read、Workers Scripts Read 和 R2 Storage Read。应用只列出授权范围内的 Zone、Pages 项目、Worker 脚本与 R2 Bucket，不读取脚本代码、对象内容或账单。权限不足的类别会明确跳过。</p><button class="button" data-action="setup-cloudflare">前往 Cloudflare 网页创建只读 Token ↗</button><label>${connected?'更换令牌（留空则使用已保存令牌）':'只读 API 令牌'}<input id="cloudflare-token" type="password" autocomplete="off" spellcheck="false" placeholder="${connected?'留空使用现有令牌':'粘贴令牌'}"></label><p id="cloudflare-status" class="form-note">${connected?'已连接 · 可重新同步或更换令牌':nativeStore.cloudflareChecking?'正在检查本机钥匙串…':nativeStore.keychainUnavailable?'本机钥匙串暂未响应，可重新输入令牌同步':'尚未连接'}</p><button id="cloudflare-sync" class="button primary">${connected?'重新同步':'验证权限并同步'}</button>${connected?'<button id="cloudflare-disconnect" class="button">断开本机连接</button>':''}<p class="form-note">令牌经验证后存入 macOS 钥匙串。断开不会撤销 Cloudflare 后台的令牌，已同步资产仍保留。</p></div>`);
  $('#cloudflare-sync').onclick=()=>{const token=$('#cloudflare-token').value;$('#cloudflare-token').value='';$('#cloudflare-sync').disabled=true;$('#cloudflare-status').textContent='正在验证权限并读取全部分页…';window.webkit.messageHandlers.assetboard.postMessage({action:'cloudflareSync',token});};
  if(connected)$('#cloudflare-disconnect').onclick=()=>window.webkit.messageHandlers.assetboard.postMessage({action:'cloudflareDisconnect'});
 }
@@ -185,11 +196,36 @@ $('#add-block').onclick=addBlock;$('#close-modal').onclick=()=>$('#modal').close
 $('#search').oninput=e=>{query=e.target.value;focusCategory=null;render();};$('#clear-search').onclick=()=>{if(query){$('#search').value='';query='';render();}else addBlock();};
 $('#undo').onclick=()=>{if(!history.length)return;state=JSON.parse(history.pop());save();render();toast('已撤销上一次修改');};
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();$('#search').focus();}if(e.key==='Escape'&&!$('#modal').open){if(!$('#detail').hidden)closeDetail();else if(focusCategory){focusCategory=null;render();}else if(editing){editing=false;render();}}});
-let dragId=null;
-document.addEventListener('dragstart',e=>{if(!editing||!e.target.closest('.drag-handle'))return;dragId=e.target.closest('.block').dataset.block;e.dataTransfer.setData('text/plain',dragId);e.dataTransfer.effectAllowed='move';e.target.closest('.block').classList.add('dragging');});
-document.addEventListener('dragover',e=>{const block=e.target.closest('.block');if(dragId&&block){e.preventDefault();document.querySelectorAll('.drag-target').forEach(b=>b.classList.remove('drag-target'));if(block.dataset.block!==dragId)block.classList.add('drag-target');}});
-document.addEventListener('drop',e=>{const target=e.target.closest('.block');if(dragId&&target){e.preventDefault();const from=state.blocks.findIndex(b=>b.id===dragId),to=state.blocks.findIndex(b=>b.id===target.dataset.block);if(from!==to){checkpoint();const [item]=state.blocks.splice(from,1);state.blocks.splice(to,0,item);save();}dragId=null;render();}});
-document.addEventListener('dragend',()=>{dragId=null;document.querySelectorAll('.dragging,.drag-target').forEach(b=>b.classList.remove('dragging','drag-target'));});
+let dragId=null,assetDragElement=null;
+function commitAssetOrder(source,target,after=false){
+ if(!source||!target||source===target||source.parentElement!==target.parentElement)return false;
+ const block=source.closest('.block'),category=block?.dataset.block;
+ if(!category||target.closest('.block')!==block)return false;
+ const current=[...source.parentElement.children].filter(element=>element.dataset.asset).map(element=>element.dataset.asset);
+ const next=moveAsset(current,source.dataset.asset,target.dataset.asset,after);
+ if(next===current||next.every((id,index)=>id===current[index]))return false;
+ checkpoint();state.cardOrder ||= {};
+ const existing=state.cardOrder[category]||[];
+ state.cardOrder[category]=[...next,...existing.filter(id=>!next.includes(id))];
+ save();render();return true;
+}
+document.addEventListener('dragstart',e=>{
+ if(!editing)return;
+ const assetHandle=e.target.closest('.asset-drag-handle');
+ if(assetHandle){assetDragElement=assetHandle.closest('[data-asset]');e.dataTransfer.setData('text/plain',assetDragElement.dataset.asset);e.dataTransfer.effectAllowed='move';assetDragElement.classList.add('asset-dragging');return;}
+ if(!e.target.closest('.drag-handle'))return;
+ dragId=e.target.closest('.block').dataset.block;e.dataTransfer.setData('text/plain',dragId);e.dataTransfer.effectAllowed='move';e.target.closest('.block').classList.add('dragging');
+});
+document.addEventListener('dragover',e=>{
+ if(assetDragElement){const target=e.target.closest('[data-asset]');document.querySelectorAll('.asset-drop-target').forEach(element=>element.classList.remove('asset-drop-target'));if(target&&target!==assetDragElement&&target.parentElement===assetDragElement.parentElement){e.preventDefault();target.classList.add('asset-drop-target');}return;}
+ const block=e.target.closest('.block');if(dragId&&block){e.preventDefault();document.querySelectorAll('.drag-target').forEach(b=>b.classList.remove('drag-target'));if(block.dataset.block!==dragId)block.classList.add('drag-target');}
+});
+document.addEventListener('drop',e=>{
+ if(assetDragElement){const target=e.target.closest('[data-asset]');if(target){e.preventDefault();const rect=target.getBoundingClientRect();commitAssetOrder(assetDragElement,target,e.clientX>rect.left+rect.width/2);}assetDragElement=null;document.querySelectorAll('.asset-drop-target,.asset-dragging').forEach(element=>element.classList.remove('asset-drop-target','asset-dragging'));return;}
+ const target=e.target.closest('.block');if(dragId&&target){e.preventDefault();const from=state.blocks.findIndex(b=>b.id===dragId),to=state.blocks.findIndex(b=>b.id===target.dataset.block);if(from!==to){checkpoint();const [item]=state.blocks.splice(from,1);state.blocks.splice(to,0,item);save();}dragId=null;render();}
+});
+document.addEventListener('dragend',()=>{dragId=null;assetDragElement=null;document.querySelectorAll('.dragging,.drag-target,.asset-dragging,.asset-drop-target').forEach(b=>b.classList.remove('dragging','drag-target','asset-dragging','asset-drop-target'));});
+document.addEventListener('keydown',e=>{if(!editing||!e.target.matches('.asset-drag-handle')||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))return;const source=e.target.closest('[data-asset]'),siblings=[...source.parentElement.children].filter(element=>element.dataset.asset),step=['ArrowLeft','ArrowUp'].includes(e.key)?-1:1,target=siblings[siblings.indexOf(source)+step];if(!target)return;e.preventDefault();if(commitAssetOrder(source,target,step>0))document.querySelector(`[data-asset="${CSS.escape(source.dataset.asset)}"] .asset-drag-handle`)?.focus();});
 document.addEventListener('pointerdown',e=>{const handle=e.target.closest('.resize-handle');if(!handle||!editing)return;e.preventDefault();cancelAnimationFrame(layoutFrame);document.querySelectorAll('.block').forEach(el=>el.getAnimations().forEach(animation=>animation.cancel()));const board=$('#board'),boardStyle=getComputedStyle(board),gap=parseFloat(boardStyle.columnGap)||0,boardWidth=board.clientWidth-parseFloat(boardStyle.paddingLeft)-parseFloat(boardStyle.paddingRight);const block=handle.closest('.block'),b=state.blocks.find(b=>b.id===block.dataset.block),rect=block.getBoundingClientRect(),startX=e.clientX,startY=e.clientY,initialGrid=block.querySelector('.cards').clientHeight;checkpoint();handle.setPointerCapture(e.pointerId);block.classList.add('resizing');
  let resizeFrame=0,pending=null;
  const flush=()=>{resizeFrame=0;if(!pending)return;const {x,y}=pending;pending=null;b.width=Math.max(25,Math.min(100,(rect.width+x-startX+gap)/(boardWidth+gap)*100));block.style.setProperty('--width',b.width);if(Math.abs(y-startY)>8){b.height=Math.max(236,initialGrid+y-startY);block.classList.add('fixed');block.querySelector('.cards').style.height=b.height+'px';}updateOverflow();};

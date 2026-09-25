@@ -8,7 +8,7 @@
 
 资产与布局以 `~/Library/Application Support/Assetboard/assetboard.sqlite` 为准，同时维护 `board.json` 和 `board.previous.json` 镜像备份。旧 JSON 首次打开时迁入 SQLite；无法读取旧文件时停止加载，不用演示数据覆盖损坏文件。数据仅保存在本机，不上传到 Assetboard 服务。
 
-App 菜单“文件”支持导出 JSON 备份、打开数据文件夹、Cloudflare/GitHub 只读接入、本机 OCR 和 Gmail 筛选导入。当前源码构建的资产板从空白开始；首次导入页可手动录入或选择平台及 OCR。升级时仅移除完全未修改的旧版演示记录和默认区块，保留自定义布局与编辑过的记录。新录入资产可使用自定义图标和真实管理链接。GitHub 已用本机 `gh` 真实读取 37 个授权范围内仓库；最近更新的 6 个展开，其余以图标和名称显示，可互换。Cloudflare 可列出 Zone、Pages 项目、Worker 脚本及 R2 Bucket；Cloudflare 和 Gmail 尚无本机授权，因此真实账号同步未验证。OCR 用本机生成的样本图片通过了 Vision 识别测试。
+App 菜单“文件”支持导出 JSON 备份、打开数据文件夹、Cloudflare/GitHub 只读接入、本机 OCR 和 Gmail 筛选导入。当前源码构建的资产板从空白开始；首次导入页可手动录入或选择平台及 OCR。升级时仅移除完全未修改的旧版演示记录和默认区块，保留自定义布局与编辑过的记录。新录入资产可使用自定义图标和真实管理链接。GitHub 已用本机 `gh` 真实读取 37 个授权范围内仓库；最近更新的 6 个展开，其余以图标和名称显示，可互换。Cloudflare 账号已同步 3 个 Zone；Pages 项目、Worker 脚本及 R2 Bucket 的发现逻辑通过模拟接口验证，当前本机记录中尚无这些资源。Gmail 尚未获得本机授权。OCR 用本机生成的样本图片通过了 Vision 识别测试。区块可拖动与拉伸，区块内卡片可拖动或用方向键排序。
 
 本机构建：`./desktop/build.sh`，使用临时签名。使用 Developer ID Application 证书构建并生成 ZIP：`SIGNING_IDENTITY='Developer ID Application: 名称 (TEAMID)' ./desktop/package.sh`。分发前仍需完成 Apple 公证；仅签名不会消除其他 Mac 上的 Gatekeeper 提示。
 
