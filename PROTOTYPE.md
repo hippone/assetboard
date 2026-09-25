@@ -10,7 +10,7 @@
 
 App 菜单“文件”支持导出 JSON 备份与打开数据文件夹。当前仍是演示资产，管理平台入口不连接真实账户。
 
-构建：`./desktop/build.sh`。仅做本机临时签名，尚未进行面向其他 Mac 分发的公证。
+本机构建：`./desktop/build.sh`，使用临时签名。使用 Developer ID Application 证书构建并生成 ZIP：`SIGNING_IDENTITY='Developer ID Application: 名称 (TEAMID)' ./desktop/package.sh`。分发前仍需完成 Apple 公证；仅签名不会消除其他 Mac 上的 Gatekeeper 提示。
 
 桌面验证（2026-09-24）：原生窗口成功打开；在界面收起域名区块后，读取本机 JSON 确认为收起；退出并重启 App 后，界面正确恢复收起状态。验证后恢复展开。存储测试通过新建、保存、重新读取、上一版备份和拒绝无效数据。
 

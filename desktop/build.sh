@@ -18,6 +18,11 @@ for size in 16 32 128 256 512; do
   sips -z "$double" "$double" "$project_dir/dist/icon.png" --out "$icon_dir/icon_${size}x${size}@2x.png" >/dev/null
 done
 iconutil -c icns "$icon_dir" -o "$app_dir/Contents/Resources/AppIcon.icns"
-codesign --force --sign - "$app_dir"
+if [[ -n "${SIGNING_IDENTITY:-}" ]]; then
+  codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$app_dir"
+else
+  codesign --force --sign - "$app_dir"
+fi
+codesign --verify --deep --strict "$app_dir"
 "$app_dir/Contents/MacOS/Assetboard" --test-store
 printf '%s\n' "$app_dir"
