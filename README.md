@@ -20,7 +20,7 @@ v0.1.0 使用 Developer ID 签名，已通过 Apple 公证并装订票据。每�
 - 手动录入资产名称、平台、账号、用途、日期、费用、备注、管理链接和自定义 PNG/JPEG/WebP 图标（不超过 256 KB）。管理链接须为 HTTP(S)，由默认浏览器打开。
 - macOS App 的“文件 → Cloudflare 只读接入…”使用 API Token 读取授权范围内的 DNS Zone、Pages 项目、Worker 脚本和 R2 Bucket 列表。权限不足的类别会跳过并说明原因，已导入记录不会因此删除；令牌验证成功后保存在 macOS 钥匙串。
 - macOS App 的“文件 → GitHub 只读接入…”可使用本机已登录的 GitHub CLI，或填写 GitHub 令牌，同步授权范围内仓库的名称、归属、可见性、归档状态和仓库链接。推荐仅授予仓库 Metadata Read 权限的细粒度令牌；使用本机 `gh` 时，实际权限取决于已有令牌。`gh` 路径不会将令牌另存到 Assetboard 钥匙串，手动填写的令牌经验证后会保存。
-- 仓库区块按 GitHub 最近更新时间展开显示 6 个，其余压成图标与名称；点击“展开”或“收起”可在两组间互换，并保留选择。
+- 仓库区块按 GitHub 最近更新时间展开显示 6 个，其余全部以图标与名称直接展示；点击“展开”或“收起”可在两组间互换，并保留选择。
 - macOS App 可从本机截图/PDF 识别文字，以及通过本机 Google OAuth 只搜索 Gmail 账单、续费和服务通知；结果保存在 SQLite 的导入资料中，供核对，不自动推断为资产。Gmail 设置见 [本地 Gmail 导入](docs/gmail-local.md)。
 - macOS 版以 `~/Library/Application Support/Assetboard/assetboard.sqlite` 保存资产、布局及导入资料，同时维护 `board.json` 和 `board.previous.json` 作为可读备份；“文件”菜单可导出 JSON 备份或打开数据文件夹。
 

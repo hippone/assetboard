@@ -171,10 +171,11 @@ body{background:rgb(var(--tone-canvas));color:var(--ink)}
 .source-art svg{width:54px;height:54px;max-width:none;opacity:.72}
 .block.collapsed .source-art svg{width:26px;height:26px;transform:none}
 .asset-count{font-size:10px;font-weight:500;color:var(--muted);padding:1px 6px;border-radius:6px;background:rgba(var(--tone-card),.48)}
-.repository .compact-repositories-grid{max-height:222px;overflow-y:auto;scrollbar-width:thin;align-content:start;padding-right:3px}
-.block.repository.collapsed .cards{max-height:264px;overflow-y:auto;scrollbar-width:thin;align-content:start}
+.repository .compact-repositories-grid{align-content:start}
+.block.repository.collapsed{width:min(calc(var(--width,50)*1%),660px);min-width:340px}
+.block.repository.collapsed .cards{align-content:start}
 .compact-repo-open span{direction:ltr}
-@media(max-width:760px){:root .block.collapsed{min-width:0;width:100%!important}.repository .compact-repositories-grid{max-height:230px}}
+@media(max-width:760px){:root .block.collapsed{min-width:0;width:100%!important}}
 .asset-drag-handle{position:absolute;z-index:2;right:8px;top:8px;display:grid;place-items:center;width:28px;height:28px;border-radius:7px;background:rgba(var(--tone-card),.88);border:1px solid var(--line);color:var(--muted);font-size:16px;cursor:grab;touch-action:none}
 .asset-drag-handle:active{cursor:grabbing}
 .compact-repo{position:relative}
