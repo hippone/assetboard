@@ -1,5 +1,75 @@
 import Cocoa
 import WebKit
+import Security
+
+final class CloudflareConnector {
+    private let service = "studio.assetboard.local.cloudflare"
+    private let account = "zone-read-token"
+    private let session: URLSession
+
+    init(session: URLSession = .shared) { self.session = session }
+
+    func token() -> String? {
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account, kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    func saveToken(_ token: String) -> Bool {
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
+        let data = Data(token.utf8)
+        if SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary) == errSecSuccess { return true }
+        var item = query
+        item[kSecValueData as String] = data
+        item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        return SecItemAdd(item as CFDictionary, nil) == errSecSuccess
+    }
+
+    func disconnect() -> Bool {
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
+        let status = SecItemDelete(query as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
+    }
+
+    func listZones(token: String, completion: @escaping ([[String: String]]?, String?) -> Void) {
+        var all: [[String: String]] = []
+        func page(_ number: Int) {
+            var components = URLComponents(string: "https://api.cloudflare.com/client/v4/zones")!
+            components.queryItems = [URLQueryItem(name: "page", value: String(number)), URLQueryItem(name: "per_page", value: "50")]
+            var request = URLRequest(url: components.url!)
+            request.httpMethod = "GET"
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.timeoutInterval = 20
+            session.dataTask(with: request) { data, response, error in
+                if error != nil { completion(nil, "网络请求失败，请检查连接后重试。"); return }
+                guard let http = response as? HTTPURLResponse else { completion(nil, "未收到有效的平台响应。"); return }
+                if http.statusCode == 401 || http.statusCode == 403 { completion(nil, "权限验证失败。请确认令牌具有 Zone Read 权限和正确的 Zone 范围。"); return }
+                guard (200...299).contains(http.statusCode), let data,
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      json["success"] as? Bool == true,
+                      let zones = json["result"] as? [[String: Any]],
+                      let info = json["result_info"] as? [String: Any],
+                      let totalPages = info["total_pages"] as? Int,
+                      totalPages >= 0 && totalPages <= 100 && (totalPages >= number || (number == 1 && totalPages == 0 && zones.isEmpty)) else {
+                    completion(nil, "Zone 列表响应不完整，同步未写入资产板。"); return
+                }
+                for zone in zones {
+                    guard let id = zone["id"] as? String, !id.isEmpty,
+                          let name = zone["name"] as? String, !name.isEmpty else {
+                        completion(nil, "Zone 数据缺少标识或名称，同步未写入资产板。"); return
+                    }
+                    let account = (zone["account"] as? [String: Any])?["name"] as? String ?? ""
+                    all.append(["id": id, "name": name, "account": account, "status": zone["status"] as? String ?? ""])
+                }
+                if number < totalPages { page(number + 1) }
+                else { completion(all, nil) }
+            }.resume()
+        }
+        page(1)
+    }
+}
 
 // A local-only host. No HTTP server, remote renderer, or account is required.
 final class BoardStore {
@@ -40,6 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     var window: NSWindow!
     var webView: WKWebView!
     var store: BoardStore!
+    let cloudflare = CloudflareConnector()
     var localRoot: URL!
     let searchField = NSSearchField(frame: NSRect(x: 0, y: 0, width: 200, height: 28))
     var layoutButton: NSButton!
@@ -51,7 +122,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             guard let root = Bundle.main.resourceURL?.appendingPathComponent("Board", isDirectory: true) else { return }
             localRoot = root
             let controller = WKUserContentController()
-            let initial: [String: Any] = ["data": saved as Any? ?? NSNull()]
+            let initial: [String: Any] = ["data": saved as Any? ?? NSNull(), "cloudflareConnected": cloudflare.token() != nil]
             let json = String(data: try JSONSerialization.data(withJSONObject: initial), encoding: .utf8)!
             controller.addUserScript(WKUserScript(source: "window.__ASSETBOARD_NATIVE__ = \(json);", injectionTime: .atDocumentStart, forMainFrameOnly: true))
             controller.add(self, name: "assetboard")
@@ -154,6 +225,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     @objc func addBlock() { webView.evaluateJavaScript("document.querySelector('#add-block').click()") }
     @objc func focusSearch() { window.makeFirstResponder(searchField) }
     @objc func openTheme() { webView.evaluateJavaScript("themeDialog()") }
+    @objc func openCloudflare() { webView.evaluateJavaScript("cloudflareDialog()") }
+
+    func cloudflareResult(_ result: [String: Any]) {
+        DispatchQueue.main.async {
+            guard let data = try? JSONSerialization.data(withJSONObject: result),
+                  let json = String(data: data, encoding: .utf8) else { return }
+            self.webView.evaluateJavaScript("window.assetboardCloudflareResult(\(json))")
+        }
+    }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.frameInfo.isMainFrame,
@@ -169,6 +249,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         if body["action"] as? String == "toolbarState" {
             layoutButton.title = body["editing"] as? Bool == true ? "完成" : "调整布局"
             searchField.stringValue = body["query"] as? String ?? ""
+            return
+        }
+        if body["action"] as? String == "openExternal" {
+            if let raw = body["url"] as? String, let url = URL(string: raw),
+               ["https", "http"].contains(url.scheme?.lowercased() ?? ""),
+               url.host != nil, url.user == nil, url.password == nil,
+               url.host?.lowercased() != "example.com" {
+                NSWorkspace.shared.open(url)
+            }
+            return
+        }
+        if body["action"] as? String == "cloudflareDisconnect" {
+            if cloudflare.disconnect() { cloudflareResult(["ok": true, "disconnected": true]) }
+            else { cloudflareResult(["ok": false, "error": "无法从 macOS 钥匙串删除令牌，请重试。"]) }
+            return
+        }
+        if body["action"] as? String == "cloudflareSync" {
+            let supplied = (body["token"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard supplied.isEmpty || (supplied.count <= 256 && !supplied.contains(where: { $0.isWhitespace })) else {
+                cloudflareResult(["ok": false, "error": "令牌格式无效。"]) ; return
+            }
+            guard let token = supplied.isEmpty ? cloudflare.token() : supplied else {
+                cloudflareResult(["ok": false, "error": "请填写只读 API 令牌。"]) ; return
+            }
+            cloudflare.listZones(token: token) { zones, error in
+                if let error { self.cloudflareResult(["ok": false, "error": error]); return }
+                if !supplied.isEmpty && !self.cloudflare.saveToken(supplied) {
+                    self.cloudflareResult(["ok": false, "error": "无法将令牌保存到 macOS 钥匙串，同步未写入资产板。"]) ; return
+                }
+                self.cloudflareResult(["ok": true, "zones": zones ?? [], "connected": true])
+            }
             return
         }
         guard body["action"] as? String == "save", let sequence = body["sequence"] as? Int, let data = body["data"] else { return }
@@ -204,6 +315,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         exportItem.keyEquivalentModifierMask = [.command, .shift]
         exportItem.target = self
         fileMenu.addItem(exportItem)
+        let cloudflareItem = NSMenuItem(title: "Cloudflare 只读接入…", action: #selector(openCloudflare), keyEquivalent: "")
+        cloudflareItem.target = self
+        fileMenu.addItem(cloudflareItem)
         let folderItem = NSMenuItem(title: "打开本地数据文件夹", action: #selector(openDataFolder), keyEquivalent: "")
         folderItem.target = self
         fileMenu.addItem(folderItem)
@@ -246,6 +360,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { return false }
 }
 
+final class MockCloudflareProtocol: URLProtocol {
+    static var reply: ((URLRequest) -> (Int, [String: Any]))!
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let (status, body) = Self.reply(request)
+        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: try! JSONSerialization.data(withJSONObject: body))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
+
+func testCloudflare() {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [MockCloudflareProtocol.self]
+    let connector = CloudflareConnector(session: URLSession(configuration: configuration))
+    func run(_ reply: @escaping (URLRequest) -> (Int, [String: Any])) -> ([[String: String]]?, String?) {
+        MockCloudflareProtocol.reply = reply
+        let done = DispatchSemaphore(value: 0)
+        var result: ([[String: String]]?, String?) = (nil, nil)
+        connector.listZones(token: "test-token") { zones, error in result = (zones, error); done.signal() }
+        precondition(done.wait(timeout: .now() + 5) == .success)
+        return result
+    }
+    let success = run { request in
+        precondition(request.httpMethod == "GET")
+        precondition(request.url?.host == "api.cloudflare.com")
+        precondition(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-token")
+        let page = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!.queryItems!.first { $0.name == "page" }!.value!
+        return (200, ["success": true, "result_info": ["total_pages": 2], "result": [["id": page, "name": "zone-\(page).dev", "account": ["name": "account"], "status": "active"]]])
+    }
+    precondition(success.1 == nil && success.0?.map { $0["id"]! } == ["1", "2"])
+    let denied = run { _ in (403, ["success": false]) }
+    precondition(denied.0 == nil && denied.1?.contains("权限验证失败") == true)
+    let partial = run { request in
+        let page = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!.queryItems!.first { $0.name == "page" }!.value!
+        return page == "1" ? (200, ["success": true, "result_info": ["total_pages": 2], "result": [["id": "first", "name": "first.dev"]]]) : (200, ["success": true, "result_info": ["total_pages": 2], "result": [["name": "missing-id.dev"]]])
+    }
+    precondition(partial.0 == nil && partial.1 != nil)
+    let empty = run { _ in (200, ["success": true, "result_info": ["total_pages": 0], "result": []]) }
+    precondition(empty.0?.isEmpty == true && empty.1 == nil)
+    print("PASS: Cloudflare GET-only auth header, pagination, denial, partial response, empty result")
+}
+
 func makeIcon(at path: String) {
     let image = NSImage(size: NSSize(width: 1024, height: 1024))
     image.lockFocus()
@@ -284,6 +444,8 @@ if CommandLine.arguments.contains("--make-icon"), let target = CommandLine.argum
         precondition((afterInvalid?["assets"] as? [[String: Any]])?.count == 1)
         print("PASS: new store, atomic save, reopen, backup, reject invalid data")
     } catch { fputs("Store test failed: \(error)\n", stderr); exit(1) }
+} else if CommandLine.arguments.contains("--test-cloudflare") {
+    testCloudflare()
 } else {
     let app = NSApplication.shared
     let delegate = AppDelegate()

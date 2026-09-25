@@ -137,3 +137,4 @@ body{background:rgb(var(--tone-canvas));color:var(--ink)}
 .theme-custom{display:flex;align-items:center;justify-content:space-between;margin:22px 0;font-size:13px}
 .theme-custom input{width:64px;height:34px;border:0;background:transparent;cursor:pointer}
 @media(prefers-reduced-transparency:reduce){:root .block,.native-app .block{background:rgb(var(--tone-category))}.asset-card,.asset-card:hover,.detail,dialog{background:rgb(var(--tone-card))}}
+.custom-art{filter:none}

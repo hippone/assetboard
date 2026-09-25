@@ -25,4 +25,5 @@ else
 fi
 codesign --verify --deep --strict "$app_dir"
 "$app_dir/Contents/MacOS/Assetboard" --test-store
+"$app_dir/Contents/MacOS/Assetboard" --test-cloudflare
 printf '%s\n' "$app_dir"
