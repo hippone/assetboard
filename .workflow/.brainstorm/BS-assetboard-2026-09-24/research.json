@@ -1,0 +1,18 @@
+{
+  "checked_at": "2026-09-24",
+  "source_document": "../../../ASSETBOARD-RESEARCH.md",
+  "sources": [
+    "https://gethomepage.dev/",
+    "https://github.com/glanceapp/glance",
+    "https://github.com/ellite/wallos/blob/main/README.md",
+    "https://docs.github.com/en/apps/using-github-apps/about-using-github-apps",
+    "https://developers.cloudflare.com/fundamentals/oauth/create-an-oauth-client/",
+    "https://developers.cloudflare.com/api/resources/zones/methods/list/",
+    "https://developers.cloudflare.com/api/resources/registrar/subresources/registrations/methods/list/",
+    "https://vercel.com/docs/integrations/install-an-integration/manage-integrations-reference",
+    "https://developers.google.com/workspace/gmail/api/auth/scopes",
+    "https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification"
+  ],
+  "method": "Official documentation and project descriptions",
+  "not_performed": ["Authenticated API calls", "Competitor usability testing", "Complete market census"]
+}

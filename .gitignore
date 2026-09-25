@@ -1,0 +1,8 @@
+# Local build output
+dist/
+
+# Browser automation logs and snapshots
+.playwright-mcp/
+
+# macOS metadata
+.DS_Store
