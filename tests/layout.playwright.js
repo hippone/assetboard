@@ -5,7 +5,7 @@ async (page) => {
  try {
   await p.route('**/*',route=>route.continue());
   await p.goto('http://127.0.0.1:4317/');
-  await p.evaluate(()=>{save=()=>{};state=structuredClone(seed);render();});
+  await p.evaluate(()=>{save=()=>{};state={blocks:[{id:'domain',width:60,collapsed:false,height:null},{id:'server',width:40,collapsed:false,height:null}],assets:[{id:'layout-domain',type:'domain',name:'layout.example',provider:'Test',account:'',purpose:'Layout test',event:'',date:'',cost:'',art:'generic',url:''}]};render();});
   await p.locator('#edit').click();
   await p.waitForTimeout(300);
   const handle=await p.locator('.domain .resize-handle').boundingBox();

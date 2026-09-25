@@ -9,24 +9,12 @@ const icons = {
  repository:'<path d="M6 4h11a2 2 0 0 1 2 2v13H7a3 3 0 0 1-3-3V6a2 2 0 0 1 2-2Z"/><path d="M4 16a3 3 0 0 1 3-3h12M8 8h7"/>'
 };
 const cats = {domain:{name:'域名',hint:'网站的地址，也是创作的起点',symbol:'◎'},server:{name:'服务器',hint:'承载项目的每一台机器',symbol:'▤'},subscription:{name:'订阅与工具',hint:'每天陪你工作的好工具',symbol:'✳'},database:{name:'数据库',hint:'让每一份数据都有归处',symbol:'▱'},license:{name:'软件授权',hint:'买下的工具，不再遗忘',symbol:'◇'},repository:{name:'代码仓库',hint:'项目的代码与历史',symbol:'⌘'}};
-const seed = {
- blocks:[{id:'domain',width:60,collapsed:false,height:null},{id:'server',width:40,collapsed:false,height:null},{id:'subscription',width:40,collapsed:false,height:null},{id:'database',width:60,collapsed:false,height:null}],
- assets:[
- {id:'a1',type:'domain',name:'halfnote.studio',provider:'Cloudflare',account:'个人账号',purpose:'写作工具',event:'12 天后到期',date:'2026-10-06',cost:'¥ 89 / 年',warn:true,art:'note',url:'https://example.com',notes:'主站域名，记录每一个从想法到作品的瞬间。'},
- {id:'a2',type:'domain',name:'littlethings.design',provider:'Porkbun',account:'个人账号',purpose:'设计作品集',event:'2027.03.18 到期',date:'2027-03-18',cost:'$ 12 / 年',art:'orbit',url:'https://example.com',notes:'个人作品与小实验的集合。'},
- {id:'a3',type:'domain',name:'weekend.build',provider:'Cloudflare',account:'个人账号',purpose:'周末实验',event:'2027.06.02 到期',date:'2027-06-02',cost:'$ 15 / 年',art:'build',url:'https://example.com'},
- {id:'a4',type:'server',name:'Tokyo · 01',provider:'Hetzner',account:'实验团队',purpose:'API 与后台服务',event:'¥ 68 / 月',date:'2026-10-15',cost:'¥ 68 / 月',art:'rack',url:'https://example.com',notes:'演示服务器，名称和区域仅用于原型。'},
- {id:'a5',type:'server',name:'Singapore · 02',provider:'DigitalOcean',account:'个人账号',purpose:'测试环境',event:'$ 6 / 月',date:'2026-10-20',cost:'$ 6 / 月',art:'rack2',url:'https://example.com'},
- {id:'a6',type:'subscription',name:'Figma',provider:'Professional',account:'设计账号',purpose:'设计与协作',event:'$ 15 / 月',date:'2026-10-12',cost:'$ 15 / 月',art:'figma',url:'https://example.com'},
- {id:'a7',type:'subscription',name:'Claude',provider:'Pro',account:'个人账号',purpose:'思考与创作',event:'3 天后续费',date:'2026-09-27',cost:'$ 20 / 月',warn:true,art:'claude',url:'https://example.com'},
- {id:'a8',type:'database',name:'halfnote-db',provider:'Supabase',account:'个人空间',purpose:'写作工具 · 正式环境',event:'免费计划',date:'',cost:'免费',art:'db',url:'https://example.com'},
- {id:'a9',type:'database',name:'playground',provider:'Neon',account:'实验团队',purpose:'周末实验 · 开发环境',event:'按用量计费',date:'',cost:'按用量',art:'db2',url:'https://example.com'}
- ]
-};
+const seed={blocks:[],assets:[]};
 const key='assetboard-prototype-v1';
 const nativeStore=window.__ASSETBOARD_NATIVE__;
 let state=structuredClone(seed),editing=false,query='',focusCategory=null,history=[],activeAsset=null,lastFocus=null,toastTimer;
-try{const saved=nativeStore?nativeStore.data:JSON.parse(localStorage.getItem(key));if(saved&&Array.isArray(saved.blocks)&&Array.isArray(saved.assets)&&saved.blocks.every(b=>cats[b.id]))state=saved;}catch{}
+let migratedLegacyData=false;
+try{const saved=nativeStore?nativeStore.data:JSON.parse(localStorage.getItem(key));if(saved&&Array.isArray(saved.blocks)&&Array.isArray(saved.assets)&&saved.blocks.every(b=>cats[b.id])){const migration=removeUntouchedDemo(saved);state=migration.board;migratedLegacyData=!!(migration.removed||migration.removedBlocks);}}catch{}
 let saveSequence=0;
 window.assetboardSaved=(sequence,success)=>{if(sequence!==saveSequence)return;$('#save-status').textContent=success?'已保存在此 Mac':'尚未保存';if(!success)toast('本机文件保存失败，请保留窗口后重试');};
 function save(){try{if(nativeStore){$('#save-status').textContent='正在保存到此 Mac…';window.webkit.messageHandlers.assetboard.postMessage({action:'save',sequence:++saveSequence,data:state});}else{localStorage.setItem(key,JSON.stringify(state));$('#save-status').textContent='已保存在此浏览器';}}catch{$('#save-status').textContent='尚未保存';toast('未能保存，请保留此窗口');}}
@@ -73,8 +61,15 @@ function render(){
  if(nativeStore)window.webkit.messageHandlers.assetboard.postMessage({action:'toolbarState',editing,query});
  $('#board').classList.toggle('full-view',!!focusCategory);$('#focusbar').hidden=!focusCategory;$('#focusbar').innerHTML=focusCategory?`<button class="button" data-action="back">← 返回大板</button><strong>${esc(cats[focusCategory].name)} · 全部资产</strong>`:'';
  const blocks=query?Object.keys(cats).filter(id=>state.assets.some(a=>a.type===id&&matches(a))).map(id=>state.blocks.find(b=>b.id===id)||{id,width:50}):state.blocks.filter(b=>!focusCategory||b.id===focusCategory);
+ const welcome=!query&&state.assets.length===0;
+ $('#board').hidden=welcome;$('#welcome').hidden=!welcome;
+ document.querySelectorAll('#welcome .native-only').forEach(el=>el.hidden=!nativeStore);
  $('#board').innerHTML=blocks.map(renderBlock).join('');
- $('#empty').hidden=blocks.length>0;layoutFrame=requestAnimationFrame(()=>{
+ $('#empty').hidden=welcome||blocks.length>0;
+ $('#empty-title').textContent=query?'没有找到这项资产':'资产还没摆上大板';
+ $('#empty-note').textContent=query?'试试名称、平台或用途，收起区块中的资产也会被搜索。':'添加一个类别区块，就能看到已录入的资产。';
+ $('#clear-search').textContent=query?'清除搜索':'添加区块';
+ layoutFrame=requestAnimationFrame(()=>{
   layoutFrame=0;updateOverflow();
   if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;
   const positions=[...document.querySelectorAll('.block')].map(el=>({el,from:previous.get(el.dataset.block),to:el.getBoundingClientRect()}));
@@ -98,6 +93,7 @@ function showDetail(id){const a=state.assets.find(a=>a.id===id);if(!a)return;las
 function closeDetail(){ $('#detail').hidden=true;activeAsset=null;if(lastFocus?.isConnected)lastFocus.focus();}
 function modal(title,html){$('#modal-title').textContent=title;$('#modal-content').innerHTML=html;if(nativeStore)$('#modal-content').querySelectorAll('.form-note').forEach(el=>{el.textContent=el.textContent.replaceAll('当前浏览器','此 Mac').replaceAll('此浏览器','此 Mac');});if(!$('#modal').open)$('#modal').showModal();}
 function addBlock(){modal('给大板添一个区块',Object.entries(cats).map(([id,c])=>`<button class="category-choice" data-action="choose-block" data-id="${id}" ${state.blocks.some(b=>b.id===id)?'disabled':''}><span>${c.symbol}</span><span>${c.name}<small>${c.hint}</small></span><span class="plus">${state.blocks.some(b=>b.id===id)?'✓':'＋'}</span></button>`).join('')+'<p class="form-note">区块按类别展示已有资产。添加后可以自由移动、调整大小。</p>');}
+function manualImport(){modal('选择资产类别',Object.entries(cats).map(([id,c])=>`<button class="category-choice" data-action="choose-asset-type" data-id="${id}"><span>${c.symbol}</span><span>${c.name}<small>${c.hint}</small></span><span class="plus">＋</span></button>`).join(''));}
 function assetForm(type,id){const a=id?state.assets.find(a=>a.id===id):null,link=safeManagementUrl(a?.url);modal(a?'编辑资产资料':`添加${cats[type].name}资产`,`<form id="asset-form" class="form" data-type="${type}" data-id="${id||''}"><label>资产名称<input name="name" required maxlength="100" value="${esc(a?.name||'')}" placeholder="例如 my-project.dev"></label><label>平台<input name="provider" maxlength="80" value="${esc(a?.provider||'')}" placeholder="例如 Cloudflare"></label><label>账号<input name="account" maxlength="100" value="${esc(a?.account||'')}" placeholder="用于区分同平台的账号"></label><label>用途<input name="purpose" maxlength="100" value="${esc(a?.purpose||'')}" placeholder="它用来做什么？"></label><label>管理链接<input name="url" type="url" maxlength="2000" value="${esc(link&&new URL(link).hostname!=='example.com'?link:'')}" placeholder="https://..." pattern="https?://.*"></label><label>自定义图标<input name="icon" type="file" accept="image/png,image/jpeg,image/webp"></label>${a?.iconData?'<label class="check-label"><input name="removeIcon" type="checkbox">移除当前自定义图标</label>':''}<span class="form-note">PNG、JPEG 或 WebP，最大 256 KB。图标随本机资产备份保存。</span><label>下一日期<input type="date" name="date" value="${esc(a?.date||'')}"></label><label>费用说明<input name="cost" maxlength="80" value="${esc(a?.cost==='未知'?'':a?.cost||'')}" placeholder="例如 ¥ 89 / 年"></label><label>备注<textarea name="notes" rows="3" maxlength="2000">${esc(a?.notes||'')}</textarea></label><button class="button primary" type="submit">${a?'保存修改':'添加资产'}</button><span class="form-note">资产资料仅保存在此浏览器；管理链接会在系统浏览器中打开。</span></form>`);}
 function cloudflareDialog(){
  if(!nativeStore){toast('Cloudflare 同步仅在 macOS App 中可用');return;}
@@ -136,6 +132,10 @@ window.assetboardGitHubResult=result=>{
 function settings(id){const b=state.blocks.find(b=>b.id===id);if(!b)return;modal(`${cats[id].name} · 区块设置`,`<div class="form"><label>区块宽度 · <span id="range-value">${Math.round(b.width)}%</span><input id="block-width" type="range" min="25" max="100" value="${b.width}" aria-label="区块宽度"></label><label>展示高度<select id="block-height"><option value="">随内容自适应</option><option value="240" ${b.height===240?'selected':''}>约一行卡片</option><option value="480" ${b.height===480?'selected':''}>约两行卡片</option></select></label><p class="form-note">这里是键盘与触屏的快捷设置。布局编辑时可直接拖动区块右下角，自由调整宽高。</p><button class="button primary" data-action="save-settings" data-id="${id}">应用设置</button></div><div class="settings-actions"><button class="button" data-action="move-up" data-id="${id}">向前移动</button><button class="button" data-action="remove-block" data-id="${id}">从大板移除</button></div><p class="form-note">移除区块不删除资产，重新添加该类别即可找回。</p>`);$('#block-width').oninput=e=>$('#range-value').textContent=e.target.value+'%';}
 document.addEventListener('click',e=>{const button=e.target.closest('[data-action]');if(!button)return;const {action,id}=button.dataset;
  if(action==='detail')showDetail(id);
+ else if(action==='manual-import')manualImport();
+ else if(action==='github-import')githubDialog();
+ else if(action==='cloudflare-import')cloudflareDialog();
+ else if(action==='choose-asset-type')assetForm(id);
  else if(action==='external'){const a=state.assets.find(a=>a.id===id),url=safeManagementUrl(a?.url);if(!url||new URL(url).hostname==='example.com'){toast('请先在资产资料中填写真实管理链接');return;}if(nativeStore)window.webkit.messageHandlers.assetboard.postMessage({action:'openExternal',url});else window.open(url,'_blank','noopener,noreferrer');}
  else if(action==='collapse'){if(query||focusCategory){toast('返回大板后可收起区块');return;}checkpoint();const b=state.blocks.find(b=>b.id===id);b.collapsed=!b.collapsed;save();render();document.querySelector(`[data-action="collapse"][data-id="${id}"]`)?.focus();}
  else if(action==='all'){focusCategory=id;closeDetail();render();window.scrollTo({top:0,behavior:'smooth'});}
@@ -148,12 +148,11 @@ document.addEventListener('click',e=>{const button=e.target.closest('[data-actio
  else if(action==='remove-block'){checkpoint();state.blocks=state.blocks.filter(b=>b.id!==id);if(focusCategory===id)focusCategory=null;save();$('#modal').close();render();toast('区块已移除，资产仍被保留 · 可撤销');}
  else if(action==='move-up'){const index=state.blocks.findIndex(b=>b.id===id);if(index>0){checkpoint();[state.blocks[index-1],state.blocks[index]]=[state.blocks[index],state.blocks[index-1]];save();render();toast('已向前移动');}else toast('已经是第一个区块');$('#modal').close();}
 });
-document.addEventListener('submit',async e=>{if(e.target.id!=='asset-form')return;e.preventDefault();const form=e.target,data=new FormData(form),name=String(data.get('name')).trim(),url=String(data.get('url')).trim(),file=form.elements.icon.files[0];if(!name)return;if(url&&!safeManagementUrl(url)){form.elements.url.setCustomValidity('请输入不含账号密码的 http 或 https 链接');form.elements.url.reportValidity();return;}form.elements.url.setCustomValidity('');if(file&&(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>256*1024)){toast('图标需为 PNG、JPEG 或 WebP，且不超过 256 KB');return;}const submit=form.querySelector('[type="submit"]');submit.disabled=true;try{const iconData=file?await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);}):null;const id=form.dataset.id,type=form.dataset.type,fields={name,provider:String(data.get('provider')).trim()||'平台待补充',account:String(data.get('account')).trim(),purpose:String(data.get('purpose')).trim(),date:String(data.get('date')),cost:String(data.get('cost')).trim()||'未知',notes:String(data.get('notes')).trim(),url:url?safeManagementUrl(url):''};checkpoint();if(id){const a=state.assets.find(a=>a.id===id);Object.assign(a,fields);if(file)a.iconData=iconData;else if(data.has('removeIcon'))delete a.iconData;if(!['cloudflare','github'].includes(a.source))a.source='manual';a.event=fields.date?fields.date+' 到期':'日期待补充';a.warn=false;}else state.assets.push({id:'asset-'+crypto.randomUUID(),type,...fields,iconData,source:'manual',event:fields.date?fields.date+' 到期':'日期待补充',art:'generic'});save();$('#modal').close();render();if(id&&activeAsset===id)showDetail(id);toast(id?'资料已更新':'资产已添加');}catch{toast('读取图标失败，请重试');}finally{submit.disabled=false;}});
+document.addEventListener('submit',async e=>{if(e.target.id!=='asset-form')return;e.preventDefault();const form=e.target,data=new FormData(form),name=String(data.get('name')).trim(),url=String(data.get('url')).trim(),file=form.elements.icon.files[0];if(!name)return;if(url&&!safeManagementUrl(url)){form.elements.url.setCustomValidity('请输入不含账号密码的 http 或 https 链接');form.elements.url.reportValidity();return;}form.elements.url.setCustomValidity('');if(file&&(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>256*1024)){toast('图标需为 PNG、JPEG 或 WebP，且不超过 256 KB');return;}const submit=form.querySelector('[type="submit"]');submit.disabled=true;try{const iconData=file?await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);}):null;const id=form.dataset.id,type=form.dataset.type,fields={name,provider:String(data.get('provider')).trim()||'平台待补充',account:String(data.get('account')).trim(),purpose:String(data.get('purpose')).trim(),date:String(data.get('date')),cost:String(data.get('cost')).trim()||'未知',notes:String(data.get('notes')).trim(),url:url?safeManagementUrl(url):''};checkpoint();if(id){const a=state.assets.find(a=>a.id===id);Object.assign(a,fields);if(file)a.iconData=iconData;else if(data.has('removeIcon'))delete a.iconData;if(!['cloudflare','github'].includes(a.source))a.source='manual';a.event=fields.date?fields.date+' 到期':'日期待补充';a.warn=false;}else{state.assets.push({id:'asset-'+crypto.randomUUID(),type,...fields,iconData,source:'manual',event:fields.date?fields.date+' 到期':'日期待补充',art:'generic'});if(!state.blocks.some(block=>block.id===type))state.blocks.push({id:type,width:50,collapsed:false,height:null});}save();$('#modal').close();render();if(id&&activeAsset===id)showDetail(id);toast(id?'资料已更新':'资产已添加');}catch{toast('读取图标失败，请重试');}finally{submit.disabled=false;}});
 $('#edit').onclick=()=>{editing=!editing;if(editing){focusCategory=null;query='';$('#search').value='';closeDetail();}render();};
 $('#add-block').onclick=addBlock;$('#close-modal').onclick=()=>$('#modal').close();$('#close-detail').onclick=closeDetail;
-$('#search').oninput=e=>{query=e.target.value;focusCategory=null;render();};$('#clear-search').onclick=()=>{$('#search').value='';query='';render();};
+$('#search').oninput=e=>{query=e.target.value;focusCategory=null;render();};$('#clear-search').onclick=()=>{if(query){$('#search').value='';query='';render();}else addBlock();};
 $('#undo').onclick=()=>{if(!history.length)return;state=JSON.parse(history.pop());save();render();toast('已撤销上一次修改');};
-document.addEventListener('click',e=>{if(e.target.id==='confirm-reset'){checkpoint();state=structuredClone(seed);query='';focusCategory=null;$('#search').value='';save();$('#modal').close();closeDetail();render();toast('已恢复初始演示');}});
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();$('#search').focus();}if(e.key==='Escape'&&!$('#modal').open){if(!$('#detail').hidden)closeDetail();else if(focusCategory){focusCategory=null;render();}else if(editing){editing=false;render();}}});
 let dragId=null;
 document.addEventListener('dragstart',e=>{if(!editing||!e.target.closest('.drag-handle'))return;dragId=e.target.closest('.block').dataset.block;e.dataTransfer.setData('text/plain',dragId);e.dataTransfer.effectAllowed='move';e.target.closest('.block').classList.add('dragging');});
@@ -168,4 +167,5 @@ document.addEventListener('pointerdown',e=>{const handle=e.target.closest('.resi
 });
 let viewportFrame=0;
 window.addEventListener('resize',()=>{if(viewportFrame)return;viewportFrame=requestAnimationFrame(()=>{viewportFrame=0;updateOverflow();});});render();
-if(nativeStore){document.documentElement.classList.add('native-app');$('#save-status').textContent='保存在此 Mac';document.querySelectorAll('.form-note').forEach(el=>{el.textContent=el.textContent.replaceAll('当前浏览器','此 Mac').replaceAll('此浏览器','此 Mac');});if(!nativeStore.data)save();}
+if(nativeStore){document.documentElement.classList.add('native-app');$('#save-status').textContent='保存在此 Mac';document.querySelectorAll('.form-note').forEach(el=>{el.textContent=el.textContent.replaceAll('当前浏览器','此 Mac').replaceAll('此浏览器','此 Mac');});if(!nativeStore.data||migratedLegacyData)save();}
+else if(migratedLegacyData)save();
