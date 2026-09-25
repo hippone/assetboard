@@ -19,7 +19,7 @@ v0.1.0 使用 Developer ID 签名，已通过 Apple 公证并装订票据。每�
 - 添加与编辑区块、资产，调整布局、拖动排序、缩放与撤销。
 - 手动录入资产名称、平台、账号、用途、日期、费用、备注、管理链接和自定义 PNG/JPEG/WebP 图标（不超过 256 KB）。管理链接须为 HTTP(S)，由默认浏览器打开。
 - macOS App 的“文件 → Cloudflare 只读接入…”支持使用限定 Zone Read 权限的 API Token 同步 DNS Zone 列表。令牌验证成功后保存在 macOS 钥匙串，可断开本机连接；断开不会撤销 Cloudflare 后台的令牌。
-- macOS App 的“文件 → GitHub 只读接入…”支持使用仅授予仓库 Metadata Read 权限的细粒度个人访问令牌，同步所选仓库的名称、归属、可见性、归档状态和仓库链接。令牌保存在 macOS 钥匙串。
+- macOS App 的“文件 → GitHub 只读接入…”可使用本机已登录的 GitHub CLI，或填写 GitHub 令牌，同步授权范围内仓库的名称、归属、可见性、归档状态和仓库链接。推荐仅授予仓库 Metadata Read 权限的细粒度令牌；使用本机 `gh` 时，实际权限取决于已有令牌。`gh` 路径不会将令牌另存到 Assetboard 钥匙串，手动填写的令牌经验证后会保存。
 - macOS 版将资产和布局保存在 `~/Library/Application Support/Assetboard/board.json`，保存前保留 `board.previous.json`；“文件”菜单可导出 JSON 备份或打开数据文件夹。
 
 当前构建不再预装演示资产。升级时只移除与旧版原始内容完全一致的演示记录和未改动的默认区块；编辑过的记录及自定义布局保留。首次迁移保存时，原文件写入 `board.previous.json`；后续保存会覆盖该备份，请按需另行导出。手动录入的资产可填写真实链接。Cloudflare 接入只读取 Zone 名称、账号和状态；Zone 不等于注册记录，不能由此推断域名到期日或账单。GitHub 接入只读取仓库元数据，不读取代码、密钥或账单。macOS 资产数据和自定义图标保存在本机明文 JSON 中，不上传到 Assetboard 服务；连接时只向对应平台 API 发送令牌并读取数据。浏览器版本支持手动录入，暂不支持平台同步。当前没有多设备同步或后端。请按需导出备份。

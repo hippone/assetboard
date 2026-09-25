@@ -8,7 +8,7 @@
 
 资产与布局保存到 `~/Library/Application Support/Assetboard/board.json`，每次保存前保留 `board.previous.json`。保存使用原子写入；无法读取原文件时停止加载，不用演示数据覆盖损坏文件。数据是本机明文 JSON，不上传到云端。
 
-App 菜单“文件”支持导出 JSON 备份、打开数据文件夹，以及 Cloudflare 和 GitHub 只读接入。当前源码构建的资产板从空白开始；首次导入页可手动录入或选择 GitHub、Cloudflare。升级时仅移除完全未修改的旧版演示记录和默认区块，保留自定义布局与编辑过的记录；保存前的原文件进入 `board.previous.json`。新录入资产可使用自定义图标和真实管理链接。两个连接器只读取各自授权范围内的资源列表，令牌经读取权限验证后保存在 macOS 钥匙串。尚未用真实账号完成端到端验证。
+App 菜单“文件”支持导出 JSON 备份、打开数据文件夹，以及 Cloudflare 和 GitHub 只读接入。当前源码构建的资产板从空白开始；首次导入页可手动录入或选择 GitHub、Cloudflare。升级时仅移除完全未修改的旧版演示记录和默认区块，保留自定义布局与编辑过的记录；保存前的原文件进入 `board.previous.json`。新录入资产可使用自定义图标和真实管理链接。两个连接器只读取各自授权范围内的资源列表。手动填写的令牌经读取权限验证后保存在 macOS 钥匙串；GitHub 也可使用本机已登录的 `gh`，不另存其令牌。Cloudflare 尚未用真实账号完成端到端验证。
 
 本机构建：`./desktop/build.sh`，使用临时签名。使用 Developer ID Application 证书构建并生成 ZIP：`SIGNING_IDENTITY='Developer ID Application: 名称 (TEAMID)' ./desktop/package.sh`。分发前仍需完成 Apple 公证；仅签名不会消除其他 Mac 上的 Gatekeeper 提示。
 

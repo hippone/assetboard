@@ -320,6 +320,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         }
     }
 
+    func syncGitHubWithLocalCLI() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let paths = ["/opt/homebrew/bin/gh", "/usr/local/bin/gh"]
+            guard let path = paths.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
+                self.githubResult(["ok": false, "error": "未找到本机 GitHub CLI。请安装 gh 并登录，或使用 GitHub 令牌。"])
+                return
+            }
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: path)
+            process.arguments = ["auth", "token"]
+            process.standardError = FileHandle.nullDevice
+            let output = Pipe()
+            process.standardOutput = output
+            do { try process.run() } catch {
+                self.githubResult(["ok": false, "error": "无法读取本机 gh 登录。请检查 gh auth status。"])
+                return
+            }
+            let data = output.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0,
+                  let token = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !token.isEmpty else {
+                self.githubResult(["ok": false, "error": "本机 gh 尚未登录 GitHub，或无法读取其令牌。"])
+                return
+            }
+            self.github.listRepositories(token: token) { repositories, error in
+                if let error { self.githubResult(["ok": false, "error": error]); return }
+                self.githubResult(["ok": true, "repositories": repositories ?? [], "connected": false])
+            }
+        }
+    }
+
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.frameInfo.isMainFrame,
               let url = message.frameInfo.request.url, url.isFileURL,
@@ -370,6 +402,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         if body["action"] as? String == "githubDisconnect" {
             if github.disconnect() { githubResult(["ok": true, "disconnected": true]) }
             else { githubResult(["ok": false, "error": "无法从 macOS 钥匙串删除令牌，请重试。"]) }
+            return
+        }
+        if body["action"] as? String == "githubSyncLocal" {
+            syncGitHubWithLocalCLI()
             return
         }
         if body["action"] as? String == "githubSync" {
