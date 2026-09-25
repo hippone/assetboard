@@ -12,6 +12,8 @@ App 菜单“文件”支持导出 JSON 备份与打开数据文件夹。当前�
 
 本机构建：`./desktop/build.sh`，使用临时签名。使用 Developer ID Application 证书构建并生成 ZIP：`SIGNING_IDENTITY='Developer ID Application: 名称 (TEAMID)' ./desktop/package.sh`。分发前仍需完成 Apple 公证；仅签名不会消除其他 Mac 上的 Gatekeeper 提示。
 
+v0.1.0 发布包已于 2026-09-25 通过 Apple 公证（submission ID `56128736-3c05-405e-beeb-a1ca09202b43`）。票据已装订到 App，重新打包后从 ZIP 解压验证，Gatekeeper 返回 `Notarized Developer ID`。这些步骤只适用于该发布包；重新构建后需重新公证。
+
 桌面验证（2026-09-24）：原生窗口成功打开；在界面收起域名区块后，读取本机 JSON 确认为收起；退出并重启 App 后，界面正确恢复收起状态。验证后恢复展开。存储测试通过新建、保存、重新读取、上一版备份和拒绝无效数据。
 
 ## 浏览器演示（保留）
