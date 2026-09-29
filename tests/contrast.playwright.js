@@ -37,7 +37,7 @@ async (page) => {
    await audit(scheme+' welcome');
    await p.evaluate(()=>{
     const day=o=>isoDay(localDay()+o),repo=(n,i)=>({id:'r'+i,type:'repository',name:'me/'+n,provider:'GitHub',account:'me',purpose:'代码仓库',event:'私有仓库',source:'github',externalId:String(i),updatedAt:day(-i)+'T00:00:00Z',art:'generic'});
-    state={blocks:[{id:'domain',width:60,collapsed:false,height:null},{id:'subscription',width:40,collapsed:true,height:null},{id:'repository',width:100,collapsed:false,height:null}],assets:[
+    state={blocks:[{id:'domain',width:60,collapsed:false,height:null},{id:'subscription',width:40,collapsed:true,height:null},{id:'repository',width:100,collapsed:false,height:null,folded:true}],assets:[
      {id:'a',type:'domain',name:'soon.dev',provider:'Registrar',account:'个人',purpose:'主站',reason:'读者书签都指向这里',date:day(6),cost:'¥ 89 / 年',art:'note',source:'manual',url:'https://registrar.example.org'},
      {id:'b',type:'domain',name:'late.dev',provider:'Registrar',account:'个人',purpose:'实验',date:day(-2),art:'generic',source:'manual'},
      {id:'h',type:'domain',name:'quiet.dev',provider:'Registrar',account:'个人',purpose:'旧站',hiddenAt:'2026-01-01',art:'generic',source:'manual'},

@@ -88,13 +88,41 @@ async (page) => {
   await p.locator('.block.domain [data-asset="d4"] [data-action="restore-asset"]').click({force:true});await settle();
   check(await p.locator('.block.domain.showing-hidden').count()===0,'Restoring the last hidden asset must leave the hidden view');
   check(await p.evaluate(()=>document.activeElement?.closest('[data-asset]')?.dataset.asset)==='d4','Focus must move to the restored card');
+  // Folding: the title folds the block to one row with marks, the clicked header stays put, and Option-click folds every block.
+  const headBefore=(await p.locator('.block.domain .block-title').boundingBox()).y;
+  await p.locator('[data-action="collapse"][data-id="domain"]').click();await settle();
+  check(await p.locator('.block.domain.folded').count()===1&&await p.locator('.block.domain .cards').isHidden(),'Title click must fold the block');
+  check(await p.locator('.block.domain .fold-peek .peek-mark').count()>0,'A folded block shows marks of its assets');
+  check(Math.abs((await p.locator('.block.domain .block-title').boundingBox()).y-headBefore)<1,'The clicked header must stay in place');
+  await p.locator('[data-action="collapse"][data-id="domain"]').click();await settle();
+  check(await p.locator('.block.domain.folded').count()===0,'A second click unfolds');
+  await p.keyboard.down('Alt');await p.locator('[data-action="collapse"][data-id="server"]').click();await p.keyboard.up('Alt');await settle();
+  check(await p.locator('#board .block.folded').count()===await p.locator('#board .block').count(),'Option-click folds every block');
+  await p.keyboard.down('Alt');await p.locator('[data-action="collapse"][data-id="server"]').click();await p.keyboard.up('Alt');await settle();
+  check(await p.locator('#board .block.folded').count()===0,'Option-click unfolds every block');
+
+  // Height decides the style: under one full row cards turn compact, further up the block folds, pulling far past the compact content opens full cards.
+  const full=(await p.locator('.block.domain .asset-card').first().boundingBox()).height;
+  // Leave about 50px for the cards: less than one full row, more than half a compact row.
+  const gridHeight=await p.locator('.block.domain .cards').evaluate(e=>e.clientHeight);
+  let bottom=await edge('domain','y');
+  await drag({x:bottom.x+bottom.width/2,y:bottom.y+4},{x:bottom.x+bottom.width/2,y:bottom.y-gridHeight+50},{hold:async()=>check((await p.locator('.float-tip').textContent()).startsWith('紧凑'),'The tip must name the compact style')});
+  check(await p.evaluate(()=>blockDensity(state.blocks.find(b=>b.id==='domain')))==='compact','Dragging under one full row switches to compact');
+  check(await p.locator('.domain .asset-card').first().evaluate(e=>e.offsetHeight<60),'Compact card must shrink');
+  bottom=await edge('domain','y');
+  await drag({x:bottom.x+bottom.width/2,y:bottom.y+4},{x:bottom.x+bottom.width/2,y:bottom.y-200});
+  check(await p.evaluate(()=>{const b=state.blocks.find(b=>b.id==='domain');return b.folded&&blockDensity(b)==='compact';}),'Dragging under one compact row folds and keeps the style');
+  bottom=await edge('domain','y');
+  await drag({x:bottom.x+bottom.width/2,y:bottom.y+3},{x:bottom.x+bottom.width/2,y:bottom.y+full+140},{hold:async()=>check((await p.locator('.float-tip').textContent())==='松手展开为完整卡片','Pulling far must offer full cards')});
+  check(await p.evaluate(()=>{const b=state.blocks.find(b=>b.id==='domain');return !b.folded&&blockDensity(b)==='full'&&b.height===null;}),'Releasing past the compact content opens full cards');
+
   await p.emulateMedia({reducedMotion:'reduce'});
   await p.locator('[data-action="collapse"][data-id="domain"]').click();
-  check(await p.locator('.domain .asset-card').first().evaluate(e=>e.offsetHeight<60),'Compact card must shrink');
+  check(await p.locator('.block.domain.folded').count()===1,'Folding works with reduced motion');
   check(await p.evaluate(()=>document.getAnimations().length===0),'Reduced motion must disable layout animation');
   await p.setViewportSize({width:390,height:844});
   check(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Mobile horizontal overflow');
   check(!errors.length,'Page errors: '+errors.join(' | '));
-  return 'PASS: click vs drag, hidden view exit after last restore, card and block reorder, cross-block move and refusal, Esc cancel, keyboard move, edge resize with snapping and auto height, stable resize DOM, compact cards, reduced motion, mobile bounds';
+  return 'PASS: click vs drag, hidden view exit after last restore, card and block reorder, cross-block move and refusal, Esc cancel, keyboard move, edge resize with snapping and auto height, stable resize DOM, fold and Option-fold with a steady header, height-driven compact, fold and expand, reduced motion, mobile bounds';
  } finally { await p.close(); }
 }

@@ -86,13 +86,17 @@ function matches(a){return !query||searchText(a).includes(query.toLowerCase());}
 function safeManagementUrl(value){try{const url=new URL(value);return ['https:','http:'].includes(url.protocol)&&url.hostname&&!url.username&&!url.password?url.href:null;}catch{return null;}}
 function displayName(a){return a.source==='github'&&a.name.includes('/')?a.name.slice(a.name.indexOf('/')+1):a.name;}
 function eventInfo(a){if(a.syncMissing)return {text:'本次未返回',cls:'warn'};const status=assetDateStatus(a);if(status.level==='none')return {text:assetProfiles[a.type]?'':a.event||'日期待补充',cls:''};if(a.type==='bankcard'&&status.level==='upcoming')return {text:`有效期 ${expiryText(a.date)}`,cls:''};return {text:status.label,cls:status.level==='overdue'?'warn overdue':status.level==='soon'?'warn':''};}
-function card(a,canDemote=false){const link=safeManagementUrl(a.url),event=eventInfo(a);return `<article class="asset-card" data-asset="${esc(a.id)}"><button class="card-open" data-action="detail" data-id="${esc(a.id)}" aria-label="查看 ${esc(a.name)} 详情" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight">${art(a)}<div class="card-copy"><span class="card-name" title="${esc(a.name)}">${esc(displayName(a))}</span>${cardLines(a)}</div></button><div class="card-foot">${event.text?`<span class="card-event ${event.cls}"><i class="dot"></i>${esc(event.text)}</span>`:''}${canDemote?`<button class="repo-swap" data-action="repo-swap" data-id="${esc(a.id)}" aria-label="将 ${esc(a.name)} 移到下方列表">移到列表</button>`:''}<button class="card-hide" data-action="hide-asset" data-id="${esc(a.id)}" aria-label="隐藏 ${esc(a.name)}">隐藏</button>${link&&new URL(link).hostname!=='example.com'?`<button class="open-link" data-action="external" data-id="${esc(a.id)}" aria-label="打开 ${esc(a.name)} 管理链接">↗</button>`:''}</div></article>`;}
+function card(a,canDemote=false){const link=safeManagementUrl(a.url),event=eventInfo(a);return `<article class="asset-card" data-asset="${esc(a.id)}"><button class="card-open" data-action="detail" data-id="${esc(a.id)}" aria-label="查看 ${esc(a.name)} 详情" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight">${art(a)}${cardMark(a)}<div class="card-copy"><span class="card-name" title="${esc(a.name)}">${esc(displayName(a))}</span><span class="card-glance ${event.cls}">${esc(glance(a,event))}</span>${cardLines(a)}</div></button><div class="card-foot">${event.text?`<span class="card-event ${event.cls}"><i class="dot"></i>${esc(event.text)}</span>`:''}${canDemote?`<button class="repo-swap" data-action="repo-swap" data-id="${esc(a.id)}" aria-label="将 ${esc(a.name)} 移到下方列表">移到列表</button>`:''}<button class="card-hide" data-action="hide-asset" data-id="${esc(a.id)}" aria-label="隐藏 ${esc(a.name)}">隐藏</button>${link&&new URL(link).hostname!=='example.com'?`<button class="open-link" data-action="external" data-id="${esc(a.id)}" aria-label="打开 ${esc(a.name)} 管理链接">↗</button>`:''}</div></article>`;}
 // Priority types lead with region and a masked identifier; empty fields are left out instead of showing placeholders.
 function cardLines(a){
  if(!assetProfiles[a.type])return `<span class="card-provider">${esc([a.provider,a.account].filter(Boolean).join(' · '))}</span>${a.purpose===cats[a.type].name?'':`<span class="card-purpose">${esc(a.purpose||'用途待补充')}</span>`}${linkChips(a)}`;
  const flag=regionFlag(a.region),identity={bankcard:[a.network,a.last4&&`•••• ${a.last4}`],phone:[maskPhone(a.phone)],appleid:[regionName(a.region)],google:[regionName(a.region)],ai:[a.cost&&a.cost!=='未知'?a.cost:'']}[a.type].filter(Boolean).join(' '),secondary={bankcard:a.provider,phone:a.provider,appleid:maskEmail(a.account),google:maskEmail(a.account),ai:[a.provider,maskEmail(a.account)].filter(Boolean).join(' · ')}[a.type];
  return `${identity||flag?`<span class="card-identity">${flag?`<span class="flag">${flag}</span>`:''}${esc(identity)}</span>`:''}${secondary?`<span class="card-provider">${esc(secondary)}</span>`:''}${a.purpose?`<span class="card-purpose">${esc(a.purpose)}</span>`:''}${linkChips(a)}`;
 }
+// Compact style: a glyph-sized mark and one line with the identifier and the next date that matters.
+function cardMark(a){const src=typeof a.iconData==='string'&&a.iconData.startsWith('data:image/')?'':siteIconSrc(a),flag=regionFlag(a.region);if(src)return `<span class="card-mark" aria-hidden="true"><img src="${src}" alt="" draggable="false"></span>`;if(assetProfiles[a.type])return `<span class="card-mark" aria-hidden="true">${flag||icon(a.type)}</span>`;return '';}
+function glance(a,event=eventInfo(a)){const digits=String(a.phone||'').replace(/\D/g,''),short={bankcard:a.last4&&`•${a.last4}`,phone:digits&&maskPhone(a.phone),appleid:maskEmail(a.account),google:maskEmail(a.account),ai:a.cost&&a.cost!=='未知'?a.cost:''}[a.type]||'';return [short,event.text||(assetProfiles[a.type]?'':a.provider)].filter(Boolean).join(' · ');}
+function peekMark(a){const src=siteIconSrc(a),flag=regionFlag(a.region);return `<span class="peek-mark" title="${esc(a.name)}">${src?`<img src="${src}" alt="">`:flag||esc(displayName(a).slice(0,1).toUpperCase())}</span>`;}
 function linkLabel(a){const flag=regionFlag(a.region),digits=String(a.phone||'').replace(/\D/g,'');if(a.type==='bankcard'&&a.last4)return `${flag}•${a.last4}`;if(a.type==='phone'&&digits)return `${flag}•${digits.slice(-4)}`;return `${flag}${displayName(a)}`;}
 function linkChips(a){const links=linkedAssets(state.assets,a).filter(x=>!isHidden(x));if(!links.length)return '';return `<span class="link-chips">${links.slice(0,3).map(x=>`<span class="link-chip">${assetMark(x)}${esc(linkLabel(x))}</span>`).join('')}${links.length>3?`<span class="link-chip">+${links.length-3}</span>`:''}</span>`;}
 function identityText(a){return {bankcard:[a.network,a.last4&&`•••• ${a.last4}`],phone:[maskPhone(a.phone)],appleid:[maskEmail(a.account)],google:[maskEmail(a.account)],ai:[a.provider]}[a.type]?.filter(Boolean).join(' ')||a.provider||'';}
@@ -106,28 +110,30 @@ function renderBlock(b){
  const visible=orderAssets(typed.filter(a=>!isHidden(a)),state.cardOrder?.[b.id]);
  const hiddenAssets=orderAssets(typed.filter(a=>isHidden(a)),state.cardOrder?.[b.id]);
  const assets=viewingHidden?hiddenAssets:visible;
- const collapsed=b.collapsed&&!query&&!focusCategory;
- const fixed=b.height&&!collapsed&&!focusCategory&&!query&&!viewingHidden;
+ // Search and the full view always show full, unfolded cards; the board keeps each block's own style.
+ const folded=!!b.folded&&!query&&!focusCategory,compact=!folded&&!query&&!focusCategory&&blockDensity(b)==='compact';
+ const fixed=b.height&&!folded&&!focusCategory&&!query&&!viewingHidden;
  const levels=state.assets.filter(a=>a.type===b.id&&!isHidden(a)).map(a=>assetDateStatus(a).level),overdue=levels.filter(level=>level==='overdue').length,soon=levels.filter(level=>level==='soon').length;
  const summary=[overdue&&`${overdue} 项已过期`,soon&&`${soon} 项即将到期`].filter(Boolean).join(' · ');
- const repositoryLayout=b.id==='repository'&&!query&&!focusCategory&&!collapsed&&!viewingHidden&&assets.length>6;
+ const repositoryLayout=b.id==='repository'&&!query&&!focusCategory&&!folded&&!compact&&!viewingHidden&&assets.length>6;
  const rawGroups=repositoryLayout?repositoryGroups(assets,state.featuredRepositoryIds):null;
  const groups=rawGroups?{featured:orderAssets(rawGroups.featured,state.cardOrder?.repository),compact:orderAssets(rawGroups.compact,state.cardOrder?.repository)}:null;
  const searchHiddenHtml=(!viewingHidden&&query&&hiddenAssets.length)?hiddenAssets.map(flippedCard).join(''):'';
  const cardsHtml=viewingHidden?assets.map(flippedCard).join(''):groups?`${groups.featured.map(a=>card(a,true)).join('')}<div class="compact-repositories"><div class="compact-repositories-title">其余 ${groups.compact.length} 个仓库</div><div class="compact-repositories-grid">${groups.compact.map(compactRepository).join('')}</div></div>${searchHiddenHtml}`:(assets.map(a=>card(a)).join('')+searchHiddenHtml);
  const emptyHtml=viewingHidden?'<div class="block-empty">这个区块没有已隐藏的资产</div>':`<button type="button" class="block-empty" data-action="add-asset" data-id="${b.id}">添加你的第一项资产</button>`;
  const hiddenToggle=hiddenCount?`<button class="text-button hidden-toggle ${viewingHidden?'active':''}" data-action="toggle-hidden" data-id="${b.id}" aria-pressed="${viewingHidden}" title="${viewingHidden?'返回显示未隐藏资产':'查看本区块已隐藏资产'}">${viewingHidden?'返回':`已隐藏 (${hiddenCount})`}</button>`:'';
- return `<section class="block ${b.id} ${collapsed?'collapsed':''} ${fixed?'fixed':''} ${viewingHidden?'showing-hidden':''}" data-block="${b.id}" style="--width:${b.width};--compact-columns:${Math.min(2,Math.max(1,assets.length||1))}">
+ return `<section class="block ${b.id} ${folded?'folded':''} ${compact?'compact':''} ${fixed?'fixed':''} ${viewingHidden?'showing-hidden':''}" data-block="${b.id}" style="--width:${b.width}">
  <header class="block-head">
- <button class="block-title" data-action="collapse" data-id="${b.id}" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight" aria-expanded="${!collapsed}" aria-controls="cards-${b.id}" title="${collapsed?'展开资产卡片':'切换为图标与名称'}"><span>${cats[b.id].name}</span><span class="asset-count">${viewingHidden?hiddenCount:visible.length}</span><span class="chevron">${collapsed?'⌄':'⌃'}</span></button>
+ <button class="block-title" data-action="collapse" data-id="${b.id}" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight" aria-expanded="${!folded}" aria-controls="cards-${b.id}" title="${folded?'展开':'收起'}（按住 ⌥ 点按：全部）"><span>${cats[b.id].name}</span><span class="asset-count">${viewingHidden?hiddenCount:visible.length}</span><span class="chevron">${folded?'⌄':'⌃'}</span></button>
+ ${folded&&visible.length?`<span class="fold-peek" aria-hidden="true">${visible.slice(0,5).map(peekMark).join('')}${visible.length>5?`<span class="peek-more">+${visible.length-5}</span>`:''}</span>`:''}
  ${summary&&!viewingHidden?`<span class="block-summary ${overdue?'overdue':''}">${summary}</span>`:''}
  <div class="block-actions">${hiddenToggle}<button class="text-button" data-action="all" data-id="${b.id}" aria-label="查看全部${cats[b.id].name}" hidden>查看全部</button><button class="icon-button" data-action="add-asset" data-id="${b.id}" aria-label="添加${cats[b.id].name}资产">＋</button><button class="icon-button" data-action="settings" data-id="${b.id}" aria-label="${cats[b.id].name}区块设置">⋯</button></div></header>
  <div class="cards" id="cards-${b.id}" ${fixed?`style="height:${b.height}px"`:''}>${cardsHtml||emptyHtml}</div>
- ${!collapsed&&!query&&!focusCategory?'<div class="resize-edge" data-edge="x" aria-hidden="true"></div><div class="resize-edge" data-edge="y" aria-hidden="true"></div><div class="resize-edge" data-edge="xy" aria-hidden="true"></div>':''}</section>`;
+ ${!query&&!focusCategory?'<div class="resize-edge" data-edge="x" aria-hidden="true"></div><div class="resize-edge" data-edge="y" aria-hidden="true"></div><div class="resize-edge" data-edge="xy" aria-hidden="true"></div>':''}</section>`;
 }
-let layoutFrame=0,renderedQuery='',linkFocus=null,linkLayer=null;
+let layoutFrame=0,renderedQuery='',linkFocus=null,linkLayer=null,skipLayoutAnimation=false;
 function render(){
- clearLinks();
+ clearLinks();const animateLayout=!skipLayoutAnimation;skipLayoutAnimation=false;
  if(typeof applyBoardTheme==='function'&&!themePreview)applyBoardTheme(state.theme);
  cancelAnimationFrame(layoutFrame);
  const previous=new Map([...document.querySelectorAll('.block')].map(el=>[el.dataset.block,el.getBoundingClientRect()]));
@@ -145,12 +151,27 @@ function render(){
  $('#clear-search').textContent=query?'清除搜索':'添加区块';
  layoutFrame=requestAnimationFrame(()=>{
   layoutFrame=0;updateOverflow();
-  if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  if(!animateLayout||matchMedia('(prefers-reduced-motion: reduce)').matches)return;
   const blocks=[...document.querySelectorAll('.block')].map(el=>({el,to:el.getBoundingClientRect()})),cards=[...document.querySelectorAll('#board [data-asset]')].map(el=>{const block=el.closest('.block');return {el,to:el.getBoundingClientRect(),block:block?.dataset.block,origin:block?.getBoundingClientRect()};});
   // Positions slide; sizes change in place so text is never stretched. Cards slide only within their block and only when their size is unchanged.
   for(const {el,to} of blocks){const from=previous.get(el.dataset.block);if(from&&to.width)slideFrom(el,from,240);}
   for(const {el,to,block,origin} of cards){const was=previousCards.get(el.dataset.asset);if(!was||was.block!==block||!was.origin||Math.abs(was.rect.width-to.width)>2||Math.abs(was.rect.height-to.height)>2)continue;const dx=(was.rect.left-was.origin.left)-(to.left-origin.left),dy=(was.rect.top-was.origin.top)-(to.top-origin.top);if(Math.abs(dx)>=1||Math.abs(dy)>=1)el.animate([{transform:`translate(${dx}px,${dy}px)`},{transform:'none'}],{duration:240,easing:settleEase});}
  });
+}
+// Folding animates the changed blocks' height in layout, so neighbours follow without a separate slide; the clicked header stays where it was.
+function foldRender(ids,anchorId,before=new Map([...document.querySelectorAll('#board .block')].map(el=>[el.dataset.block,el.getBoundingClientRect()]))){
+ const header=()=>document.querySelector(`#board .block[data-block="${CSS.escape(anchorId)}"]`),anchor=header()?.getBoundingClientRect().top;
+ skipLayoutAnimation=true;render();
+ if(reduceMotion())return;
+ for(const id of ids){
+  const el=document.querySelector(`#board .block[data-block="${CSS.escape(id)}"]`),from=before.get(id);if(!el||!from)continue;
+  const to=el.getBoundingClientRect().height;if(Math.abs(to-from.height)<1)continue;
+  el.animate([{height:from.height+'px'},{height:to+'px'}],{duration:260,easing:settleEase});
+  el.querySelector(el.classList.contains('folded')?'.fold-peek':'.cards')?.animate([{opacity:0},{opacity:1}],{duration:200,delay:60,easing:'ease-out',fill:'backwards'});
+ }
+ if(anchor===undefined)return;
+ const until=performance.now()+320,hold=()=>{const top=header()?.getBoundingClientRect().top;if(top===undefined)return;if(Math.abs(top-anchor)>.5)scrollBy(0,top-anchor);if(performance.now()<until)requestAnimationFrame(hold);};
+ requestAnimationFrame(hold);
 }
 function syncToolbar(){const pending=pendingCount();$('#inbox-button').textContent=pending?`待确认 ${pending}`:'待确认';if(nativeStore)window.webkit.messageHandlers.assetboard.postMessage({action:'toolbarState',query,pending});}
 function agendaItem({asset,status}){return `<button class="agenda-item ${status.level}" data-action="detail" data-id="${esc(asset.id)}"><strong>${esc(displayName(asset))}</strong><span>${esc(status.label)}${asset.cost&&asset.cost!=='未知'?' · '+esc(asset.cost):''}</span>${asset.reason?`<small>${esc(asset.reason)}</small>`:''}</button>`;}
@@ -397,7 +418,7 @@ function resolveCandidate(key,status,assetId,index=null){
  return c.pendingIds.length;
 }
 document.addEventListener('submit',e=>{if(e.target.id!=='paste-form')return;e.preventDefault();const text=$('#paste-text').value.trim();if(!text){$('#paste-text').focus();return;}pasteRow={id:'paste-'+Date.now(),kind:'paste',source:'',title:text.split('\n')[0].slice(0,60),body:text,importedAt:new Date().toISOString()};pasteRecorded=new Set();candidateReview(buildPasteCandidate());});
-function settings(id){const b=state.blocks.find(b=>b.id===id);if(!b)return;modal(`${cats[id].name} · 区块设置`,`<div class="form"><label>区块宽度 · <span id="range-value">${Math.round(b.width)}%</span><input id="block-width" type="range" min="25" max="100" value="${b.width}" aria-label="区块宽度"></label><label>展示高度<select id="block-height"><option value="">随内容自适应</option><option value="240" ${b.height===240?'selected':''}>约一行卡片</option><option value="480" ${b.height===480?'selected':''}>约两行卡片</option></select></label><p class="form-note">这里是键盘与触屏的快捷设置。在大板上也可以直接拖动区块的右边或下边调整大小，拖动标题栏移动位置；选中标题后按 ⌥ + 方向键同样可以移动。</p><button class="button primary" data-action="save-settings" data-id="${id}">应用设置</button></div><div class="settings-actions"><button class="button" data-action="move-up" data-id="${id}">向前移动</button><button class="button" data-action="move-down" data-id="${id}">向后移动</button><button class="button" data-action="remove-block" data-id="${id}">从大板移除</button></div><p class="form-note">移除区块不删除资产，重新添加该类别即可找回。</p>`);$('#block-width').oninput=e=>$('#range-value').textContent=e.target.value+'%';}
+function settings(id){const b=state.blocks.find(b=>b.id===id);if(!b)return;modal(`${cats[id].name} · 区块设置`,`<div class="form"><label>区块宽度 · <span id="range-value">${Math.round(b.width)}%</span><input id="block-width" type="range" min="25" max="100" value="${b.width}" aria-label="区块宽度"></label><label>卡片样式<select id="block-density"><option value="full" ${blockDensity(b)==='full'?'selected':''}>完整卡片</option><option value="compact" ${blockDensity(b)==='compact'?'selected':''}>紧凑列表：图标、名称和一条关键信息</option></select></label><label>展示高度<select id="block-height"><option value="">随内容自适应</option><option value="240" ${b.height===240?'selected':''}>约一行卡片</option><option value="480" ${b.height===480?'selected':''}>约两行卡片</option></select></label><p class="form-note">这里是键盘与触屏的快捷设置。在大板上也可以直接拖动区块的右边或下边：往上拉到放不下一行完整卡片会变成紧凑列表，再往上拉会收起。拖动标题栏移动位置，选中标题后按 ⌥ + 方向键同样可以移动。</p><button class="button primary" data-action="save-settings" data-id="${id}">应用设置</button></div><div class="settings-actions"><button class="button" data-action="move-up" data-id="${id}">向前移动</button><button class="button" data-action="move-down" data-id="${id}">向后移动</button><button class="button" data-action="remove-block" data-id="${id}">从大板移除</button></div><p class="form-note">移除区块不删除资产，重新添加该类别即可找回。</p>`);$('#block-width').oninput=e=>$('#range-value').textContent=e.target.value+'%';}
 document.addEventListener('click',e=>{const button=e.target.closest('[data-action]');if(!button)return;const {action,id}=button.dataset;
  if(action==='detail'){if($('#modal').open)$('#modal').close();showDetail(id);}
  else if(action==='undo')undo();
@@ -435,14 +456,14 @@ document.addEventListener('click',e=>{const button=e.target.closest('[data-actio
  }
  else if(action==='choose-asset-type')assetForm(id);
  else if(action==='external'){const a=state.assets.find(a=>a.id===id),url=safeManagementUrl(a?.url);if(!url||new URL(url).hostname==='example.com'){toast('请先在资产资料中填写真实管理链接');return;}if(nativeStore)window.webkit.messageHandlers.assetboard.postMessage({action:'openExternal',url});else window.open(url,'_blank','noopener,noreferrer');}
- else if(action==='collapse'){if(query||focusCategory){toast('返回大板后可收起区块');return;}checkpoint();const b=state.blocks.find(b=>b.id===id);b.collapsed=!b.collapsed;save();render();document.querySelector(`[data-action="collapse"][data-id="${id}"]`)?.focus();}
+ else if(action==='collapse'){if(query||focusCategory){toast('返回大板后可收起区块');return;}const b=state.blocks.find(x=>x.id===id);if(!b)return;const fold=!b.folded,targets=e.altKey?state.blocks:[b];checkpoint();for(const block of targets)block.folded=fold;save();foldRender(targets.map(x=>x.id),id);document.querySelector(`#board [data-action="collapse"][data-id="${id}"]`)?.focus();if(e.altKey)toast(fold?'已收起全部区块':'已展开全部区块',true);}
  else if(action==='all'){focusCategory=id;closeDetail();render();window.scrollTo({top:0,behavior:'smooth'});}
  else if(action==='back'){focusCategory=null;render();}
  else if(action==='add-asset')assetForm(id);
  else if(action==='edit-asset')assetForm(state.assets.find(a=>a.id===id).type,id);
  else if(action==='settings')settings(id);
- else if(action==='choose-block'){checkpoint();state.blocks.push({id,width:50,collapsed:false,height:null});save();$('#modal').close();render();toast('区块已加入，已有资产会自动出现',true);}
- else if(action==='save-settings'){checkpoint();const b=state.blocks.find(b=>b.id===id);b.width=Number($('#block-width').value);b.height=Number($('#block-height').value)||null;save();$('#modal').close();render();toast('布局已更新',true);}
+ else if(action==='choose-block'){checkpoint();state.blocks.push({id,width:50,height:null,density:'full',folded:false});save();$('#modal').close();render();toast('区块已加入，已有资产会自动出现',true);}
+ else if(action==='save-settings'){checkpoint();const b=state.blocks.find(b=>b.id===id);b.width=Number($('#block-width').value);b.height=Number($('#block-height').value)||null;const style=$('#block-density').value;if(style!==blockDensity(b)||b.collapsed!==undefined)setBlockDensity(b,style);save();$('#modal').close();render();toast('布局已更新',true);}
  else if(action==='toggle-hidden'){if(showHiddenBlocks.has(id))showHiddenBlocks.delete(id);else showHiddenBlocks.add(id);render();document.querySelector(`[data-action="toggle-hidden"][data-id="${id}"]`)?.focus();}
  else if(action==='hide-asset'){const a=state.assets.find(a=>a.id===id);if(!a||a.hiddenAt)return;checkpoint();a.hiddenAt=new Date().toISOString();save();if(activeAsset===id)closeDetail();render();toast('已隐藏 · 可在区块「已隐藏」中恢复',true);}
  else if(action==='restore-asset'){const a=state.assets.find(a=>a.id===id),fromBoard=!!button.closest('#board');if(!a)return;checkpoint();delete a.hiddenAt;save();if(activeAsset===id)showDetail(id);render();if(fromBoard)(document.querySelector(`#board [data-asset="${CSS.escape(id)}"] .card-open`)||document.querySelector(`#board .block[data-block="${a.type}"] [data-action="restore-asset"]`))?.focus();toast('已恢复显示',true);}
@@ -586,12 +607,22 @@ function startResize(e,edge){
  e.preventDefault();cancelAnimationFrame(layoutFrame);
  const board=$('#board'),blocks=[...board.querySelectorAll('.block')];blocks.forEach(n=>n.getAnimations().forEach(a=>a.cancel()));
  const axis=edge.dataset.edge,bs=getComputedStyle(board),gap=parseFloat(bs.columnGap)||0,inner=board.clientWidth-parseFloat(bs.paddingLeft)-parseFloat(bs.paddingRight),px=w=>w/100*(inner+gap)-gap;
- const rect=block.getBoundingClientRect(),grid=block.querySelector('.cards'),gs=getComputedStyle(grid),rowH=grid.querySelector('[data-asset]')?.offsetHeight||0,rowGap=parseFloat(gs.rowGap)||0,pad=(parseFloat(gs.paddingTop)||0)+(parseFloat(gs.paddingBottom)||0);
- const startH=grid.clientHeight,natural=grid.scrollHeight,minW=Math.max(px(25),parseFloat(getComputedStyle(block).minWidth)||0),maxW=inner,minH=Math.max(96,pad+rowH);
+ const rect=block.getBoundingClientRect(),grid=block.querySelector('.cards'),minW=Math.max(px(25),parseFloat(getComputedStyle(block).minWidth)||0),maxW=inner;
+ // Height decides the card style: under one full row the cards turn compact, under one compact row the block folds,
+ // and pulling well past the compact content opens full cards again. Folding keeps the unfolded style and height for later.
+ const startWidth=b.width,startHeight=b.height,startDensity=blockDensity(b),startFolded=!!b.folded,x0=e.clientX,y0=e.clientY;
+ let density=startDensity,folded=startFolded,expand=false,nextHeight=startHeight;
+ const live=()=>{block.classList.toggle('folded',folded);block.classList.toggle('compact',!folded&&density==='compact');};
+ const measure=()=>{const saved=[grid.style.height,grid.style.minHeight];grid.style.height='auto';grid.style.minHeight='';const style=getComputedStyle(grid),first=grid.querySelector('[data-asset]'),metrics={row:first?.offsetHeight||0,gap:parseFloat(style.rowGap)||0,pad:(parseFloat(style.paddingTop)||0)+(parseFloat(style.paddingBottom)||0),natural:grid.offsetHeight};[grid.style.height,grid.style.minHeight]=saved;metrics.min=metrics.pad+metrics.row;return metrics;};
+ const minFor=style=>{density=style;folded=false;live();return measure().min;};
+ const fullMin=minFor('full'),compactMin=minFor('compact'),foldAt=Math.max(24,compactMin/2);
+ density=startDensity;folded=startFolded;live();
+ let m=measure();const startH=folded?0:grid.clientHeight;
  const snaps=[[25,'1/4'],[100/3,'1/3'],[50,'1/2'],[200/3,'2/3'],[75,'3/4'],[100,'整行']].map(([w,label])=>({w:px(w),label}));
  for(const other of blocks)if(other!==block){const r=other.getBoundingClientRect();for(const x of [r.right,r.left-gap])snaps.push({w:x-rect.left,x});}
- const startWidth=b.width,startHeight=b.height,x0=e.clientX,y0=e.clientY;let frame=0,pending=null,moved=false,heightOn=axis==='y';
+ let frame=0,pending=null,moved=false,heightOn=axis==='y';
  checkpoint();try{edge.setPointerCapture(e.pointerId);}catch{}block.classList.add('resizing');document.body.classList.add(`resize-${axis}`);
+ const rows=height=>Math.max(1,Math.round((height-m.pad+m.gap)/(m.row+m.gap)));
  const flush=()=>{
   frame=0;if(!pending)return;const {x,y,free}=pending;pending=null;moved=true;
   const neighbours=reduceMotion()?[]:blocks.filter(n=>n!==block).map(n=>[n,n.getBoundingClientRect()]),parts=[];neighbours.forEach(([n])=>n.getAnimations().forEach(a=>a.cancel()));
@@ -601,15 +632,24 @@ function startResize(e,edge){
    if(snap)w=snap.w;
    b.width=Math.round((Math.min(maxW,Math.max(minW,w))+gap)/(inner+gap)*1000)/10;block.style.setProperty('--width',b.width);block.style.width=rubber(w,minW,maxW)+'px';
    showGuide(snap&&'x' in snap?snap.x:null);parts.push(`宽 ${snap?.label||Math.round(b.width)+'%'}`);
+   if(!folded)m=measure();
   }
   if(axis!=='x'&&!heightOn&&Math.abs(y-y0)>8)heightOn=true;
   if(heightOn){
    let h=startH+y-y0;
-   if(!free&&rowH){const n=Math.max(1,Math.round((h-pad+rowGap)/(rowH+rowGap))),fit=pad+n*rowH+(n-1)*rowGap;if(Math.abs(fit-h)<=12)h=fit;}
-   if(h>=natural-4){b.height=null;block.classList.remove('fixed');grid.style.height=h>natural?rubber(h,minH,natural)+'px':'';grid.style.minHeight='';grid.querySelectorAll('[data-asset]').forEach(card=>{card.style.visibility='';card.inert=false;});parts.push('自动高度');}
-   else{const clamped=Math.max(minH,h);b.height=Math.round(clamped);block.classList.add('fixed');grid.style.height=rubber(h,minH,natural)+'px';parts.push(rowH?`显示 ${Math.max(1,Math.round((clamped-pad+rowGap)/(rowH+rowGap)))} 行`:'固定高度');}
-   updateOverflow();
-  }else parts.push(b.height?'固定高度':'自动高度');
+   if(folded&&h>foldAt+12){folded=false;density='compact';live();m=measure();}
+   else if(!folded&&density==='full'&&h<fullMin-24){density='compact';live();m=measure();}
+   else if(!folded&&density==='compact'&&h<foldAt){folded=true;live();}
+   expand=!folded&&density==='compact'&&h>Math.max(m.natural,fullMin)+40;
+   if(folded){grid.style.height='';parts.push('收起');}
+   else{
+    if(!free&&m.row){const fit=m.pad+rows(h)*m.row+(rows(h)-1)*m.gap;if(Math.abs(fit-h)<=12)h=fit;}
+    if(h>=m.natural-4){nextHeight=null;block.classList.remove('fixed');grid.style.height=h>m.natural?rubber(h,m.min,m.natural)+'px':'';grid.style.minHeight='';grid.querySelectorAll('[data-asset]').forEach(card=>{card.style.visibility='';card.inert=false;});}
+    else{nextHeight=Math.round(Math.max(m.min,h));block.classList.add('fixed');grid.style.height=rubber(h,m.min,m.natural)+'px';}
+    parts.push(expand?'松手展开为完整卡片':`${density==='compact'?'紧凑':'完整卡片'} · ${nextHeight===null?'自动高度':`显示 ${rows(nextHeight)} 行`}`);
+    updateOverflow();
+   }
+  }else parts.push(folded?'收起':b.height?'固定高度':'自动高度');
   for(const [n,from] of neighbours)slideFrom(n,from,180);
   showTip(parts.join(' · '),x,y);
  };
@@ -617,12 +657,19 @@ function startResize(e,edge){
  const end=()=>{
   cancelAnimationFrame(frame);flush();edge.removeEventListener('pointermove',move);edge.removeEventListener('pointerup',end);edge.removeEventListener('pointercancel',end);
   showGuide(null);showTip('');document.body.classList.remove(`resize-${axis}`);
-  const changed=b.width!==startWidth||b.height!==startHeight;
+  const before=new Map(blocks.map(n=>[n.dataset.block,n.getBoundingClientRect()]));
+  if(heightOn){
+   const style=folded?startDensity:expand?'full':density;
+   b.folded=folded;b.height=folded?startHeight:expand?null:nextHeight;
+   if(style!==blockDensity(b)||b.collapsed!==undefined)setBlockDensity(b,style);
+  }
+  const styleChanged=!!b.folded!==startFolded||blockDensity(b)!==startDensity,changed=styleChanged||b.width!==startWidth||b.height!==startHeight;
   if(!changed)history.pop();else save();
   if(!moved){block.classList.remove('resizing');return;}
+  if(styleChanged){block.classList.remove('resizing');block.style.width='';foldRender([b.id],b.id,before);toast(b.folded?'区块已收起 · 点标题可展开':blockDensity(b)==='compact'?'已切换为紧凑卡片':'已展开为完整卡片',true);return;}
   const finish=()=>{block.classList.remove('resizing','settling-size');render();if(changed)toast('区块大小已调整',true);};
   if(reduceMotion()){finish();return;}
-  block.classList.add('settling-size');block.style.width=px(b.width)+'px';grid.style.height=(b.height??natural)+'px';setTimeout(finish,260);
+  block.classList.add('settling-size');block.style.width=px(b.width)+'px';grid.style.height=(b.height??m.natural)+'px';setTimeout(finish,260);
  };
  edge.addEventListener('pointermove',move);edge.addEventListener('pointerup',end);edge.addEventListener('pointercancel',end);
 }

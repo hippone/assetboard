@@ -140,7 +140,10 @@ function findNameCollision(board,source,name,type,externalId){
  return board.assets.find(asset=>asset.type===type&&asset.name===name&&asset.source!=='demo'&&!(asset.source===source&&asset.externalId!=null&&String(asset.externalId)===String(externalId)));
 }
 
-function ensureBlock(board,type){if(!board.blocks.some(block=>block.id===type))board.blocks.push({id:type,width:50,collapsed:false,height:null});}
+function ensureBlock(board,type){if(!board.blocks.some(block=>block.id===type))board.blocks.push({id:type,width:50,height:null,density:'full',folded:false});}
+// Blocks saved before 2026-09-29 used collapsed:true for what is now the compact card style.
+function blockDensity(block){return block?.density==='compact'||block?.density==='full'?block.density:block?.collapsed?'compact':'full';}
+function setBlockDensity(block,density){block.density=density==='compact'?'compact':'full';delete block.collapsed;}
 
 function applySyncedFields(asset,fields){Object.assign(asset,fields);asset.syncMissing=false;}
 
@@ -523,4 +526,4 @@ function iconHost(asset){
  return iconHints.find(([pattern])=>pattern.test(text))?.[1]||'';
 }
 
-if(typeof module!=='undefined')module.exports={iconHost,guessAssetType,regionList,regionName,regionFlag,phoneParts,regionFromPhone,maskPhone,maskEmail,cardExpiry,expiryText,looksLikeCardNumber,linkAssets,unlinkAssets,linkedAssets,removeLinksTo,assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset,dateKinds,billingCycles,dayNumber,localDay,isoDay,addMonths,nextOccurrence,assetDateStatus,upcomingEvents,syncKey,assetSyncKey,isBlacklisted,findByExternal,findNameCollision,mergeCloudflare,mergeGitHub,applyCollision,parseSender,registrableDomain,cleanMerchant,findAmounts,findDates,findDomains,evidenceFacts,inferCycle,formatCost,matchAsset,buildCandidates,evidencePayload,parseAiItems,applyAiItem};
+if(typeof module!=='undefined')module.exports={blockDensity,setBlockDensity,ensureBlock,iconHost,guessAssetType,regionList,regionName,regionFlag,phoneParts,regionFromPhone,maskPhone,maskEmail,cardExpiry,expiryText,looksLikeCardNumber,linkAssets,unlinkAssets,linkedAssets,removeLinksTo,assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset,dateKinds,billingCycles,dayNumber,localDay,isoDay,addMonths,nextOccurrence,assetDateStatus,upcomingEvents,syncKey,assetSyncKey,isBlacklisted,findByExternal,findNameCollision,mergeCloudflare,mergeGitHub,applyCollision,parseSender,registrableDomain,cleanMerchant,findAmounts,findDates,findDomains,evidenceFacts,inferCycle,formatCost,matchAsset,buildCandidates,evidencePayload,parseAiItems,applyAiItem};

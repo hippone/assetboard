@@ -24,13 +24,13 @@ body{background:linear-gradient(120deg,#e0e6dd,#e7e9e7 52%,#dfe5e4);background-a
 .card-copy{padding:10px 18px 3px}.card-name{font-size:12px;font-weight:500;letter-spacing:.05px}.card-provider{font-size:10px;color:#8c938a;margin-top:5px}.card-purpose{background:none;padding:0;margin-top:9px;color:#788373;font-size:10px;border-radius:0}
 .card-foot{padding:4px 14px 13px 18px;min-height:36px}.card-event{color:#7d8877;font-size:10px}.card-event.warn{color:#9b7f4d}.open-link{background:none;color:#8d9785;border-radius:5px}.open-link:hover{background:#ffffff60}
 .block-footer{display:none!important}.number,.visible-count{display:none!important}.mini-stack span{background:none;color:#7d8a74;border:1px solid #889b7a30}
-.block.collapsed{align-self:flex-start}.block.collapsed .block-head{margin:0}.block.collapsed .mini-stack{margin-left:auto}
+.block.folded .block-head{margin:0}
 #focusbar{margin:0;padding:8px 14px;border-bottom:1px solid var(--line);background:#f6f8f260;font-size:12px}
 .detail{background:rgba(246,248,243,.82);backdrop-filter:blur(35px) saturate(105%);-webkit-backdrop-filter:blur(35px) saturate(105%);border-left:1px solid #ffffff80;box-shadow:-12px 0 45px #303a3020}.detail .art{background:transparent!important;border-radius:0;margin-bottom:18px;padding:0;height:180px}.detail-badge{background:none;padding:0}.close{background:#dfe5d960}.detail h2{font-weight:500;font-size:23px}
 dialog{background:rgba(246,248,243,.88);backdrop-filter:blur(35px);-webkit-backdrop-filter:blur(35px);border:1px solid #ffffff80;border-radius:16px}dialog::backdrop{background:#34413222;backdrop-filter:blur(7px)}.category-choice{background:#ffffff30;border-color:#72816c18;border-radius:10px}.form input,.form select{background:#ffffff60;border-color:#72816c25}.form-note{color:#818b79}
 .native-app body{background:transparent}.native-app .toolbar{background:rgba(250,252,248,.25)}.native-app .block{background:rgba(250,252,248,.22)}
 :root .block{width:calc(var(--width,50)*1% + var(--width,50)*.04px - 4px);border-radius:14px;overflow:hidden}.asset-card{border-radius:10px}.card-open{border-radius:10px}.block-actions .text-button{font-size:10px;padding:5px 7px}.card-event .dot{display:none}.detail{border-radius:16px 0 0 16px}
-:root .block{display:flex;flex-direction:column}.block-head{flex-shrink:0}:root .block:not(.fixed):not(.collapsed) .cards{flex:1;grid-auto-rows:1fr}.asset-card{display:flex;flex-direction:column;min-height:266px}.card-open{display:flex;flex:1;flex-direction:column}.card-open .art{width:100%;flex:1;min-height:150px}.card-copy{width:100%}.card-foot{flex-shrink:0}:root .block.fixed .cards{flex:none;grid-auto-rows:max-content}
+:root .block{display:flex;flex-direction:column}.block-head{flex-shrink:0}:root .block:not(.fixed):not(.compact) .cards{flex:1;grid-auto-rows:1fr}.asset-card{display:flex;flex-direction:column;min-height:266px}.card-open{display:flex;flex:1;flex-direction:column}.card-open .art{width:100%;flex:1;min-height:150px}.card-copy{width:100%}.card-foot{flex-shrink:0}:root .block.fixed .cards{flex:none;grid-auto-rows:max-content}
 @media(max-width:760px){:root main{padding:0}:root .toolbar{padding:8px;height:50px}:root .board{min-height:calc(100vh - 50px)}:root .cards{grid-template-columns:repeat(auto-fit,minmax(155px,1fr))}:root .block{padding:0;width:100%!important;min-width:0}.block-head{padding:7px 12px}.art{height:126px;padding-top:8px}.card-copy{padding-left:14px}.card-foot{padding-left:14px}.card-name{font-size:12px}:root .search input{width:100%;min-width:0}.block-summary{max-width:none}}
 
 /* Canvas: a quiet foundation that makes translucent edges readable. */
@@ -75,21 +75,20 @@ dialog{background:rgba(221,234,226,.70)}
 /* The category already frosts the backdrop; avoid a second live blur per card. */
 .asset-card{backdrop-filter:none;-webkit-backdrop-filter:none}
 :root .toolbar,.detail,dialog{backdrop-filter:blur(56px) saturate(110%);-webkit-backdrop-filter:blur(56px) saturate(110%)}
-/* Compact mode keeps every asset available as its miniature and name. */
-:root .board:has(.collapsed){align-content:flex-start}
-:root .block.collapsed{width:calc(var(--compact-columns)*184px + 6px);max-width:100%;min-width:280px}
-:root .block.collapsed .cards{flex:none;grid-template-columns:repeat(var(--compact-columns),minmax(0,1fr));grid-auto-rows:max-content}
-.block.collapsed .asset-card{min-height:0}
-.block.collapsed .card-open{flex-direction:row;align-items:center;gap:8px;padding:8px;min-height:52px}
-.block.collapsed .card-open .art{flex:0 0 36px;width:36px;height:36px;min-height:0;margin:0;padding:0;overflow:visible}
-.block.collapsed .art svg{width:36px;height:36px;transform:scale(1.3)}
-.block.collapsed .card-copy{padding:0;min-width:0;flex:1}
-.block.collapsed .card-provider,.block.collapsed .card-purpose,.block.collapsed .card-foot{display:none}
-.block.collapsed .card-name{font-size:12px}
+/* Compact style keeps every asset available as its miniature, name and one glance line, at the width the person set. */
+:root .block.compact .cards{flex:none;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));grid-auto-rows:max-content}
+.block.compact .asset-card{max-width:340px}
+.block.compact .asset-card{min-height:0}
+.block.compact .card-open{flex-direction:row;align-items:center;gap:8px;padding:8px;min-height:52px}
+.block.compact .card-open .art{flex:0 0 36px;width:36px;height:36px;min-height:0;margin:0;padding:0;overflow:visible}
+.block.compact .art svg{width:36px;height:36px;transform:scale(1.3)}
+.block.compact .card-copy{padding:0;min-width:0;flex:1}
+.block.compact .card-provider,.block.compact .card-purpose,.block.compact .card-foot{display:none}
+.block.compact .card-name{font-size:12px}
 .art img{width:112px;height:112px;max-width:70%;object-fit:contain;opacity:.94;transition:transform .3s ease}
 .card-open .art{padding:24px 20px 12px}
 .asset-card:hover .art img{transform:translateY(-2px)}
-.block.collapsed .art img{width:36px;height:36px;max-width:none;transform:none}
+.block.compact .art img{width:36px;height:36px;max-width:none;transform:none}
 .detail .art img{width:144px;height:144px}
 /* One hue, three densities: clear canvas, misted category, denser asset glass. */
 :root .board{background:rgba(69,88,78,.025)}
@@ -158,18 +157,16 @@ body{background:rgb(var(--tone-canvas));color:var(--ink)}
 /* Content-sized board: long inventories must not stretch their neighbors. */
 :root .board,.native-app .board{min-height:0;align-items:flex-start;align-content:flex-start}
 :root .block{align-self:flex-start}
-:root .block:not(.fixed):not(.collapsed) .cards{flex:none;grid-auto-rows:max-content}
+:root .block:not(.fixed):not(.compact) .cards{flex:none;grid-auto-rows:max-content}
 .asset-card{min-height:0}
 .card-open .art{flex:none;height:112px;min-height:0}
 .source-art{color:rgb(var(--tone-primary));place-items:center}
 .source-art svg{width:54px;height:54px;max-width:none;opacity:.72}
-.block.collapsed .source-art svg{width:26px;height:26px;transform:none}
+.block.compact .source-art svg{width:26px;height:26px;transform:none}
 .asset-count{font-size:10px;font-weight:500;color:var(--muted);padding:1px 6px;border-radius:6px;background:rgba(var(--tone-card),.48)}
 .repository .compact-repositories-grid{align-content:start}
-.block.repository.collapsed{width:min(calc(var(--width,50)*1%),660px);min-width:340px}
-.block.repository.collapsed .cards{align-content:start}
+.block.repository.compact .cards{align-content:start}
 .compact-repo-open span{direction:ltr}
-@media(max-width:760px){:root .block.collapsed{min-width:0;width:100%!important}}
 .compact-repo{position:relative}
 :root .block:has(.block-empty){width:min(25%,320px);min-width:220px}
 @media(max-width:760px){:root .block:has(.block-empty){width:100%;min-width:0}}
@@ -379,7 +376,7 @@ body.resize-x,body.resize-x *{cursor:ew-resize!important}body.resize-y,body.resi
 .link-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;min-width:0}
 .link-chip{display:inline-flex;align-items:center;gap:3px;max-width:100%;padding:2px 7px 2px 5px;border-radius:999px;background:var(--hover);color:var(--ink);font-size:11px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .link-chip svg{flex:none;width:11px;height:11px;opacity:.7}
-.block.collapsed .card-identity,.block.collapsed .link-chips{display:none}
+.block.compact .card-identity,.block.compact .link-chips{display:none}
 .link-lines{position:fixed;inset:0;width:100vw;height:100vh;z-index:60;pointer-events:none;overflow:visible}
 .link-lines path{fill:none;stroke:rgb(var(--tone-primary));stroke-width:1.5;stroke-linecap:round;opacity:.85}
 .link-lines circle{fill:rgb(var(--tone-primary))}
@@ -408,3 +405,19 @@ body.resize-x,body.resize-x *{cursor:ew-resize!important}body.resize-y,body.resi
 .link-open .site-mark,.link-option .site-mark{width:18px;height:18px;border-radius:4px}
 .icon-preview{display:flex;align-items:center;gap:12px;min-height:60px}
 .icon-preview img{flex:none;width:52px;height:52px;padding:4px;border:1px solid var(--border);border-radius:12px;background:#fff}
+
+/* Folding: a folded block keeps one row with its title, count, up to five marks and the most urgent summary. */
+.block.folded .cards{display:none}
+.fold-peek{display:flex;align-items:center;gap:3px;min-width:0;overflow:hidden;flex:0 1 auto;margin-right:auto}
+.peek-mark{flex:none;display:grid;place-items:center;width:22px;height:22px;border-radius:6px;background:var(--hover);color:var(--muted);font-size:13px;font-weight:600;line-height:1}
+.peek-mark img{width:16px;height:16px;border-radius:4px;background:#fff}
+.peek-more{flex:none;padding:0 4px;font-size:11px;color:var(--muted)}
+.card-mark,.card-glance{display:none}
+.block.compact .card-mark{flex:0 0 36px;display:grid;place-items:center;width:36px;height:36px;border-radius:9px;background:var(--hover);color:var(--muted);font-size:20px;line-height:1}
+.block.compact .card-mark img{width:26px;height:26px;border-radius:6px;background:#fff}
+.block.compact .card-mark svg{width:20px;height:20px}
+.block.compact .card-open:has(.card-mark) .art{display:none}
+.block.compact .card-glance{display:block;min-width:0;margin-top:2px;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.block.compact .card-glance.warn{color:var(--warning)}
+.block.compact .card-glance.overdue{color:var(--danger)}
+.block.compact .card-glance:empty{display:none}

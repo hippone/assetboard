@@ -293,3 +293,17 @@ test('suggests the website to fetch an icon from',()=>{
  assert.equal(iconHost({type:'bankcard',provider:'汇丰香港'}),'hsbc.com.hk');
  assert.equal(iconHost({type:'phone',provider:'某运营商'}),'');
 });
+
+const {blockDensity,setBlockDensity,ensureBlock:addBlockFor}=require('../asset-data.js');
+
+test('reads the card style of old and new blocks',()=>{
+ assert.equal(blockDensity({id:'domain',collapsed:true}),'compact');
+ assert.equal(blockDensity({id:'domain',collapsed:false}),'full');
+ assert.equal(blockDensity({id:'domain',density:'full',collapsed:true}),'full');
+ const block={id:'domain',collapsed:true};
+ setBlockDensity(block,'full');
+ assert.deepEqual(block,{id:'domain',density:'full'});
+ const board={blocks:[]};
+ addBlockFor(board,'bankcard');
+ assert.deepEqual(board.blocks,[{id:'bankcard',width:50,height:null,density:'full',folded:false}]);
+});
