@@ -282,3 +282,14 @@ test('files AI services under AI subscriptions',()=>{
  assert.equal(guessAssetType('Receipt from Anthropic, PBC',[]),'ai');
  assert.equal(guessAssetType('Your Figma plan renews',[]),'subscription');
 });
+
+const {iconHost}=require('../asset-data.js');
+
+test('suggests the website to fetch an icon from',()=>{
+ assert.equal(iconHost({type:'bankcard',provider:'Wise',url:'https://www.wise.com/account'}),'wise.com');
+ assert.equal(iconHost({type:'appleid',provider:'Apple'}),'apple.com');
+ assert.equal(iconHost({type:'google',provider:'Google',url:'https://example.com'}),'google.com');
+ assert.equal(iconHost({type:'ai',provider:'ChatGPT',name:'ChatGPT Plus'}),'chatgpt.com');
+ assert.equal(iconHost({type:'bankcard',provider:'汇丰香港'}),'hsbc.com.hk');
+ assert.equal(iconHost({type:'phone',provider:'某运营商'}),'');
+});

@@ -513,4 +513,14 @@ function unlinkAssets(assets,leftId,rightId){
 function linkedAssets(assets,asset){const ids=new Set(Array.isArray(asset?.links)?asset.links:[]);return assets.filter(item=>item.id!==asset?.id&&(ids.has(item.id)||Array.isArray(item.links)&&item.links.includes(asset?.id)));}
 function removeLinksTo(assets,id){for(const asset of assets)if(Array.isArray(asset.links)&&asset.links.includes(id))asset.links=asset.links.filter(item=>item!==id);}
 
-if(typeof module!=='undefined')module.exports={guessAssetType,regionList,regionName,regionFlag,phoneParts,regionFromPhone,maskPhone,maskEmail,cardExpiry,expiryText,looksLikeCardNumber,linkAssets,unlinkAssets,linkedAssets,removeLinksTo,assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset,dateKinds,billingCycles,dayNumber,localDay,isoDay,addMonths,nextOccurrence,assetDateStatus,upcomingEvents,syncKey,assetSyncKey,isBlacklisted,findByExternal,findNameCollision,mergeCloudflare,mergeGitHub,applyCollision,parseSender,registrableDomain,cleanMerchant,findAmounts,findDates,findDomains,evidenceFacts,inferCycle,formatCost,matchAsset,buildCandidates,evidencePayload,parseAiItems,applyAiItem};
+// Suggested website for an asset's icon: its management link, then the account's own service, then well-known names. The person can change it.
+const iconHints=[[/chatgpt|openai/i,'chatgpt.com'],[/claude|anthropic/i,'claude.ai'],[/gemini/i,'gemini.google.com'],[/midjourney/i,'midjourney.com'],[/perplexity/i,'perplexity.ai'],[/cursor/i,'cursor.com'],[/copilot|github/i,'github.com'],[/deepseek/i,'deepseek.com'],[/\bwise\b/i,'wise.com'],[/revolut/i,'revolut.com'],[/汇丰|hsbc/i,'hsbc.com.hk'],[/中银香港|bochk/i,'bochk.com'],[/招商银行|招行/i,'cmbchina.com'],[/giffgaff/i,'giffgaff.com'],[/cmlink/i,'cmlink.com'],[/figma/i,'figma.com'],[/notion/i,'notion.so'],[/cloudflare/i,'cloudflare.com']];
+function iconHost(asset){
+ try{const host=new URL(asset?.url||'').hostname.replace(/^www\./,'');if(host&&host!=='example.com')return host;}catch{}
+ if(asset?.type==='appleid')return 'apple.com';
+ if(asset?.type==='google')return 'google.com';
+ const text=[asset?.provider,asset?.name].filter(Boolean).join(' ');
+ return iconHints.find(([pattern])=>pattern.test(text))?.[1]||'';
+}
+
+if(typeof module!=='undefined')module.exports={iconHost,guessAssetType,regionList,regionName,regionFlag,phoneParts,regionFromPhone,maskPhone,maskEmail,cardExpiry,expiryText,looksLikeCardNumber,linkAssets,unlinkAssets,linkedAssets,removeLinksTo,assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset,dateKinds,billingCycles,dayNumber,localDay,isoDay,addMonths,nextOccurrence,assetDateStatus,upcomingEvents,syncKey,assetSyncKey,isBlacklisted,findByExternal,findNameCollision,mergeCloudflare,mergeGitHub,applyCollision,parseSender,registrableDomain,cleanMerchant,findAmounts,findDates,findDomains,evidenceFacts,inferCycle,formatCost,matchAsset,buildCandidates,evidencePayload,parseAiItems,applyAiItem};

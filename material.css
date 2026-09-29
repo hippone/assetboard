@@ -400,3 +400,11 @@ body.resize-x,body.resize-x *{cursor:ew-resize!important}body.resize-y,body.resi
 .link-option[hidden]{display:none}
 .secret{font-variant-numeric:tabular-nums}
 .reveal{margin-left:6px;padding:0 4px;font-size:11px}
+
+/* Site icons fetched by the Mac app: own art for ordinary categories, badges and link marks elsewhere. */
+.site-art img{width:64px;height:64px;max-width:70%;border-radius:14px}
+.site-mark{flex:none;border-radius:3px;object-fit:contain;background:#fff}
+.link-chip .site-mark{width:12px;height:12px}
+.link-open .site-mark,.link-option .site-mark{width:18px;height:18px;border-radius:4px}
+.icon-preview{display:flex;align-items:center;gap:12px;min-height:60px}
+.icon-preview img{flex:none;width:52px;height:52px;padding:4px;border:1px solid var(--border);border-radius:12px;background:#fff}

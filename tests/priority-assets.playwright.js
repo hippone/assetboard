@@ -47,6 +47,7 @@ async (page) => {
   // Details reveal the full value on request.
   await p.locator(`[data-asset="${phone.id}"] .card-open`).click();
   check(!(await p.locator('#detail').innerText()).includes('900123'),'Details start masked');
+  check(await p.locator('#detail [data-action="icon-dialog"]').count()===0,'The browser version has no icon download');
   await p.locator('#detail [data-action="reveal"]').click();
   check((await p.locator('#detail .secret').textContent())==='+44 7700 900123','显示 reveals the full number');
 

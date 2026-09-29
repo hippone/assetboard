@@ -68,6 +68,14 @@ v0.1.0 发布包已于 2026-09-25 通过 Apple 公证（submission ID `56128736-
 - `--test-store` 新增：含新类别和关联的数据能保存进 SQLite，未知类别仍被拒绝。其余原生自检同时通过。
 - 未验证：真实 Mac App 窗口里的旗帜显示（本机 Chrome 使用系统 Apple Color Emoji）；在 macOS 12 的 WebKit 上的显示效果；真实账单里 AI 服务的归类准确率。
 
+## 网站图标（2026-09-29）
+
+- 新增 `desktop/IconFetcher.swift` 和桥接动作 `iconFetch` → `assetboardIconResult`。只请求公开的 https 域名，拒绝 IP 地址、本地名称和带账号密码的链接；不带 Cookie，重定向只允许 https。页面最多读 512 KB，图标最多 1 MB，统一重绘成 128px PNG。
+- `--test-icons`（模拟网络）通过，覆盖：域名校验、图标链接排序（apple-touch-icon 优先，排除 mask-icon 和 http）、页面声明的图标失效时退回默认路径、只发 GET、PNG 尺寸、找不到图标的提示、被拒绝的域名不发出任何请求。
+- 用真实网络逐个请求了 8 个网站：apple.com、chatgpt.com、claude.ai、google.com、hsbc.com.hk、midjourney.com、wise.com 取到了清晰的 128px 图标；giffgaff.com 对所有请求都返回同一个约 960 字节的 HTML 页，没有取到。
+- 新增 `tests/icons.playwright.js`（模拟原生桥接），全部通过。覆盖：预填域名、经桥接获取、预览时不保存、银行卡上的徽标、关联标签里的图标、撤销、错误状态、忽略过期的回复、普通类别用图标作主图、移除。浏览器版不显示“网站图标”按钮。其余测试同时通过：`node --test` 26 项，以及全部浏览器测试和 8 项原生自检。
+- 未验证：在真实 Mac App 窗口里点击获取（请求逻辑用独立编译的测试程序直接调用验证过，但没有经过 WKWebView 界面）。
+
 ## 使用自己的 API key 做 AI 识别（2026-09-29）
 
 - 新增“文件 → AI 识别设置…”：支持 Anthropic Claude 和 OpenAI 兼容接口（含本机 Ollama 等）。请求由 Swift 发出，key 存在钥匙串，网页只拿到模型回复并做校验。只有在你明确点击、确认批量或勾选截图自动识别时才发送。截图发送缩小后的原图。一份资料可以识别出多项资产，逐项核对后记录。

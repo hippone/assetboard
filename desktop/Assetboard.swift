@@ -206,6 +206,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     var ai: AIRecognizer!
     let cloudflare = CloudflareConnector()
     let github = GitHubConnector()
+    let icons = IconFetcher()
     var localRoot: URL!
     let searchField = NSSearchField(frame: NSRect(x: 0, y: 0, width: 200, height: 28))
     var inboxButton: NSButton!
@@ -644,6 +645,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             else { aiResult(["kind": "settings", "ok": false, "error": "无法从 macOS 钥匙串删除 API key，请重试。"]) }
             return
         }
+        if body["action"] as? String == "iconFetch" {
+            let requestId = body["requestId"] as? Int ?? 0
+            icons.fetch(input: String((body["host"] as? String ?? "").prefix(300))) { result in
+                var reply: [String: Any] = ["requestId": requestId]
+                switch result {
+                case .success(let icon): reply.merge(["ok": true, "host": icon.host, "dataUrl": icon.dataURL]) { $1 }
+                case .failure(let error): reply.merge(["ok": false, "error": error.localizedDescription]) { $1 }
+                }
+                DispatchQueue.main.async {
+                    guard let data = try? JSONSerialization.data(withJSONObject: reply), let json = String(data: data, encoding: .utf8) else { return }
+                    self.webView.evaluateJavaScript("window.assetboardIconResult(\(json))")
+                }
+            }
+            return
+        }
         if body["action"] as? String == "aiRecognize" {
             recognizeWithAI(body)
             return
@@ -783,6 +799,63 @@ final class MockCloudflareProtocol: URLProtocol {
         client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}
+}
+
+final class MockIconProtocol: URLProtocol {
+    static var reply: ((URLRequest) -> (Int, Data))!
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let (status, body) = Self.reply(request)
+        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: body)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
+
+// Host validation, icon link ranking, fallbacks and PNG normalisation, with HTTP stubbed.
+func testIcons() {
+    precondition(IconFetcher.host(from: " Wise.com ") == "wise.com")
+    precondition(IconFetcher.host(from: "https://www.hsbc.com.hk/zh-hk/") == "www.hsbc.com.hk")
+    for refused in ["192.168.1.1", "localhost", "printer.local", "https://user:pw@wise.com", "[::1]", "wise", "file:///etc", "-bad-.com"] {
+        precondition(IconFetcher.host(from: refused) == nil, "Host must be refused: \(refused)")
+    }
+    let html = "<head><link rel=\"icon\" href=\"/favicon-32.png\" sizes=\"32x32\"><link rel='apple-touch-icon' href='touch.png'><link rel=\"mask-icon\" href=\"/mask.svg\"><link rel=\"icon\" href=\"http://wise.com/plain.png\"></head>"
+    let ranked = IconFetcher.candidates(html: html, base: URL(string: "https://wise.com/en/")!).map(\.absoluteString)
+    precondition(ranked == ["https://wise.com/en/touch.png", "https://wise.com/favicon-32.png", "https://wise.com/apple-touch-icon.png", "https://wise.com/favicon.ico"], ranked.description)
+    let image = NSImage(size: NSSize(width: 64, height: 32))
+    image.lockFocus(); NSColor.systemTeal.setFill(); NSRect(x: 0, y: 0, width: 64, height: 32).fill(); image.unlockFocus()
+    let png = NSBitmapImageRep(data: image.tiffRepresentation!)!.representation(using: .png, properties: [:])!
+    precondition(IconFetcher.normalized(Data("<html>".utf8)) == nil, "Non-images must be refused")
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [MockIconProtocol.self]
+    let fetcher = IconFetcher(session: URLSession(configuration: configuration))
+    var requested: [String] = []
+    func run(_ input: String, _ reply: @escaping (URLRequest) -> (Int, Data)) -> Result<(host: String, dataURL: String), NSError> {
+        requested = []
+        MockIconProtocol.reply = { request in requested.append("\(request.httpMethod ?? "") \(request.url!.absoluteString)"); return reply(request) }
+        let done = DispatchSemaphore(value: 0)
+        var result: Result<(host: String, dataURL: String), NSError>!
+        fetcher.fetch(input: input) { result = $0; done.signal() }
+        precondition(done.wait(timeout: .now() + 5) == .success)
+        return result
+    }
+    let found = run("wise.com") { request in
+        switch request.url!.path {
+        case "/": return (200, Data("<link rel=\"icon\" href=\"/missing.png\">".utf8))
+        case "/apple-touch-icon.png": return (200, png)
+        default: return (404, Data())
+        }
+    }
+    guard case .success(let icon) = found, icon.host == "wise.com", icon.dataURL.hasPrefix("data:image/png;base64,"),
+          let decoded = Data(base64Encoded: String(icon.dataURL.dropFirst("data:image/png;base64,".count))),
+          let bitmap = NSBitmapImageRep(data: decoded), bitmap.pixelsWide == 128, bitmap.pixelsHigh == 128 else { fatalError("Fallback icon must be normalised: \(found)") }
+    precondition(requested == ["GET https://wise.com/", "GET https://wise.com/missing.png", "GET https://wise.com/apple-touch-icon.png"], requested.description)
+    guard case .failure(let missing) = run("empty.example") { _ in (404, Data()) }, missing.localizedDescription.contains("没有在 empty.example 找到") else { fatalError("A site without icons must say so") }
+    guard case .failure(let refused) = run("127.0.0.1") { _ in (200, png) }, requested.isEmpty, refused.localizedDescription.contains("域名") else { fatalError("Refused hosts must not be contacted") }
+    print("PASS: icon host validation, link ranking and fallbacks, GET-only fetch, PNG normalisation, missing icon and refused host")
 }
 
 func testCloudflare() {
@@ -1170,6 +1243,8 @@ if CommandLine.arguments.contains("--make-icon"), let target = CommandLine.argum
     testCloudflareInventory()
 } else if CommandLine.arguments.contains("--test-ai") {
     testAI()
+} else if CommandLine.arguments.contains("--test-icons") {
+    testIcons()
 } else if CommandLine.arguments.contains("--test-webview") {
     testWebView()
 } else if CommandLine.arguments.contains("--test-ocr") {
