@@ -223,3 +223,62 @@ test('suggests an existing asset by its own name, not by a shared merchant',()=>
  assert.equal(matchAsset(assets,{name:'Figma',merchant:'Figma',domains:[]}),'figma');
  assert.equal(matchAsset(assets,{name:'example.dev',merchant:'Namecheap',domains:['example.dev']}),'site');
 });
+
+const {regionFlag,regionName,regionFromPhone,maskPhone,maskEmail,cardExpiry,expiryText,looksLikeCardNumber,linkAssets,unlinkAssets,linkedAssets,removeLinksTo,assetDateStatus:dateStatus,guessAssetType}=require('../asset-data.js');
+
+test('shows regions as flags and names, and infers them from calling codes',()=>{
+ assert.equal(regionFlag('US'),'🇺🇸');
+ assert.equal(regionFlag('us'),'');
+ assert.equal(regionName('HK'),'中国香港');
+ assert.equal(regionFromPhone('+44 7700 900123'),'GB');
+ assert.equal(regionFromPhone('00852 6123 4567'),'HK');
+ assert.equal(regionFromPhone('+353 85 123 4567'),'IE');
+ assert.equal(regionFromPhone('13800138000'),'');
+});
+
+test('masks phone numbers and emails but keeps enough to recognise them',()=>{
+ assert.equal(maskPhone('+44 7700 900123'),'+44 ••• 0123');
+ assert.equal(maskPhone('+1 (415) 555-2671'),'+1 ••• 2671');
+ assert.equal(maskPhone('138 0013 8000'),'••• 8000');
+ assert.equal(maskPhone(''),'');
+ assert.equal(maskEmail('hans.dev@icloud.com'),'ha•••@icloud.com');
+ assert.equal(maskEmail('a@gmail.com'),'a•••@gmail.com');
+ assert.equal(maskEmail('not an email'),'not an email');
+});
+
+test('stores card expiry as the last day of the month and dates it',()=>{
+ assert.equal(cardExpiry('08/28'),'2028-08-31');
+ assert.equal(cardExpiry('2/2028'),'2028-02-29');
+ assert.equal(cardExpiry('13/28'),null);
+ assert.equal(expiryText('2028-08-31'),'08/28');
+ assert.equal(dateStatus({date:'2026-10-31',dateKind:'expire'},new Date(2026,9,1)).label,'30 天后到期');
+ assert.equal(dateStatus({date:'2026-10-05',dateKind:'keep',cycle:'halfyearly'},new Date(2026,9,1)).label,'4 天后保号到期');
+ assert.equal(dateStatus({date:'2026-04-05',dateKind:'keep',cycle:'halfyearly'},new Date(2026,9,1)).date,'2026-10-05');
+});
+
+test('recognises full card numbers so they are never stored',()=>{
+ assert.equal(looksLikeCardNumber('卡号 4111 1111 1111 1111'),true);
+ assert.equal(looksLikeCardNumber('5555-5555-5555-4444'),true);
+ assert.equal(looksLikeCardNumber('378282246310005'),true);
+ assert.equal(looksLikeCardNumber('4111 1111 1111 1112'),false);
+ assert.equal(looksLikeCardNumber('尾号 1111'),false);
+ assert.equal(looksLikeCardNumber('+86 138 0013 8000'),false);
+});
+
+test('links records both ways and cleans up after a delete',()=>{
+ const assets=[{id:'apple',type:'appleid'},{id:'card',type:'bankcard'},{id:'phone',type:'phone',links:['apple']}];
+ assert.equal(linkAssets(assets,'apple','card'),true);
+ assert.equal(linkAssets(assets,'card','apple'),false);
+ assert.equal(linkAssets(assets,'apple','apple'),false);
+ assert.deepEqual(linkedAssets(assets,assets[0]).map(asset=>asset.id),['card','phone']);
+ assert.equal(unlinkAssets(assets,'card','apple'),true);
+ assert.deepEqual(assets[0].links,[]);
+ removeLinksTo(assets,'apple');
+ assert.deepEqual(assets[2].links,[]);
+});
+
+test('files AI services under AI subscriptions',()=>{
+ assert.equal(guessAssetType('Your ChatGPT Plus subscription renews',[]),'ai');
+ assert.equal(guessAssetType('Receipt from Anthropic, PBC',[]),'ai');
+ assert.equal(guessAssetType('Your Figma plan renews',[]),'subscription');
+});

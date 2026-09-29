@@ -18,9 +18,9 @@ struct AISettings: Codable, Equatable {
 final class AIRecognizer {
     static let providers: Set<String> = ["anthropic", "openai"]
     static let prompt = """
-    你负责从账单、收据、续费提醒、订阅确认或服务通知中提取“数字资产”信息，供用户核对后记录。数字资产包括：域名、服务器、订阅与工具、数据库、软件授权、代码仓库、部署服务、对象存储。
+    你负责从账单、收据、续费提醒、订阅确认或服务通知中提取“数字资产”信息，供用户核对后记录。数字资产包括：域名、服务器、订阅与工具、AI 订阅、数据库、软件授权、代码仓库、部署服务、对象存储。
     只输出一个 JSON 对象，不要输出解释或 Markdown：
-    {"items":[{"name":"资产名称，例如域名 example.com、服务或套餐名","merchant":"提供服务或收费的公司","type":"domain|server|subscription|database|license|repository|deployment|storage","amount":"金额数字，如 15.00","currency":"ISO 4217 货币代码，如 USD、CNY","cycle":"monthly|yearly|null","date":"下一个需要处理的日期 YYYY-MM-DD 或 null","dateKind":"expire|renew|trial|cancel|null","paidDate":"本次已付款日期 YYYY-MM-DD 或 null","account":"账号、邮箱或团队名，没有则 null","quote":"支持日期或金额的原文短句，不超过 80 字"}]}
+    {"items":[{"name":"资产名称，例如域名 example.com、服务或套餐名","merchant":"提供服务或收费的公司","type":"domain|server|subscription|ai|database|license|repository|deployment|storage","amount":"金额数字，如 15.00","currency":"ISO 4217 货币代码，如 USD、CNY","cycle":"monthly|yearly|null","date":"下一个需要处理的日期 YYYY-MM-DD 或 null","dateKind":"expire|renew|trial|cancel|null","paidDate":"本次已付款日期 YYYY-MM-DD 或 null","account":"账号、邮箱或团队名，没有则 null","quote":"支持日期或金额的原文短句，不超过 80 字"}]}
     规则：
     1. 只填写原文明确出现的信息，缺失填 null，不要推测。
     2. date 只放将来的到期日、下次扣款日、试用结束日或取消截止日；已经发生的付款日期放 paidDate。

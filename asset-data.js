@@ -67,9 +67,10 @@ const dateKinds={
  expire:{label:'到期',future:'到期',past:'已过期'},
  renew:{label:'自动续费扣款',future:'扣款',past:'扣款日已过'},
  trial:{label:'试用结束',future:'试用结束',past:'试用已结束'},
- cancel:{label:'取消截止',future:'取消截止',past:'已过取消截止'}
+ cancel:{label:'取消截止',future:'取消截止',past:'已过取消截止'},
+ keep:{label:'保号期限',future:'保号到期',past:'保号已过期'}
 };
-const billingCycles={monthly:{label:'每月',months:1,suffix:'月'},yearly:{label:'每年',months:12,suffix:'年'}};
+const billingCycles={monthly:{label:'每月',months:1,suffix:'月'},quarterly:{label:'每 3 个月',months:3,suffix:'3 个月'},halfyearly:{label:'每 6 个月',months:6,suffix:'6 个月'},yearly:{label:'每年',months:12,suffix:'年'}};
 
 function dayNumber(value){
  const match=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value||''));
@@ -332,6 +333,7 @@ function guessAssetType(text,domains){
  if(/\b(?:vps|server|droplet|instance|linode|vultr|hetzner|ec2|lightsail)\b|服务器|云主机|轻量应用/i.test(text))return 'server';
  if(/\b(?:database|postgres(?:ql)?|mysql|redis|mongodb|supabase|planetscale)\b|数据库/i.test(text))return 'database';
  if(/\b(?:licen[cs]e|lifetime)\b|授权|许可证|激活码/i.test(text))return 'license';
+ if(/\b(?:openai|chatgpt|anthropic|claude|midjourney|perplexity|cursor|copilot|gemini|runway|elevenlabs|suno|deepseek)\b/i.test(text))return 'ai';
  return 'subscription';
 }
 
@@ -462,4 +464,53 @@ function applyAiItem(base,item,{assets=[],now=new Date(),fallback=true}={}){
   match:matchAsset(assets,{merchant,name,domains,senderDomain:base.senderDomain})||(fallback&&!item.name?base.match:null),weak:false};
 }
 
-if(typeof module!=='undefined')module.exports={assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset,dateKinds,billingCycles,dayNumber,localDay,isoDay,addMonths,nextOccurrence,assetDateStatus,upcomingEvents,syncKey,assetSyncKey,isBlacklisted,findByExternal,findNameCollision,mergeCloudflare,mergeGitHub,applyCollision,parseSender,registrableDomain,cleanMerchant,findAmounts,findDates,findDomains,evidenceFacts,inferCycle,formatCost,matchAsset,buildCandidates,evidencePayload,parseAiItems,applyAiItem};
+// Cross-border accounts: region code, Chinese name and calling code.
+const regionList=[['CN','中国大陆','86'],['HK','中国香港','852'],['MO','中国澳门','853'],['TW','中国台湾','886'],['US','美国','1'],['GB','英国','44'],['JP','日本','81'],['KR','韩国','82'],['SG','新加坡','65'],['MY','马来西亚','60'],['TH','泰国','66'],['VN','越南','84'],['PH','菲律宾','63'],['ID','印度尼西亚','62'],['IN','印度','91'],['AU','澳大利亚','61'],['NZ','新西兰','64'],['CA','加拿大','1'],['MX','墨西哥','52'],['BR','巴西','55'],['AR','阿根廷','54'],['DE','德国','49'],['FR','法国','33'],['NL','荷兰','31'],['IE','爱尔兰','353'],['ES','西班牙','34'],['IT','意大利','39'],['CH','瑞士','41'],['SE','瑞典','46'],['PL','波兰','48'],['UA','乌克兰','380'],['RU','俄罗斯','7'],['KZ','哈萨克斯坦','7'],['TR','土耳其','90'],['AE','阿联酋','971'],['SA','沙特阿拉伯','966'],['IL','以色列','972'],['PK','巴基斯坦','92'],['NG','尼日利亚','234'],['ZA','南非','27'],['EG','埃及','20']];
+function regionName(code){return regionList.find(([id])=>id===code)?.[1]||'';}
+function regionFlag(code){return /^[A-Z]{2}$/.test(code||'')?String.fromCodePoint(...[...code].map(letter=>0x1F1A5+letter.charCodeAt(0))):'';}
+
+// Phone numbers are stored in full and shown masked. A leading + or 00 marks an international number; the longest known calling code wins.
+function phoneParts(value){
+ const text=String(value||'').trim(),digits=text.replace(/\D/g,'');
+ if(!digits)return null;
+ const intl=/^(?:\+|00)/.test(text),body=text.startsWith('00')?digits.slice(2):digits;
+ const code=intl?[...new Set(regionList.map(region=>region[2]))].sort((left,right)=>right.length-left.length).find(prefix=>body.startsWith(prefix))||'':'';
+ return {code,local:code?body.slice(code.length):body,intl};
+}
+function regionFromPhone(value){const code=phoneParts(value)?.code;return code?regionList.find(region=>region[2]===code)[0]:'';}
+function maskPhone(value){const parts=phoneParts(value);if(!parts)return '';if(parts.local.length<4)return String(value).trim();return `${parts.code?`+${parts.code} `:parts.intl?'+':''}••• ${parts.local.slice(-4)}`;}
+function maskEmail(value){const text=String(value||'').trim(),at=text.lastIndexOf('@');if(at<1)return text;const user=text.slice(0,at);return `${user.slice(0,user.length>2?2:1)}•••${text.slice(at)}`;}
+
+// Card expiry is written MM/YY or MM/YYYY and stored as the last day of that month.
+function cardExpiry(value){const match=/^\s*(0?[1-9]|1[0-2])\s*\/\s*(\d{2}|\d{4})\s*$/.exec(String(value||''));if(!match)return null;const year=match[2].length===2?2000+Number(match[2]):Number(match[2]);return isoDay(Date.UTC(year,Number(match[1]),0)/DAY_MS);}
+function expiryText(date){const match=/^(\d{4})-(\d{2})-\d{2}$/.exec(date||'');return match?`${match[2]}/${match[1].slice(2)}`:'';}
+
+// Full card numbers are never stored: a 13–19 digit run starting 2–6 that passes the Luhn check is treated as one.
+function looksLikeCardNumber(text){
+ for(const match of String(text||'').matchAll(/(?:\d[ -]?){12,18}\d/g)){
+  const digits=match[0].replace(/\D/g,'');
+  if(digits.length<13||digits.length>19||!/^[2-6]/.test(digits))continue;
+  let sum=0;
+  for(let i=0;i<digits.length;i++){let digit=Number(digits[digits.length-1-i]);if(i%2){digit*=2;if(digit>9)digit-=9;}sum+=digit;}
+  if(sum%10===0)return true;
+ }
+ return false;
+}
+
+// Links between records (an account, the card that pays for it, the number that verifies it) are symmetric.
+function linkAssets(assets,leftId,rightId){
+ const left=assets.find(asset=>asset.id===leftId),right=assets.find(asset=>asset.id===rightId);
+ if(!left||!right||left===right)return false;
+ let changed=false;
+ for(const [from,to] of [[left,right],[right,left]]){const links=Array.isArray(from.links)?from.links:[];if(!links.includes(to.id)){from.links=[...links,to.id];changed=true;}}
+ return changed;
+}
+function unlinkAssets(assets,leftId,rightId){
+ let changed=false;
+ for(const [from,to] of [[leftId,rightId],[rightId,leftId]]){const asset=assets.find(item=>item.id===from);if(Array.isArray(asset?.links)&&asset.links.includes(to)){asset.links=asset.links.filter(id=>id!==to);changed=true;}}
+ return changed;
+}
+function linkedAssets(assets,asset){const ids=new Set(Array.isArray(asset?.links)?asset.links:[]);return assets.filter(item=>item.id!==asset?.id&&(ids.has(item.id)||Array.isArray(item.links)&&item.links.includes(asset?.id)));}
+function removeLinksTo(assets,id){for(const asset of assets)if(Array.isArray(asset.links)&&asset.links.includes(id))asset.links=asset.links.filter(item=>item!==id);}
+
+if(typeof module!=='undefined')module.exports={guessAssetType,regionList,regionName,regionFlag,phoneParts,regionFromPhone,maskPhone,maskEmail,cardExpiry,expiryText,looksLikeCardNumber,linkAssets,unlinkAssets,linkedAssets,removeLinksTo,assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset,dateKinds,billingCycles,dayNumber,localDay,isoDay,addMonths,nextOccurrence,assetDateStatus,upcomingEvents,syncKey,assetSyncKey,isBlacklisted,findByExternal,findNameCollision,mergeCloudflare,mergeGitHub,applyCollision,parseSender,registrableDomain,cleanMerchant,findAmounts,findDates,findDomains,evidenceFacts,inferCycle,formatCost,matchAsset,buildCandidates,evidencePayload,parseAiItems,applyAiItem};

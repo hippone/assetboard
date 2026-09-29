@@ -162,7 +162,7 @@ final class BoardStore {
         database = try LocalDatabase(file: directory.appendingPathComponent("assetboard.sqlite"))
     }
     func validate(_ value: Any) throws -> [String: Any] {
-        let categories: Set<String> = ["domain", "server", "subscription", "database", "license", "repository", "deployment", "storage"]
+        let categories: Set<String> = ["bankcard", "phone", "server", "appleid", "google", "ai", "domain", "subscription", "database", "license", "repository", "deployment", "storage"]
         guard let board = value as? [String: Any],
               let blocks = board["blocks"] as? [[String: Any]],
               let assets = board["assets"] as? [[String: Any]],
@@ -1142,6 +1142,13 @@ if CommandLine.arguments.contains("--make-icon"), let target = CommandLine.argum
         try reopened.save(data)
         precondition(FileManager.default.fileExists(atPath: root.appendingPathComponent("board.previous.json").path))
         do { try reopened.save(["invalid": true]); fatalError("Invalid data accepted") } catch {}
+        do { try reopened.save(["blocks": [["id": "unknown"]], "assets": []]); fatalError("Unknown category accepted") } catch {}
+        let priority: [String: Any] = ["blocks": ["bankcard", "phone", "appleid", "google", "ai"].map { ["id": $0] },
+                                       "assets": [["id": "card", "name": "Card", "type": "bankcard", "last4": "4821", "links": ["apple"]], ["id": "apple", "name": "Apple ID", "type": "appleid", "links": ["card"]]]]
+        try reopened.save(priority)
+        let priorityCount = try reopened.database.assetCount()
+        precondition(priorityCount == 2, "Priority categories must save")
+        try reopened.save(data)
         let afterInvalid = try reopened.load()
         precondition((afterInvalid?["assets"] as? [[String: Any]])?.count == 1)
         let oldRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -1153,7 +1160,7 @@ if CommandLine.arguments.contains("--make-icon"), let target = CommandLine.argum
         let migratedCount = try migrated.database.assetCount()
         precondition((migratedBoard?["assets"] as? [[String: Any]])?.count == 1)
         precondition(migratedCount == 1)
-        print("PASS: SQLite save, JSON migration and backup, reopen, reject invalid data, evidence list payload and clipping")
+        print("PASS: SQLite save, JSON migration and backup, reopen, reject invalid data and unknown categories, priority categories, evidence list payload and clipping")
     } catch { fputs("Store test failed: \(error)\n", stderr); exit(1) }
 } else if CommandLine.arguments.contains("--test-cloudflare") {
     testCloudflare()

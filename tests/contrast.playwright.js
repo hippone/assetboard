@@ -59,6 +59,10 @@ async (page) => {
    await p.evaluate(()=>{$('#modal').close();confirmDialog('删除这条记录？','将删除「soon.dev」在 Assetboard 中的记录。','删除记录',true);});await audit(scheme+' confirm');
    await p.evaluate(()=>{$('#modal').close();themeDialog();});await audit(scheme+' theme');
    await p.evaluate(()=>{$('#modal').close();syncFollowUp('GitHub',{read:1,collisions:[{assetId:'a',name:'soon.dev',fields:{}}]},['Pages 权限不足']);});await audit(scheme+' sync follow-up');
+   await p.evaluate(()=>{$('#modal').close();state.blocks.unshift({id:'bankcard',width:50,collapsed:false,height:null},{id:'appleid',width:50,collapsed:false,height:null});state.assets.push({id:'card',type:'bankcard',name:'汇丰 One',provider:'汇丰香港',account:'',region:'HK',last4:'4821',network:'Visa',date:isoDay(localDay()+20),dateKind:'expire',art:'generic',source:'manual',links:['apple']},{id:'apple',type:'appleid',name:'美区主号',provider:'Apple',account:'me@icloud.com',region:'US',art:'generic',source:'manual',links:['card']});render();});await audit(scheme+' priority cards');
+   await p.locator('[data-asset="apple"] .card-open').click();await audit(scheme+' linked detail');
+   await p.locator('#detail [data-action="link-picker"]').click();await audit(scheme+' link picker');
+   await p.evaluate(()=>{$('#modal').close();closeDetail();assetForm('bankcard');});await audit(scheme+' bank card form');
   }
   if(failures.length)throw new Error(`${failures.length} low-contrast texts:\n`+failures.join('\n'));
   return 'PASS: text contrast in light and dark — '+counts.join(', ');
