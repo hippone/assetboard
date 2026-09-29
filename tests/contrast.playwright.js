@@ -1,0 +1,66 @@
+// Run with the browser tool's filename option. Checks every visible text node in light and dark schemes; never saves.
+async (page) => {
+ const p=await page.context().newPage();
+ const failures=[],counts=[];
+ const audit=async label=>{
+  const result=await p.evaluate(label=>{
+   const parse=value=>{const m=(value.match(/[\d.]+/g)||[0,0,0,0]).map(Number);return {r:m[0],g:m[1],b:m[2],a:m[3]??1};};
+   const over=(top,bottom)=>({r:top.r*top.a+bottom.r*(1-top.a),g:top.g*top.a+bottom.g*(1-top.a),b:top.b*top.a+bottom.b*(1-top.a),a:1});
+   const lum=({r,g,b})=>[r,g,b].map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4;}).reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);
+   const ratio=(a,b)=>{const [x,y]=[lum(a),lum(b)].sort((m,n)=>n-m);return (x+.05)/(y+.05);};
+   const root=document.querySelector('#modal[open]')||document.body,seen=new Set(),found=[];let checked=0;
+   const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+   while(walker.nextNode()){
+    const element=walker.currentNode.parentElement;
+    if(!walker.currentNode.textContent.trim()||!element||seen.has(element))continue;seen.add(element);
+    if(element.closest('svg,[hidden],option,[inert],button:disabled')||(root===document.body&&element.closest('dialog')))continue;
+    const style=getComputedStyle(element);if(style.visibility!=='visible'||!element.getClientRects().length)continue;
+    let opacity=1;for(let node=element;node;node=node.parentElement)opacity*=Number(getComputedStyle(node).opacity);
+    if(opacity<.5)continue;
+    const layers=[];for(let node=element;node;node=node.parentElement){const c=parse(getComputedStyle(node).backgroundColor);if(c.a>0){layers.push(c);if(c.a>=1)break;}}
+    let background={r:255,g:255,b:255,a:1};for(const layer of layers.reverse())background=over(layer,background);
+    const color=parse(style.color);color.a*=opacity;
+    const size=parseFloat(style.fontSize),bold=Number(style.fontWeight)>=700,need=size>=24||(size>=18.66&&bold)?3:4.5,value=ratio(over(color,background),background);
+    checked++;
+    if(value<need)found.push(`${label}: "${walker.currentNode.textContent.trim().slice(0,24)}" <${element.tagName.toLowerCase()}.${[...element.classList].join('.')}> ${value.toFixed(2)} < ${need}`);
+   }
+   return {checked,found};
+  },label);
+  failures.push(...result.found);counts.push(`${label} ${result.checked}`);
+ };
+ try {
+  for(const scheme of ['light','dark']){
+   await p.emulateMedia({colorScheme:scheme,reducedMotion:'reduce'});
+   await p.goto('http://127.0.0.1:4317/');
+   if(await p.evaluate(()=>document.documentElement.dataset.scheme)!==scheme)throw new Error('Scheme not applied: '+scheme);
+   await p.evaluate(()=>{save=()=>{};state={blocks:[],assets:[]};render();});
+   await audit(scheme+' welcome');
+   await p.evaluate(()=>{
+    const day=o=>isoDay(localDay()+o),repo=(n,i)=>({id:'r'+i,type:'repository',name:'me/'+n,provider:'GitHub',account:'me',purpose:'代码仓库',event:'私有仓库',source:'github',externalId:String(i),updatedAt:day(-i)+'T00:00:00Z',art:'generic'});
+    state={blocks:[{id:'domain',width:60,collapsed:false,height:null},{id:'subscription',width:40,collapsed:true,height:null},{id:'repository',width:100,collapsed:false,height:null}],assets:[
+     {id:'a',type:'domain',name:'soon.dev',provider:'Registrar',account:'个人',purpose:'主站',reason:'读者书签都指向这里',date:day(6),cost:'¥ 89 / 年',art:'note',source:'manual',url:'https://registrar.example.org'},
+     {id:'b',type:'domain',name:'late.dev',provider:'Registrar',account:'个人',purpose:'实验',date:day(-2),art:'generic',source:'manual'},
+     {id:'h',type:'domain',name:'quiet.dev',provider:'Registrar',account:'个人',purpose:'旧站',hiddenAt:'2026-01-01',art:'generic',source:'manual'},
+     {id:'c',type:'subscription',name:'Figma',provider:'Figma',account:'团队',purpose:'设计',date:day(20),dateKind:'renew',cycle:'monthly',art:'figma',source:'manual'},
+     ...['one','two','three','four','five','six','seven','eight'].map(repo)]};
+    evidenceRows=[{id:'g1',kind:'gmail',source:'Figma <billing@figma.com>',title:'Your plan renews',body:'Your Figma plan will renew on October 6, 2099. You will be charged $15.00/month.',payload:'{}'},{id:'g2',kind:'gmail',source:'News <hi@letters.io>',title:'Weekly',body:'hello',payload:'{}'}];evidenceVersion++;
+    render();
+   });
+   await audit(scheme+' board');
+   await p.locator('#edit').click();await audit(scheme+' editing');await p.locator('#edit').click();
+   await p.locator('[data-asset="a"] .card-open').click();await audit(scheme+' detail');
+   await p.locator('#detail [data-action="hide-asset"]').click();await audit(scheme+' toast');
+   await p.locator('[data-action="toggle-hidden"][data-id="domain"]').click();await audit(scheme+' hidden cards');
+   await p.locator('[data-action="toggle-hidden"][data-id="domain"]').click();
+   await p.locator('#search').fill('nothing-matches');await audit(scheme+' empty search');await p.locator('#search').fill('');
+   await p.evaluate(()=>inboxDialog(false));await audit(scheme+' inbox');
+   await p.locator('[data-action="candidate-review"]').first().click();await audit(scheme+' review');
+   await p.locator('[data-action="candidate-apply"]').click();await audit(scheme+' asset form');
+   await p.evaluate(()=>{$('#modal').close();confirmDialog('删除这条记录？','将删除「soon.dev」在 Assetboard 中的记录。','删除记录',true);});await audit(scheme+' confirm');
+   await p.evaluate(()=>{$('#modal').close();themeDialog();});await audit(scheme+' theme');
+   await p.evaluate(()=>{$('#modal').close();syncFollowUp('GitHub',{read:1,collisions:[{assetId:'a',name:'soon.dev',fields:{}}]},['Pages 权限不足']);});await audit(scheme+' sync follow-up');
+  }
+  if(failures.length)throw new Error(`${failures.length} low-contrast texts:\n`+failures.join('\n'));
+  return 'PASS: text contrast in light and dark — '+counts.join(', ');
+ } finally { await p.close(); }
+}

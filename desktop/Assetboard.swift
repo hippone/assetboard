@@ -246,8 +246,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             webView.setValue(false, forKey: "drawsBackground")
             window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1320, height: 900), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
             window.title = "Assetboard"
-            // The board currently supplies a light palette; match native controls/material.
-            window.appearance = NSAppearance(named: .aqua)
+            // No fixed appearance: the window, native glass and the page's prefers-color-scheme follow the system.
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
             window.toolbarStyle = .unified
@@ -1064,8 +1063,15 @@ func testWebView() {
         precondition(run("document.querySelector('#toast .toast-undo').click();String(state.assets.length)") == "1", "Toast undo must restore the record")
         let reading = run("window.assetboardAIResult({kind:'recognize',requestId:0,ok:true,evidenceId:'gmail-a',ai:{provider:'anthropic',model:'m',at:'t',text:'```json\\n{\"items\":[{\"name\":\"Figma Professional\",\"merchant\":\"Figma\",\"type\":\"subscription\",\"amount\":\"15\",\"currency\":\"USD\",\"cycle\":\"monthly\",\"date\":\"2099-10-06\",\"dateKind\":\"renew\"}]}\\n```'}});const c=candidates()[0];JSON.stringify([c.name,c.cost,c.date.source])")
         precondition(reading == "[\"Figma Professional\",\"$15 / 月\",\"ai\"]", "AI reading must parse in WebKit: " + reading)
+        webView.appearance = NSAppearance(named: .aqua)
+        wait { run("document.documentElement.dataset.scheme") == "light" }
+        let lightCanvas = run("getComputedStyle(document.body).backgroundColor")
+        webView.appearance = NSAppearance(named: .darkAqua)
+        wait { run("document.documentElement.dataset.scheme") == "dark" }
+        let darkCanvas = run("getComputedStyle(document.body).backgroundColor")
+        precondition(lightCanvas != darkCanvas && handler.actions.filter { $0 == "themeColor" }.count >= 2, "Page must follow the system appearance: \(lightCanvas) / \(darkCanvas)")
         precondition(run("JSON.stringify(window.__errors)") == "[]", "Page reported script errors")
-        print("PASS: WebKit board load, evidence bridge candidates, agenda, in-page delete confirmation, toast undo, AI reply parsing")
+        print("PASS: WebKit board load, evidence bridge candidates, agenda, in-page delete confirmation, toast undo, AI reply parsing, light/dark appearance")
     } catch { fputs("WebView test failed: \(error)\n", stderr); exit(1) }
 }
 
