@@ -47,7 +47,7 @@ async (page) => {
     render();
    });
    await audit(scheme+' board');
-   await p.locator('#edit').click();await audit(scheme+' editing');await p.locator('#edit').click();
+   await p.locator('.block.domain').hover();await audit(scheme+' hover handles');
    await p.locator('[data-asset="a"] .card-open').click();await audit(scheme+' detail');
    await p.locator('#detail [data-action="hide-asset"]').click();await audit(scheme+' toast');
    await p.locator('[data-action="toggle-hidden"][data-id="domain"]').click();await audit(scheme+' hidden cards');

@@ -22,12 +22,12 @@ window.assetboardConnectionState=connections=>{
  const githubStatus=$('#github-status');
  if(githubStatus)githubStatus.textContent=nativeStore.githubConnected?'已连接 · 可重新同步':nativeStore.keychainUnavailable?'本机钥匙串暂未响应，可使用 gh 同步':'尚未连接';
 };
-let state=structuredClone(seed),editing=false,query='',focusCategory=null,history=[],activeAsset=null,lastFocus=null,toastTimer,showHiddenBlocks=new Set(),assetFormSnapshot=null;
+let state=structuredClone(seed),query='',focusCategory=null,history=[],activeAsset=null,lastFocus=null,toastTimer,showHiddenBlocks=new Set(),assetFormSnapshot=null;
 let migratedLegacyData=false;
 try{const saved=nativeStore?nativeStore.data:JSON.parse(localStorage.getItem(key));if(saved&&Array.isArray(saved.blocks)&&Array.isArray(saved.assets)&&saved.blocks.every(b=>cats[b.id])){const migration=removeUntouchedDemo(saved);state=migration.board;migratedLegacyData=!!(migration.removed||migration.removedBlocks);}}catch{} if(!Array.isArray(state.deletedExternalIds))state.deletedExternalIds=[];
 let saveSequence=0;
-window.assetboardSaved=(sequence,success)=>{if(sequence!==saveSequence)return;$('#save-status').textContent=success?'已保存在此 Mac':'尚未保存';if(!success)toast('本机文件保存失败，请保留窗口后重试');};
-function save(){try{if(nativeStore){$('#save-status').textContent='正在保存到此 Mac…';window.webkit.messageHandlers.assetboard.postMessage({action:'save',sequence:++saveSequence,data:state});}else{localStorage.setItem(key,JSON.stringify(state));$('#save-status').textContent='已保存在此浏览器';}}catch{$('#save-status').textContent='尚未保存';toast('未能保存，请保留此窗口');}}
+window.assetboardSaved=(sequence,success)=>{if(sequence!==saveSequence)return;if(!success)toast('本机文件保存失败，请保留窗口后重试');};
+function save(){try{if(nativeStore)window.webkit.messageHandlers.assetboard.postMessage({action:'save',sequence:++saveSequence,data:state});else localStorage.setItem(key,JSON.stringify(state));}catch{toast('未能保存，请保留此窗口');}}
 function checkpoint(){history.push(JSON.stringify(state));if(history.length>25)history.shift();}
 function toast(message,undoable=false){clearTimeout(toastTimer);const offer=undoable&&history.length;$('#toast').innerHTML=`<span>${esc(message)}</span>${offer?'<button class="toast-undo" data-action="undo">撤销</button>':''}`;$('#toast').classList.add('show');toastTimer=setTimeout(()=>$('#toast').classList.remove('show'),offer?6000:3000);}
 function undo(){if(!history.length){toast('没有可撤销的修改');return;}state=JSON.parse(history.pop());save();if(activeAsset&&!state.assets.some(a=>a.id===activeAsset))closeDetail();else if(activeAsset)showDetail(activeAsset);render();toast('已撤销上一次修改');}
@@ -56,9 +56,9 @@ function matches(a){return !query||[a.name,a.provider,a.purpose,a.reason,a.accou
 function safeManagementUrl(value){try{const url=new URL(value);return ['https:','http:'].includes(url.protocol)&&url.hostname&&!url.username&&!url.password?url.href:null;}catch{return null;}}
 function displayName(a){return a.source==='github'&&a.name.includes('/')?a.name.slice(a.name.indexOf('/')+1):a.name;}
 function eventInfo(a){if(a.syncMissing)return {text:'本次未返回',cls:'warn'};const status=assetDateStatus(a);if(status.level==='none')return {text:a.event||'日期待补充',cls:''};return {text:status.label,cls:status.level==='overdue'?'warn overdue':status.level==='soon'?'warn':''};}
-function card(a,canDemote=false){const link=safeManagementUrl(a.url),event=eventInfo(a);return `<article class="asset-card" data-asset="${esc(a.id)}">${editing?`<button class="asset-drag-handle" draggable="true" aria-label="拖动 ${esc(a.name)} 排序，也可用方向键">⠿</button>`:''}<button class="card-open" data-action="detail" data-id="${esc(a.id)}" aria-label="查看 ${esc(a.name)} 详情">${art(a)}<div class="card-copy"><span class="card-name" title="${esc(a.name)}">${esc(displayName(a))}</span><span class="card-provider">${esc(a.provider)} · ${esc(a.account)}</span>${a.purpose===cats[a.type].name?'':`<span class="card-purpose">${esc(a.purpose||'用途待补充')}</span>`}</div></button><div class="card-foot"><span class="card-event ${event.cls}"><i class="dot"></i>${esc(event.text)}</span>${canDemote?`<button class="repo-swap" data-action="repo-swap" data-id="${esc(a.id)}" aria-label="将 ${esc(a.name)} 移到下方列表">移到列表</button>`:''}<button class="card-hide" data-action="hide-asset" data-id="${esc(a.id)}" aria-label="隐藏 ${esc(a.name)}">隐藏</button>${link&&new URL(link).hostname!=='example.com'?`<button class="open-link" data-action="external" data-id="${esc(a.id)}" aria-label="打开 ${esc(a.name)} 管理链接">↗</button>`:''}</div></article>`;}
+function card(a,canDemote=false){const link=safeManagementUrl(a.url),event=eventInfo(a);return `<article class="asset-card" data-asset="${esc(a.id)}"><button class="card-open" data-action="detail" data-id="${esc(a.id)}" aria-label="查看 ${esc(a.name)} 详情" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight">${art(a)}<div class="card-copy"><span class="card-name" title="${esc(a.name)}">${esc(displayName(a))}</span><span class="card-provider">${esc(a.provider)} · ${esc(a.account)}</span>${a.purpose===cats[a.type].name?'':`<span class="card-purpose">${esc(a.purpose||'用途待补充')}</span>`}</div></button><div class="card-foot"><span class="card-event ${event.cls}"><i class="dot"></i>${esc(event.text)}</span>${canDemote?`<button class="repo-swap" data-action="repo-swap" data-id="${esc(a.id)}" aria-label="将 ${esc(a.name)} 移到下方列表">移到列表</button>`:''}<button class="card-hide" data-action="hide-asset" data-id="${esc(a.id)}" aria-label="隐藏 ${esc(a.name)}">隐藏</button>${link&&new URL(link).hostname!=='example.com'?`<button class="open-link" data-action="external" data-id="${esc(a.id)}" aria-label="打开 ${esc(a.name)} 管理链接">↗</button>`:''}</div></article>`;}
 function flippedCard(a){return `<article class="asset-card flip-card" data-asset="${esc(a.id)}"><div class="flip-inner"><div class="flip-face front">${art(a)}<div class="card-copy"><span class="card-name">${esc(displayName(a))}</span></div></div><div class="flip-face back"><span class="flip-label">已隐藏</span><strong title="${esc(a.name)}">${esc(displayName(a))}</strong><span class="flip-note">仅在本机隐藏，可随时恢复；不表示退订或删除线上资源。</span><div class="flip-actions"><button class="button" data-action="restore-asset" data-id="${esc(a.id)}">恢复</button><button class="button" data-action="delete-asset" data-id="${esc(a.id)}">删除记录</button></div></div></div></article>`;}
-function compactRepository(a){return `<div class="compact-repo" data-asset="${esc(a.id)}">${editing?`<button class="asset-drag-handle" draggable="true" aria-label="拖动 ${esc(a.name)} 排序，也可用方向键">⠿</button>`:''}<button class="compact-repo-open" data-action="detail" data-id="${esc(a.id)}" aria-label="查看 ${esc(a.name)} 详情" title="${esc(a.name)}">${icon('repository')}<span>${esc(displayName(a))}</span></button><button class="repo-swap" data-action="repo-swap" data-id="${esc(a.id)}" aria-label="将 ${esc(a.name)} 显示为卡片">显示卡片</button></div>`;}
+function compactRepository(a){return `<div class="compact-repo" data-asset="${esc(a.id)}"><button class="compact-repo-open" data-action="detail" data-id="${esc(a.id)}" aria-label="查看 ${esc(a.name)} 详情" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight" title="${esc(a.name)}">${icon('repository')}<span>${esc(displayName(a))}</span></button><button class="repo-swap" data-action="repo-swap" data-id="${esc(a.id)}" aria-label="将 ${esc(a.name)} 显示为卡片">显示卡片</button></div>`;}
 function renderBlock(b){
  const viewingHidden=showHiddenBlocks.has(b.id);
  const typed=state.assets.filter(a=>a.type===b.id&&matches(a));
@@ -78,19 +78,19 @@ function renderBlock(b){
  const emptyHtml=viewingHidden?'<div class="block-empty">这个区块没有已隐藏的资产</div>':`<button type="button" class="block-empty" data-action="add-asset" data-id="${b.id}">添加你的第一项资产</button>`;
  const hiddenToggle=hiddenCount?`<button class="text-button hidden-toggle ${viewingHidden?'active':''}" data-action="toggle-hidden" data-id="${b.id}" aria-pressed="${viewingHidden}" title="${viewingHidden?'返回显示未隐藏资产':'查看本区块已隐藏资产'}">${viewingHidden?'返回':`已隐藏 (${hiddenCount})`}</button>`:'';
  return `<section class="block ${b.id} ${collapsed?'collapsed':''} ${fixed?'fixed':''} ${viewingHidden?'showing-hidden':''}" data-block="${b.id}" style="--width:${b.width};--compact-columns:${Math.min(2,Math.max(1,assets.length||1))}">
- <header class="block-head"><button class="drag-handle icon-button" draggable="true" aria-label="拖动${cats[b.id].name}区块">⠿</button>
- <button class="block-title" data-action="collapse" data-id="${b.id}" aria-expanded="${!collapsed}" aria-controls="cards-${b.id}" title="${collapsed?'展开资产卡片':'切换为图标与名称'}"><span>${cats[b.id].name}</span><span class="asset-count">${viewingHidden?hiddenCount:visible.length}</span><span class="chevron">${collapsed?'⌄':'⌃'}</span></button>
+ <header class="block-head">
+ <button class="block-title" data-action="collapse" data-id="${b.id}" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight" aria-expanded="${!collapsed}" aria-controls="cards-${b.id}" title="${collapsed?'展开资产卡片':'切换为图标与名称'}"><span>${cats[b.id].name}</span><span class="asset-count">${viewingHidden?hiddenCount:visible.length}</span><span class="chevron">${collapsed?'⌄':'⌃'}</span></button>
  ${summary&&!viewingHidden?`<span class="block-summary ${overdue?'overdue':''}">${summary}</span>`:''}
  <div class="block-actions">${hiddenToggle}<button class="text-button" data-action="all" data-id="${b.id}" aria-label="查看全部${cats[b.id].name}" hidden>查看全部</button><button class="icon-button" data-action="add-asset" data-id="${b.id}" aria-label="添加${cats[b.id].name}资产">＋</button><button class="icon-button" data-action="settings" data-id="${b.id}" aria-label="${cats[b.id].name}区块设置">⋯</button></div></header>
  <div class="cards" id="cards-${b.id}" ${fixed?`style="height:${b.height}px"`:''}>${cardsHtml||emptyHtml}</div>
- ${!collapsed?`<div class="resize-handle" role="separator" aria-label="调整${cats[b.id].name}区块大小"></div>`:''}</section>`;
+ ${!collapsed&&!query&&!focusCategory?'<div class="resize-edge" data-edge="x" aria-hidden="true"></div><div class="resize-edge" data-edge="y" aria-hidden="true"></div><div class="resize-edge" data-edge="xy" aria-hidden="true"></div>':''}</section>`;
 }
-let layoutFrame=0;
+let layoutFrame=0,renderedQuery='';
 function render(){
  if(typeof applyBoardTheme==='function'&&!themePreview)applyBoardTheme(state.theme);
  cancelAnimationFrame(layoutFrame);
  const previous=new Map([...document.querySelectorAll('.block')].map(el=>[el.dataset.block,el.getBoundingClientRect()]));
- document.body.classList.toggle('editing',editing);$('#editbar').hidden=!editing;$('#edit').textContent=editing?'完成':'调整布局';$('#edit').setAttribute('aria-pressed',String(editing));$('#undo').disabled=!history.length;
+ const previousCards=query===renderedQuery?new Map([...document.querySelectorAll('#board [data-asset]')].map(el=>{const block=el.closest('.block');return [el.dataset.asset,{rect:el.getBoundingClientRect(),block:block?.dataset.block,origin:previous.get(block?.dataset.block)}];})):new Map();renderedQuery=query;
  $('#board').classList.toggle('full-view',!!focusCategory);$('#focusbar').hidden=!focusCategory;$('#focusbar').innerHTML=focusCategory?`<button class="button" data-action="back">← 返回大板</button><strong>${esc(cats[focusCategory].name)} · 全部资产</strong>`:'';
  const blocks=query?Object.keys(cats).filter(id=>state.assets.some(a=>a.type===id&&matches(a))).map(id=>state.blocks.find(b=>b.id===id)||{id,width:50}):state.blocks.filter(b=>!focusCategory||b.id===focusCategory);
  const welcome=!query&&state.assets.length===0;
@@ -105,17 +105,13 @@ function render(){
  layoutFrame=requestAnimationFrame(()=>{
   layoutFrame=0;updateOverflow();
   if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;
-  const positions=[...document.querySelectorAll('.block')].map(el=>({el,from:previous.get(el.dataset.block),to:el.getBoundingClientRect()}));
-  for(const {el,from,to} of positions){
-   if(!from||!to.width||!to.height)continue;
-   const dx=from.left-to.left,dy=from.top-to.top,sx=from.width/to.width,sy=from.height/to.height;
-   if(Math.abs(dx)>1||Math.abs(dy)>1||Math.abs(from.width-to.width)>1||Math.abs(from.height-to.height)>1){
-    el.animate([{transformOrigin:'0 0',transform:`translate(${dx}px,${dy}px) scale(${sx},${sy})`},{transformOrigin:'0 0',transform:'none'}],{duration:240,easing:'cubic-bezier(.22,1,.36,1)'});
-   }
-  }
+  const blocks=[...document.querySelectorAll('.block')].map(el=>({el,to:el.getBoundingClientRect()})),cards=[...document.querySelectorAll('#board [data-asset]')].map(el=>{const block=el.closest('.block');return {el,to:el.getBoundingClientRect(),block:block?.dataset.block,origin:block?.getBoundingClientRect()};});
+  // Positions slide; sizes change in place so text is never stretched. Cards slide only within their block and only when their size is unchanged.
+  for(const {el,to} of blocks){const from=previous.get(el.dataset.block);if(from&&to.width)slideFrom(el,from,240);}
+  for(const {el,to,block,origin} of cards){const was=previousCards.get(el.dataset.asset);if(!was||was.block!==block||!was.origin||Math.abs(was.rect.width-to.width)>2||Math.abs(was.rect.height-to.height)>2)continue;const dx=(was.rect.left-was.origin.left)-(to.left-origin.left),dy=(was.rect.top-was.origin.top)-(to.top-origin.top);if(Math.abs(dx)>=1||Math.abs(dy)>=1)el.animate([{transform:`translate(${dx}px,${dy}px)`},{transform:'none'}],{duration:240,easing:settleEase});}
  });
 }
-function syncToolbar(){const pending=pendingCount();$('#inbox-button').textContent=pending?`待确认 ${pending}`:'待确认';if(nativeStore)window.webkit.messageHandlers.assetboard.postMessage({action:'toolbarState',editing,query,pending});}
+function syncToolbar(){const pending=pendingCount();$('#inbox-button').textContent=pending?`待确认 ${pending}`:'待确认';if(nativeStore)window.webkit.messageHandlers.assetboard.postMessage({action:'toolbarState',query,pending});}
 function agendaItem({asset,status}){return `<button class="agenda-item ${status.level}" data-action="detail" data-id="${esc(asset.id)}"><strong>${esc(displayName(asset))}</strong><span>${esc(status.label)}${asset.cost&&asset.cost!=='未知'?' · '+esc(asset.cost):''}</span>${asset.reason?`<small>${esc(asset.reason)}</small>`:''}</button>`;}
 function renderAgenda(){
  const bar=$('#agenda'),events=upcomingEvents(state.assets),dated=state.assets.some(a=>!isHidden(a)&&dayNumber(a.date)!==null);
@@ -126,7 +122,7 @@ function renderAgenda(){
 }
 function agendaAll(){const events=upcomingEvents(state.assets,new Date(),Infinity);modal('全部日期',events.length?`<div class="agenda-list">${events.map(agendaItem).join('')}</div><p class="form-note">按日期排序，已隐藏的资产不在此列。设为每月或每年重复的日期会自动顺延到下一次。</p>`:'<p class="form-note">还没有资产记录日期。在资产资料中填写“下一日期”，或从待确认资料中补充。</p>');}
 function updateOverflow(){
- const grids=[...document.querySelectorAll('.block.fixed')].map(block=>{const grid=block.querySelector('.cards'),cards=[...grid.querySelectorAll('.asset-card')],style=getComputedStyle(grid),bottom=parseFloat(style.paddingBottom)||0;return {block,grid,cards,bottom,minHeight:(cards[0]?.offsetHeight||100)+(parseFloat(style.paddingTop)||0)+bottom};});
+ const grids=[...document.querySelectorAll('.block.fixed')].map(block=>{const grid=block.querySelector('.cards'),cards=[...grid.querySelectorAll('.asset-card:not(.is-dragging)')],style=getComputedStyle(grid),bottom=parseFloat(style.paddingBottom)||0;return {block,grid,cards,bottom,minHeight:(cards[0]?.offsetHeight||100)+(parseFloat(style.paddingTop)||0)+bottom};});
  for(const {grid,minHeight} of grids){const value=minHeight+'px';if(grid.style.minHeight!==value)grid.style.minHeight=value;}
  const visibility=grids.map(item=>{const limit=item.grid.offsetTop+item.grid.clientHeight-item.bottom+1;return {...item,hidden:item.cards.map(card=>card.offsetTop+card.offsetHeight>limit)};});
  for(const {block,cards,hidden} of visibility){cards.forEach((card,i)=>{const value=hidden[i]?'hidden':'';if(card.style.visibility!==value)card.style.visibility=value;if(card.inert!==hidden[i])card.inert=hidden[i];});const all=block.querySelector('[data-action="all"]');all.hidden=!hidden.some(Boolean);all.title='还有资产未显示，查看全部';}
@@ -302,7 +298,7 @@ function resolveCandidate(key,status,assetId,index=null){
  return c.pendingIds.length;
 }
 document.addEventListener('submit',e=>{if(e.target.id!=='paste-form')return;e.preventDefault();const text=$('#paste-text').value.trim();if(!text){$('#paste-text').focus();return;}pasteRow={id:'paste-'+Date.now(),kind:'paste',source:'',title:text.split('\n')[0].slice(0,60),body:text,importedAt:new Date().toISOString()};pasteRecorded=new Set();candidateReview(buildPasteCandidate());});
-function settings(id){const b=state.blocks.find(b=>b.id===id);if(!b)return;modal(`${cats[id].name} · 区块设置`,`<div class="form"><label>区块宽度 · <span id="range-value">${Math.round(b.width)}%</span><input id="block-width" type="range" min="25" max="100" value="${b.width}" aria-label="区块宽度"></label><label>展示高度<select id="block-height"><option value="">随内容自适应</option><option value="240" ${b.height===240?'selected':''}>约一行卡片</option><option value="480" ${b.height===480?'selected':''}>约两行卡片</option></select></label><p class="form-note">这里是键盘与触屏的快捷设置。布局编辑时可直接拖动区块右下角，自由调整宽高。</p><button class="button primary" data-action="save-settings" data-id="${id}">应用设置</button></div><div class="settings-actions"><button class="button" data-action="move-up" data-id="${id}">向前移动</button><button class="button" data-action="move-down" data-id="${id}">向后移动</button><button class="button" data-action="remove-block" data-id="${id}">从大板移除</button></div><p class="form-note">移除区块不删除资产，重新添加该类别即可找回。</p>`);$('#block-width').oninput=e=>$('#range-value').textContent=e.target.value+'%';}
+function settings(id){const b=state.blocks.find(b=>b.id===id);if(!b)return;modal(`${cats[id].name} · 区块设置`,`<div class="form"><label>区块宽度 · <span id="range-value">${Math.round(b.width)}%</span><input id="block-width" type="range" min="25" max="100" value="${b.width}" aria-label="区块宽度"></label><label>展示高度<select id="block-height"><option value="">随内容自适应</option><option value="240" ${b.height===240?'selected':''}>约一行卡片</option><option value="480" ${b.height===480?'selected':''}>约两行卡片</option></select></label><p class="form-note">这里是键盘与触屏的快捷设置。在大板上也可以直接拖动区块的右边或下边调整大小，拖动标题栏移动位置；选中标题后按 ⌥ + 方向键同样可以移动。</p><button class="button primary" data-action="save-settings" data-id="${id}">应用设置</button></div><div class="settings-actions"><button class="button" data-action="move-up" data-id="${id}">向前移动</button><button class="button" data-action="move-down" data-id="${id}">向后移动</button><button class="button" data-action="remove-block" data-id="${id}">从大板移除</button></div><p class="form-note">移除区块不删除资产，重新添加该类别即可找回。</p>`);$('#block-width').oninput=e=>$('#range-value').textContent=e.target.value+'%';}
 document.addEventListener('click',e=>{const button=e.target.closest('[data-action]');if(!button)return;const {action,id}=button.dataset;
  if(action==='detail'){if($('#modal').open)$('#modal').close();showDetail(id);}
  else if(action==='undo')undo();
@@ -346,51 +342,206 @@ document.addEventListener('click',e=>{const button=e.target.closest('[data-actio
  else if(action==='restore-asset'){const a=state.assets.find(a=>a.id===id);if(!a)return;checkpoint();delete a.hiddenAt;save();if(activeAsset===id)showDetail(id);render();toast('已恢复显示',true);}
  else if(action==='delete-asset'){const a=state.assets.find(a=>a.id===id);if(!a)return;confirmDialog('删除这条记录？',`将删除「${a.name}」在 Assetboard 中的记录。\n不会取消订阅，也不会删除 Cloudflare / GitHub 等平台上的资源；之后同步也不会自动加回。`,'删除记录',true).then(ok=>{const a=state.assets.find(a=>a.id===id);if(!ok||!a)return;checkpoint();rememberDeleted(a);state.assets=state.assets.filter(x=>x.id!==id);if(Array.isArray(state.featuredRepositoryIds))state.featuredRepositoryIds=state.featuredRepositoryIds.filter(x=>x!==id);if(state.cardOrder){for(const key of Object.keys(state.cardOrder))state.cardOrder[key]=(state.cardOrder[key]||[]).filter(x=>x!==id);}if(activeAsset===id)closeDetail();save();render();toast('记录已删除 · 同步不会自动加回',true);});}
  else if(action==='remove-block'){checkpoint();state.blocks=state.blocks.filter(b=>b.id!==id);showHiddenBlocks.delete(id);if(focusCategory===id)focusCategory=null;save();$('#modal').close();render();toast('区块已移除，资产仍被保留',true);}
- else if(action==='move-up'||action==='move-down'){const index=state.blocks.findIndex(b=>b.id===id),target=index+(action==='move-up'?-1:1);if(index>=0&&target>=0&&target<state.blocks.length){checkpoint();[state.blocks[target],state.blocks[index]]=[state.blocks[index],state.blocks[target]];save();render();toast(action==='move-up'?'已向前移动':'已向后移动',true);}else toast(action==='move-up'?'已经是第一个区块':'已经是最后一个区块');$('#modal').close();}
+ else if(action==='move-up'||action==='move-down'){moveBlock(id,action==='move-up'?-1:1);$('#modal').close();}
 });
 document.addEventListener('submit',async e=>{if(e.target.id!=='asset-form')return;e.preventDefault();const form=e.target,data=new FormData(form),name=String(data.get('name')).trim(),url=String(data.get('url')).trim(),file=form.elements.icon.files[0];if(!name)return;if(url&&!safeManagementUrl(url)){form.elements.url.setCustomValidity('请输入不含账号密码的 http 或 https 链接');form.elements.url.reportValidity();return;}form.elements.url.setCustomValidity('');if(file&&(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>256*1024)){toast('图标需为 PNG、JPEG 或 WebP，且不超过 256 KB');return;}const submit=form.querySelector('[type="submit"]');submit.disabled=true;try{const iconData=file?await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);}):null;const id=form.dataset.id,chosen=String(data.get('type')||''),type=cats[chosen]?chosen:form.dataset.type,candidateKey=form.dataset.candidate,candidateItem=form.dataset.item===''||form.dataset.item===undefined?null:Number(form.dataset.item),date=String(data.get('date')),dateKind=dateKinds[data.get('dateKind')]?String(data.get('dateKind')):'expire',cycle=billingCycles[data.get('cycle')]?String(data.get('cycle')):'',fields={name,provider:String(data.get('provider')).trim()||'平台待补充',account:String(data.get('account')).trim(),purpose:String(data.get('purpose')).trim(),reason:String(data.get('reason')||'').trim(),date,dateKind,cycle,cost:String(data.get('cost')).trim()||'未知',notes:String(data.get('notes')).trim(),url:url?safeManagementUrl(url):''},event=date?`${date} ${dateKinds[dateKind].future}`:'日期待补充';checkpoint();let assetId=id;if(id){const a=state.assets.find(a=>a.id===id);const synced=['cloudflare','github'].includes(a.source);Object.assign(a,fields);if(file)a.iconData=iconData;else if(data.has('removeIcon'))delete a.iconData;if(!synced){a.source='manual';a.type=type;a.event=event;}delete a.warn;ensureBlock(state,a.type);}else{assetId='asset-'+crypto.randomUUID();state.assets.push({id:assetId,type,...fields,iconData,source:'manual',event,art:'generic'});ensureBlock(state,type);}const resolved=candidateKey?resolveCandidate(candidateKey,id?'linked':'created',assetId,candidateItem):0;assetFormSnapshot=null;save();render();if(id&&activeAsset===id)showDetail(id);const source=candidateKey&&findCandidate(candidateKey),items=source?.ai?.items||[],recorded=items.length>1?recordedItems(source):[],next=items.length>1?items.findIndex((_,index)=>!recorded.includes(index)):-1;if(next>=0){candidateReview(source,next);toast(`已记录，这份资料里还有 ${items.length-recorded.length} 项`,true);}else if(candidateKey&&nativeStore&&pendingCount()){inboxDialog(false);toast(resolved?'已记录，继续核对下一组':'已记录',true);}else{$('#modal').close();toast(id?'资料已更新':'资产已添加',true);}}catch{toast('读取图标失败，请重试');}finally{submit.disabled=false;}});
-$('#edit').onclick=()=>{editing=!editing;if(editing){focusCategory=null;query='';$('#search').value='';closeDetail();}render();};
 $('#add-block').onclick=addBlock;$('#close-modal').onclick=()=>requestCloseModal();$('#close-detail').onclick=closeDetail;$('#modal').addEventListener('cancel',e=>{if(isAssetFormDirty()){e.preventDefault();requestCloseModal();}else assetFormSnapshot=null;});
 $('#search').oninput=e=>{query=e.target.value;focusCategory=null;render();};$('#clear-search').onclick=()=>{if(query){$('#search').value='';query='';render();}else addBlock();};
-$('#undo').onclick=undo;
-document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();$('#search').focus();}if((e.metaKey||e.ctrlKey)&&!e.shiftKey&&!e.altKey&&e.key.toLowerCase()==='z'&&!$('#modal').open&&!e.target.closest?.('input,textarea,select,[contenteditable]')){e.preventDefault();undo();}if(e.key==='Escape'&&!$('#modal').open){if(!$('#detail').hidden)closeDetail();else if(focusCategory){focusCategory=null;render();}else if(editing){editing=false;render();}}});
-let dragId=null,assetDragElement=null;
+document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();$('#search').focus();}if((e.metaKey||e.ctrlKey)&&!e.shiftKey&&!e.altKey&&e.key.toLowerCase()==='z'&&!$('#modal').open&&!e.target.closest?.('input,textarea,select,[contenteditable]')){e.preventDefault();undo();}if(e.key==='Escape'&&!$('#modal').open){if(!$('#detail').hidden)closeDetail();else if(focusCategory){focusCategory=null;render();}}});
+// Direct manipulation, no layout mode: block headers move blocks, cards move themselves, block edges resize. Mouse starts after 5px, touch after a long press; Esc cancels; ⌥ + arrows is the keyboard path.
+let gesture=null,suppressClick=false,floatTip=null,snapGuide=null;
+const settleEase='cubic-bezier(.22,1,.36,1)';
+function reduceMotion(){return matchMedia('(prefers-reduced-motion: reduce)').matches;}
+function docRect(el){const r=el.getBoundingClientRect();return {left:r.left+scrollX,top:r.top+scrollY,right:r.right+scrollX,bottom:r.bottom+scrollY,width:r.width,height:r.height};}
+function inside(r,x,y){return !!r&&x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom;}
+function slideFrom(el,from,duration=220){if(!from)return;const to=el.getBoundingClientRect(),dx=from.left-to.left,dy=from.top-to.top;if(Math.abs(dx)>=1||Math.abs(dy)>=1)el.animate([{transform:`translate(${dx}px,${dy}px)`},{transform:'none'}],{duration,easing:settleEase});}
+function showTip(text,x=0,y=0,tone='',clear=null){if(!floatTip){floatTip=document.createElement('div');floatTip.setAttribute('aria-hidden','true');document.body.append(floatTip);}floatTip.hidden=!text;if(!text)return;floatTip.className=`float-tip ${tone}`;floatTip.textContent=text;const w=floatTip.offsetWidth,h=floatTip.offsetHeight;let left=x+14,top=y+20;if(clear){left=x-w/2;top=clear.bottom+8;if(top+h>innerHeight-8)top=clear.top-h-8;}floatTip.style.left=Math.max(8,Math.min(innerWidth-w-8,left))+'px';floatTip.style.top=Math.max(8,Math.min(innerHeight-h-8,top))+'px';}
+function showGuide(x){if(!snapGuide){snapGuide=document.createElement('div');snapGuide.className='snap-guide';document.body.append(snapGuide);}snapGuide.hidden=x===null;if(x===null)return;const r=$('#board').getBoundingClientRect(),top=Math.max(0,r.top);snapGuide.style.cssText=`left:${Math.round(x)}px;top:${top}px;height:${Math.max(0,Math.min(innerHeight,r.bottom)-top)}px`;}
+function saveCardOrder(category,next){const existing=state.cardOrder?.[category]||[];checkpoint();state.cardOrder ||= {};state.cardOrder[category]=[...next,...existing.filter(id=>!next.includes(id))];save();}
 function commitAssetOrder(source,target,after=false){
  if(!source||!target||source===target||source.parentElement!==target.parentElement)return false;
- const block=source.closest('.block'),category=block?.dataset.block;
- if(!category||target.closest('.block')!==block)return false;
- const current=[...source.parentElement.children].filter(element=>element.dataset.asset).map(element=>element.dataset.asset);
- const next=moveAsset(current,source.dataset.asset,target.dataset.asset,after);
- if(next===current||next.every((id,index)=>id===current[index]))return false;
- checkpoint();state.cardOrder ||= {};
- const existing=state.cardOrder[category]||[];
- state.cardOrder[category]=[...next,...existing.filter(id=>!next.includes(id))];
- save();render();return true;
+ const category=source.closest('.block')?.dataset.block;if(!category)return false;
+ const current=[...source.parentElement.children].filter(n=>n.dataset.asset).map(n=>n.dataset.asset),next=moveAsset(current,source.dataset.asset,target.dataset.asset,after);
+ if(next.every((id,i)=>id===current[i]))return false;
+ saveCardOrder(category,next);render();return true;
 }
-document.addEventListener('dragstart',e=>{
- if(!editing)return;
- const assetHandle=e.target.closest('.asset-drag-handle');
- if(assetHandle){assetDragElement=assetHandle.closest('[data-asset]');e.dataTransfer.setData('text/plain',assetDragElement.dataset.asset);e.dataTransfer.effectAllowed='move';assetDragElement.classList.add('asset-dragging');return;}
- if(!e.target.closest('.drag-handle'))return;
- dragId=e.target.closest('.block').dataset.block;e.dataTransfer.setData('text/plain',dragId);e.dataTransfer.effectAllowed='move';e.target.closest('.block').classList.add('dragging');
+function moveBlock(id,step){const index=state.blocks.findIndex(b=>b.id===id),target=index+step;if(index<0||target<0||target>=state.blocks.length){toast(step<0?'已经是第一个区块':'已经是最后一个区块');return false;}checkpoint();[state.blocks[target],state.blocks[index]]=[state.blocks[index],state.blocks[target]];save();render();toast(step<0?'已向前移动':'已向后移动',true);return true;}
+function dragSource(target){
+ if(query)return null;
+ const card=target.closest('#board [data-asset]:not(.flip-card)');
+ if(card)return {kind:'card',el:card,container:card.parentElement,block:card.closest('.block')};
+ const head=!focusCategory&&target.closest('#board .block-head');
+ return head?{kind:'block',el:head.closest('.block'),container:$('#board')}:null;
+}
+function releaseGesture(){const g=gesture;if(!g)return;clearTimeout(g.timer);cancelAnimationFrame(g.frame);removeEventListener('pointermove',dragMove);removeEventListener('pointerup',dragEnd);removeEventListener('pointercancel',dragEnd);gesture=null;}
+function slotOrder(g){const key=g.kind==='block'?'block':'asset';return [...g.container.children].filter(n=>n===g.slot||n!==g.el&&n.dataset[key]).map(n=>(n===g.slot?g.el:n).dataset[key]);}
+function measureItems(g){const key=g.kind==='block'?'block':'asset';g.items=[...g.container.children].filter(n=>n!==g.el&&n!==g.slot&&n.dataset[key]&&n.style.visibility!=='hidden').map(n=>({el:n,r:docRect(n)}));g.slotRect=docRect(g.slot);g.box=docRect(g.container);}
+function beginDrag(g){
+ const el=g.el;if(!el.isConnected){releaseGesture();return;}
+ clearTimeout(g.timer);g.active=true;cancelAnimationFrame(layoutFrame);
+ document.querySelectorAll('#board .block,#board [data-asset]').forEach(n=>n.getAnimations().forEach(a=>a.cancel()));
+ const r=el.getBoundingClientRect();g.rect=r;g.dx=g.x0-r.left;g.dy=g.y0-r.top;
+ g.slot=document.createElement('div');g.slot.className=`drop-slot ${g.kind}-slot`;g.slot.style.width=r.width+'px';g.slot.style.height=r.height+'px';el.before(g.slot);
+ el.classList.add('is-dragging');document.body.classList.add('drag-active');
+ Object.assign(el.style,{position:'fixed',left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px',margin:'0',transformOrigin:`${g.dx}px ${g.dy}px`});
+ const placed=el.getBoundingClientRect();if(Math.abs(placed.left-r.left)>.5||Math.abs(placed.top-r.top)>.5){el.style.left=2*r.left-placed.left+'px';el.style.top=2*r.top-placed.top+'px';}
+ if(g.kind==='card'){g.asset=state.assets.find(a=>a.id===el.dataset.asset);updateOverflow();g.homeRect=docRect(g.block);g.others=focusCategory?[]:[...document.querySelectorAll('#board .block')].filter(n=>n!==g.block).map(n=>({el:n,r:docRect(n)}));}
+ g.initial=slotOrder(g);measureItems(g);
+ const bar=document.querySelector('.toolbar');g.top=bar&&getComputedStyle(bar).display!=='none'?Math.max(0,bar.getBoundingClientRect().bottom):0;
+ try{$('#board').setPointerCapture(g.id);}catch{}
+ getSelection()?.removeAllRanges();
+ if(reduceMotion())el.classList.add('lifted');else requestAnimationFrame(()=>el.classList.add('lifted'));
+ followPointer(g);g.frame=requestAnimationFrame(()=>autoScroll(g));
+}
+function followPointer(g){g.el.style.translate=`${g.x-g.dx-g.rect.left}px ${g.y-g.dy-g.rect.top}px`;}
+function setCrossTarget(g,block){
+ if(g.cross===block)return;
+ g.cross?.classList.remove('drop-into','drop-refused');g.cross=block;g.crossAllowed=!!block&&!['cloudflare','github'].includes(g.asset?.source);
+ block?.classList.add(g.crossAllowed?'drop-into':'drop-refused');g.el.classList.toggle('refused',!!block&&!g.crossAllowed);
+}
+function moveSlot(g,mode,ref){
+ const items=g.items.map(it=>it.el),near=(n,dir)=>{let s=n[dir];while(s&&!items.includes(s))s=s[dir];return s;};
+ if(mode==='home'?g.slot.nextElementSibling===g.el:mode==='before'?near(g.slot,'nextElementSibling')===ref:near(g.slot,'previousElementSibling')===ref)return;
+ const motion=!reduceMotion(),all=[...g.container.children].filter(n=>n!==g.el&&n!==g.slot),from=motion?new Map(all.map(n=>[n,n.getBoundingClientRect()])):null;
+ if(motion)all.forEach(n=>n.getAnimations().forEach(a=>a.cancel()));
+ if(mode==='home')g.el.before(g.slot);else if(mode==='before')ref.before(g.slot);else ref.after(g.slot);
+ g.lockUntil=performance.now()+60;
+ if(g.kind==='card')updateOverflow();
+ measureItems(g);
+ if(motion)for(const n of all)slideFrom(n,from.get(n));
+}
+function placeSlot(g){
+ if(performance.now()<(g.lockUntil||0))return;
+ const x=g.x+scrollX,y=g.y+scrollY;
+ if(g.kind==='card'){const home=inside(g.homeRect,x,y),over=home?null:g.others.find(o=>inside(o.r,x,y))?.el||null;setCrossTarget(g,over);if(!home){moveSlot(g,'home');return;}}
+ else if(x<g.box.left-48||x>g.box.right+48||y<g.box.top-48||y>g.box.bottom+48){moveSlot(g,'home');return;}
+ if(inside(g.slotRect,x,y))return;
+ let best=null,distance=Infinity;
+ for(const it of g.items){const dx=Math.max(it.r.left-x,0,x-it.r.right),dy=Math.max(it.r.top-y,0,y-it.r.bottom),d=dx*dx+dy*dy;if(d<distance){distance=d;best=it;}}
+ if(!best)return;
+ const vertical=best.r.width>g.box.width*.7,before=vertical?y<best.r.top+best.r.height/2:x<best.r.left+best.r.width/2;
+ moveSlot(g,before?'before':'after',best.el);
+}
+function dragTip(g){showTip(g.cross?g.crossAllowed?`移到「${cats[g.cross.dataset.block].name}」`:'同步来的资产不能改类别':'',g.x,g.y,g.crossAllowed?'':'refused',g.el.getBoundingClientRect());}
+function autoScroll(g){
+ if(gesture!==g||!g.active)return;
+ const zone=60,v=g.y<g.top+zone?-(g.top+zone-g.y)/zone:g.y>innerHeight-zone?(g.y-innerHeight+zone)/zone:0;
+ if(v){const before=scrollY;scrollBy(0,Math.sign(v)*Math.min(1,v*v)*20);if(scrollY!==before)placeSlot(g);}
+ g.frame=requestAnimationFrame(()=>autoScroll(g));
+}
+function dragMove(e){
+ const g=gesture;if(!g||e.pointerId!==g.id)return;g.x=e.clientX;g.y=e.clientY;
+ if(!g.active){const moved=Math.hypot(g.x-g.x0,g.y-g.y0);if(g.touch){if(moved>8)releaseGesture();}else if(moved>5)beginDrag(g);return;}
+ if(!g.el.isConnected){abortDrag(g);return;}
+ followPointer(g);placeSlot(g);dragTip(g);
+}
+function dragEnd(e){const g=gesture;if(!g||e.pointerId!==g.id)return;if(!g.active){releaseGesture();return;}suppressClick=true;setTimeout(()=>suppressClick=false,0);const cancelled=e.type==='pointercancel';if(!cancelled&&g.el.isConnected){g.x=e.clientX;g.y=e.clientY;g.lockUntil=0;placeSlot(g);}dropDrag(g,cancelled);}
+function cleanupDrag(g){
+ showTip('');document.body.classList.remove('drag-active');g.cross?.classList.remove('drop-into','drop-refused');
+ g.el.classList.remove('is-dragging','lifted','settling','refused');for(const p of ['position','left','top','width','height','margin','translate','transformOrigin'])g.el.style[p]='';
+ if(g.slot.isConnected)g.slot.replaceWith(g.el);
+ if(gesture===g)gesture=null;
+}
+function abortDrag(g){releaseGesture();cleanupDrag(g);g.slot.remove();render();}
+function dropDrag(g,cancelled=false){
+ cancelAnimationFrame(g.frame);removeEventListener('pointermove',dragMove);removeEventListener('pointerup',dragEnd);removeEventListener('pointercancel',dragEnd);
+ g.active=false;showTip('');
+ const cross=!cancelled&&g.cross&&g.crossAllowed?g.cross.dataset.block:null;
+ if(cross){finishCross(g,cross);return;}
+ if(cancelled||g.cross)moveSlot(g,'home');
+ g.cross?.classList.remove('drop-into','drop-refused');
+ const next=slotOrder(g),changed=next.some((id,i)=>id!==g.initial[i]);
+ const done=()=>{
+  if(gesture!==g)return;cleanupDrag(g);
+  if(changed&&g.kind==='block'&&next.length===state.blocks.length){checkpoint();state.blocks=next.map(id=>state.blocks.find(b=>b.id===id));save();}
+  else if(changed&&g.kind==='card')saveCardOrder(g.block.dataset.block,next);
+  render();if(changed)toast(g.kind==='block'?'区块已移动':'顺序已调整',true);
+ };
+ if(reduceMotion()){done();return;}
+ const to=g.slot.getBoundingClientRect();g.el.classList.add('settling');g.el.classList.remove('lifted','refused');g.el.style.translate=`${to.left-g.rect.left}px ${to.top-g.rect.top}px`;setTimeout(done,260);
+}
+function finishCross(g,type){
+ const a=g.asset,ghost=g.el.getBoundingClientRect(),target=g.cross;
+ cleanupDrag(g);
+ if(!a||!cats[type]){render();return;}
+ checkpoint();a.type=type;
+ if(state.cardOrder){for(const key of Object.keys(state.cardOrder))state.cardOrder[key]=(state.cardOrder[key]||[]).filter(id=>id!==a.id);if(state.cardOrder[type]?.length)state.cardOrder[type].push(a.id);}
+ save();render();
+ const moved=document.querySelector(`#board [data-asset="${CSS.escape(a.id)}"]`);
+ if(moved&&!reduceMotion()){
+  if(moved.style.visibility==='hidden'){const block=moved.closest('.block');block.classList.add('drop-flash');setTimeout(()=>block.classList.remove('drop-flash'),900);}
+  else{const to=moved.getBoundingClientRect();moved.animate([{transform:`translate(${ghost.left+ghost.width/2-to.left-to.width/2}px,${ghost.top+ghost.height/2-to.top-to.height/2}px)`,opacity:.5},{transform:'none',opacity:1}],{duration:320,easing:settleEase});}
+ }
+ toast(`已将「${displayName(a)}」移到「${cats[type].name}」`,true);
+}
+function rubber(value,min,max){const damp=over=>(1-1/(over*.55/120+1))*120;return value<min?min-damp(min-value):value>max?max+damp(value-max):value;}
+function startResize(e,edge){
+ const block=edge.closest('.block'),b=state.blocks.find(x=>x.id===block?.dataset.block);if(!b||query||focusCategory)return;
+ e.preventDefault();cancelAnimationFrame(layoutFrame);
+ const board=$('#board'),blocks=[...board.querySelectorAll('.block')];blocks.forEach(n=>n.getAnimations().forEach(a=>a.cancel()));
+ const axis=edge.dataset.edge,bs=getComputedStyle(board),gap=parseFloat(bs.columnGap)||0,inner=board.clientWidth-parseFloat(bs.paddingLeft)-parseFloat(bs.paddingRight),px=w=>w/100*(inner+gap)-gap;
+ const rect=block.getBoundingClientRect(),grid=block.querySelector('.cards'),gs=getComputedStyle(grid),rowH=grid.querySelector('[data-asset]')?.offsetHeight||0,rowGap=parseFloat(gs.rowGap)||0,pad=(parseFloat(gs.paddingTop)||0)+(parseFloat(gs.paddingBottom)||0);
+ const startH=grid.clientHeight,natural=grid.scrollHeight,minW=Math.max(px(25),parseFloat(getComputedStyle(block).minWidth)||0),maxW=inner,minH=Math.max(96,pad+rowH);
+ const snaps=[[25,'1/4'],[100/3,'1/3'],[50,'1/2'],[200/3,'2/3'],[75,'3/4'],[100,'整行']].map(([w,label])=>({w:px(w),label}));
+ for(const other of blocks)if(other!==block){const r=other.getBoundingClientRect();for(const x of [r.right,r.left-gap])snaps.push({w:x-rect.left,x});}
+ const startWidth=b.width,startHeight=b.height,x0=e.clientX,y0=e.clientY;let frame=0,pending=null,moved=false,heightOn=axis==='y';
+ checkpoint();try{edge.setPointerCapture(e.pointerId);}catch{}block.classList.add('resizing');document.body.classList.add(`resize-${axis}`);
+ const flush=()=>{
+  frame=0;if(!pending)return;const {x,y,free}=pending;pending=null;moved=true;
+  const neighbours=reduceMotion()?[]:blocks.filter(n=>n!==block).map(n=>[n,n.getBoundingClientRect()]),parts=[];neighbours.forEach(([n])=>n.getAnimations().forEach(a=>a.cancel()));
+  if(axis!=='y'){
+   let w=rect.width+x-x0,snap=null;
+   if(!free)for(const s of snaps){const d=Math.abs(s.w-w);if(s.w>=minW-.5&&s.w<=maxW+.5&&d<=8&&(!snap||d<snap.d))snap={...s,d};}
+   if(snap)w=snap.w;
+   b.width=Math.round((Math.min(maxW,Math.max(minW,w))+gap)/(inner+gap)*1000)/10;block.style.setProperty('--width',b.width);block.style.width=rubber(w,minW,maxW)+'px';
+   showGuide(snap&&'x' in snap?snap.x:null);parts.push(`宽 ${snap?.label||Math.round(b.width)+'%'}`);
+  }
+  if(axis!=='x'&&!heightOn&&Math.abs(y-y0)>8)heightOn=true;
+  if(heightOn){
+   let h=startH+y-y0;
+   if(!free&&rowH){const n=Math.max(1,Math.round((h-pad+rowGap)/(rowH+rowGap))),fit=pad+n*rowH+(n-1)*rowGap;if(Math.abs(fit-h)<=12)h=fit;}
+   if(h>=natural-4){b.height=null;block.classList.remove('fixed');grid.style.height=h>natural?rubber(h,minH,natural)+'px':'';grid.style.minHeight='';grid.querySelectorAll('[data-asset]').forEach(card=>{card.style.visibility='';card.inert=false;});parts.push('自动高度');}
+   else{const clamped=Math.max(minH,h);b.height=Math.round(clamped);block.classList.add('fixed');grid.style.height=rubber(h,minH,natural)+'px';parts.push(rowH?`显示 ${Math.max(1,Math.round((clamped-pad+rowGap)/(rowH+rowGap)))} 行`:'固定高度');}
+   updateOverflow();
+  }else parts.push(b.height?'固定高度':'自动高度');
+  for(const [n,from] of neighbours)slideFrom(n,from,180);
+  showTip(parts.join(' · '),x,y);
+ };
+ const move=event=>{pending={x:event.clientX,y:event.clientY,free:event.metaKey||event.ctrlKey};if(!frame)frame=requestAnimationFrame(flush);};
+ const end=()=>{
+  cancelAnimationFrame(frame);flush();edge.removeEventListener('pointermove',move);edge.removeEventListener('pointerup',end);edge.removeEventListener('pointercancel',end);
+  showGuide(null);showTip('');document.body.classList.remove(`resize-${axis}`);
+  const changed=b.width!==startWidth||b.height!==startHeight;
+  if(!changed)history.pop();else save();
+  if(!moved){block.classList.remove('resizing');return;}
+  const finish=()=>{block.classList.remove('resizing','settling-size');render();if(changed)toast('区块大小已调整',true);};
+  if(reduceMotion()){finish();return;}
+  block.classList.add('settling-size');block.style.width=px(b.width)+'px';grid.style.height=(b.height??natural)+'px';setTimeout(finish,260);
+ };
+ edge.addEventListener('pointermove',move);edge.addEventListener('pointerup',end);edge.addEventListener('pointercancel',end);
+}
+document.addEventListener('pointerdown',e=>{
+ if(gesture||!e.isPrimary||e.button!==0||e.target.closest('input,select,textarea'))return;
+ const edge=e.target.closest('#board .resize-edge');if(edge){startResize(e,edge);return;}
+ const source=dragSource(e.target);if(!source)return;
+ const g=gesture={...source,id:e.pointerId,touch:e.pointerType!=='mouse',x0:e.clientX,y0:e.clientY,x:e.clientX,y:e.clientY,active:false};
+ if(g.touch)g.timer=setTimeout(()=>{if(gesture===g)beginDrag(g);},300);
+ addEventListener('pointermove',dragMove);addEventListener('pointerup',dragEnd);addEventListener('pointercancel',dragEnd);
 });
-document.addEventListener('dragover',e=>{
- if(assetDragElement){const target=e.target.closest('[data-asset]');document.querySelectorAll('.asset-drop-target').forEach(element=>element.classList.remove('asset-drop-target'));if(target&&target!==assetDragElement&&target.parentElement===assetDragElement.parentElement){e.preventDefault();target.classList.add('asset-drop-target');}return;}
- const block=e.target.closest('.block');if(dragId&&block){e.preventDefault();document.querySelectorAll('.drag-target').forEach(b=>b.classList.remove('drag-target'));if(block.dataset.block!==dragId)block.classList.add('drag-target');}
-});
-document.addEventListener('drop',e=>{
- if(assetDragElement){const target=e.target.closest('[data-asset]');if(target){e.preventDefault();const rect=target.getBoundingClientRect();commitAssetOrder(assetDragElement,target,e.clientX>rect.left+rect.width/2);}assetDragElement=null;document.querySelectorAll('.asset-drop-target,.asset-dragging').forEach(element=>element.classList.remove('asset-drop-target','asset-dragging'));return;}
- const target=e.target.closest('.block');if(dragId&&target){e.preventDefault();const from=state.blocks.findIndex(b=>b.id===dragId),to=state.blocks.findIndex(b=>b.id===target.dataset.block);if(from!==to){checkpoint();const [item]=state.blocks.splice(from,1);state.blocks.splice(to,0,item);save();}dragId=null;render();}
-});
-document.addEventListener('dragend',()=>{dragId=null;assetDragElement=null;document.querySelectorAll('.dragging,.drag-target,.asset-dragging,.asset-drop-target').forEach(b=>b.classList.remove('dragging','drag-target','asset-dragging','asset-drop-target'));});
-document.addEventListener('keydown',e=>{if(!editing||!e.target.matches('.asset-drag-handle')||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))return;const source=e.target.closest('[data-asset]'),siblings=[...source.parentElement.children].filter(element=>element.dataset.asset),step=['ArrowLeft','ArrowUp'].includes(e.key)?-1:1,target=siblings[siblings.indexOf(source)+step];if(!target)return;e.preventDefault();if(commitAssetOrder(source,target,step>0))document.querySelector(`[data-asset="${CSS.escape(source.dataset.asset)}"] .asset-drag-handle`)?.focus();});
-document.addEventListener('pointerdown',e=>{const handle=e.target.closest('.resize-handle');if(!handle||!editing)return;e.preventDefault();cancelAnimationFrame(layoutFrame);document.querySelectorAll('.block').forEach(el=>el.getAnimations().forEach(animation=>animation.cancel()));const board=$('#board'),boardStyle=getComputedStyle(board),gap=parseFloat(boardStyle.columnGap)||0,boardWidth=board.clientWidth-parseFloat(boardStyle.paddingLeft)-parseFloat(boardStyle.paddingRight);const block=handle.closest('.block'),b=state.blocks.find(b=>b.id===block.dataset.block),rect=block.getBoundingClientRect(),startX=e.clientX,startY=e.clientY,initialGrid=block.querySelector('.cards').clientHeight;checkpoint();handle.setPointerCapture(e.pointerId);block.classList.add('resizing');
- let resizeFrame=0,pending=null;
- const flush=()=>{resizeFrame=0;if(!pending)return;const {x,y}=pending;pending=null;b.width=Math.max(25,Math.min(100,(rect.width+x-startX+gap)/(boardWidth+gap)*100));block.style.setProperty('--width',b.width);if(Math.abs(y-startY)>8){b.height=Math.max(236,initialGrid+y-startY);block.classList.add('fixed');block.querySelector('.cards').style.height=b.height+'px';}updateOverflow();};
- const move=event=>{pending={x:event.clientX,y:event.clientY};if(!resizeFrame)resizeFrame=requestAnimationFrame(flush);};
- const end=()=>{cancelAnimationFrame(resizeFrame);flush();handle.removeEventListener('pointermove',move);handle.removeEventListener('pointerup',end);handle.removeEventListener('pointercancel',end);block.classList.remove('resizing');save();render();};handle.addEventListener('pointermove',move);handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);
+addEventListener('click',e=>{if(!suppressClick)return;suppressClick=false;e.preventDefault();e.stopPropagation();},true);
+addEventListener('keydown',e=>{if(e.key!=='Escape'||!gesture?.active)return;e.preventDefault();e.stopImmediatePropagation();suppressClick=true;addEventListener('pointerup',()=>setTimeout(()=>suppressClick=false,0),{once:true,capture:true});dropDrag(gesture,true);},true);
+$('#board').addEventListener('touchmove',e=>{if(gesture?.active)e.preventDefault();},{passive:false});
+$('#board').addEventListener('dragstart',e=>e.preventDefault());
+document.addEventListener('contextmenu',e=>{if(gesture?.touch)e.preventDefault();});
+document.addEventListener('dblclick',e=>{const edge=e.target.closest('#board .resize-edge');if(!edge||edge.dataset.edge==='x')return;const b=state.blocks.find(x=>x.id===edge.closest('.block').dataset.block);if(!b?.height)return;checkpoint();b.height=null;save();render();toast('已恢复自适应高度',true);});
+document.addEventListener('keydown',e=>{
+ if(!e.altKey||e.metaKey||e.ctrlKey||query||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))return;
+ const step=['ArrowLeft','ArrowUp'].includes(e.key)?-1:1,opener=e.target.closest?.('#board .card-open,#board .compact-repo-open');
+ if(opener){e.preventDefault();const source=opener.closest('[data-asset]'),id=source.dataset.asset,siblings=[...source.parentElement.children].filter(n=>n.dataset.asset);if(commitAssetOrder(source,siblings[siblings.indexOf(source)+step],step>0)){document.querySelector(`#board [data-asset="${CSS.escape(id)}"] :is(.card-open,.compact-repo-open)`)?.focus();toast(step<0?'已向前移动':'已向后移动',true);}return;}
+ const title=!focusCategory&&e.target.closest?.('#board .block-title');
+ if(title){e.preventDefault();const id=title.dataset.id;if(moveBlock(id,step))document.querySelector(`#board .block-title[data-id="${id}"]`)?.focus();}
 });
 let viewportFrame=0;
-window.addEventListener('resize',()=>{if(viewportFrame)return;viewportFrame=requestAnimationFrame(()=>{viewportFrame=0;updateOverflow();});});render();
-if(nativeStore){document.documentElement.classList.add('native-app');requestEvidence();$('#save-status').textContent='保存在此 Mac';document.querySelectorAll('.form-note').forEach(el=>{el.textContent=el.textContent.replaceAll('当前浏览器','此 Mac').replaceAll('此浏览器','此 Mac');});if(!nativeStore.data||migratedLegacyData)save();}
+window.addEventListener('resize',()=>{if(gesture?.active)dropDrag(gesture,true);if(viewportFrame)return;viewportFrame=requestAnimationFrame(()=>{viewportFrame=0;updateOverflow();});});render();
+if(nativeStore){document.documentElement.classList.add('native-app');requestEvidence();document.querySelectorAll('.form-note').forEach(el=>{el.textContent=el.textContent.replaceAll('当前浏览器','此 Mac').replaceAll('此浏览器','此 Mac');});if(!nativeStore.data||migratedLegacyData)save();}
 else if(migratedLegacyData)save();

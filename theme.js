@@ -40,7 +40,7 @@ function themeDialog(){
  document.querySelector('#save-theme').onclick=()=>{checkpoint();state.theme=picker.value;save();themePreview=false;document.querySelector('#modal').close();};
 }
 document.addEventListener('DOMContentLoaded',()=>{
- const button=document.createElement('button');button.id='theme';button.className='button';button.textContent='色调';button.onclick=themeDialog;document.querySelector('#edit').before(button);
+ const button=document.createElement('button');button.id='theme';button.className='button';button.textContent='色调';button.onclick=themeDialog;document.querySelector('#add-block').before(button);
  document.querySelector('#modal').addEventListener('close',()=>{if(themePreview){themePreview=false;applyBoardTheme(state.theme);}});
  applyBoardTheme(state.theme);
  schemeQuery?.addEventListener?.('change',()=>applyBoardTheme(appliedTheme));

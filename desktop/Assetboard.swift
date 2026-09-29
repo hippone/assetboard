@@ -208,7 +208,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     let github = GitHubConnector()
     var localRoot: URL!
     let searchField = NSSearchField(frame: NSRect(x: 0, y: 0, width: 200, height: 28))
-    var layoutButton: NSButton!
     var inboxButton: NSButton!
     var connectionStateJSON: String?
     var boardLoaded = false
@@ -307,7 +306,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, .init("search"), .init("inbox"), .init("theme"), .init("layout"), .init("add")]
+        [.flexibleSpace, .init("search"), .init("inbox"), .init("theme"), .init("add")]
     }
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         toolbarDefaultItemIdentifiers(toolbar)
@@ -331,11 +330,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             inboxButton.bezelStyle = .rounded
             item.label = "待确认"
             item.view = inboxButton
-        case "layout":
-            layoutButton = NSButton(title: "调整布局", target: self, action: #selector(toggleLayout))
-            layoutButton.bezelStyle = .rounded
-            item.label = "调整布局"
-            item.view = layoutButton
         case "add":
             let button = NSButton(title: "添加区块", image: NSImage(systemSymbolName: "plus", accessibilityDescription: "添加区块")!, target: self, action: #selector(addBlock))
             button.bezelStyle = .rounded
@@ -350,7 +344,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
               let value = String(data: bytes, encoding: .utf8) else { return }
         webView.evaluateJavaScript("document.querySelector('#search').value=\(value)[0];document.querySelector('#search').dispatchEvent(new Event('input'))")
     }
-    @objc func toggleLayout() { webView.evaluateJavaScript("document.querySelector('#edit').click()") }
     @objc func addBlock() { webView.evaluateJavaScript("document.querySelector('#add-block').click()") }
     @objc func focusSearch() { window.makeFirstResponder(searchField) }
     @objc func openTheme() { webView.evaluateJavaScript("themeDialog()") }
@@ -591,7 +584,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             return
         }
         if body["action"] as? String == "toolbarState" {
-            layoutButton.title = body["editing"] as? Bool == true ? "完成" : "调整布局"
             let pending = body["pending"] as? Int ?? 0
             inboxButton?.title = pending > 0 ? "待确认 \(pending)" : "待确认"
             searchField.stringValue = body["query"] as? String ?? ""
@@ -1018,10 +1010,12 @@ func testWebView() {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
-    func wait(_ condition: () -> Bool) {
+    // Optimised builds drop precondition messages, so failures print their reason before exiting.
+    func check(_ ok: Bool, _ message: @autoclosure () -> String) { if !ok { fputs("WebView test failed: \(message())\n", stderr); exit(1) } }
+    func wait(_ label: String = "condition", _ condition: () -> Bool) {
         let deadline = Date().addingTimeInterval(10)
         while !condition() && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
-        precondition(condition(), "WebView test timed out")
+        check(condition(), "timed out waiting for \(label)")
     }
     do {
         guard let board = Bundle.main.resourceURL?.appendingPathComponent("Board", isDirectory: true) else { fatalError("Missing Board resources") }
@@ -1070,8 +1064,37 @@ func testWebView() {
         wait { run("document.documentElement.dataset.scheme") == "dark" }
         let darkCanvas = run("getComputedStyle(document.body).backgroundColor")
         precondition(lightCanvas != darkCanvas && handler.actions.filter { $0 == "themeColor" }.count >= 2, "Page must follow the system appearance: \(lightCanvas) / \(darkCanvas)")
-        precondition(run("JSON.stringify(window.__errors)") == "[]", "Page reported script errors")
-        print("PASS: WebKit board load, evidence bridge candidates, agenda, in-page delete confirmation, toast undo, AI reply parsing, light/dark appearance")
+        // Direct manipulation with synthetic pointer events: card reorder, cross-block move, edge resize.
+        let setup = run("""
+            state.blocks.push({id:'server',width:50,collapsed:false,height:null});
+            state.assets.push({id:'b',type:'domain',name:'b.dev',provider:'R',account:'',art:'generic',source:'manual'},{id:'s',type:'server',name:'box',provider:'H',account:'',art:'generic',source:'manual'});
+            render();
+            window.__fire=(el,type,x,y)=>el.dispatchEvent(new PointerEvent(type,{bubbles:true,cancelable:true,pointerId:7,pointerType:'mouse',isPrimary:true,button:0,buttons:type==='pointerup'?0:1,clientX:x,clientY:y}));
+            window.__center=el=>{const r=el.getBoundingClientRect();return [r.left+r.width/2,r.top+r.height/2];};
+            String(CSS.supports('translate','1px 2px')&&CSS.supports('scale','1.02'))
+            """)
+        check(setup == "true", "WebKit must support individual transform properties used by the drag lift")
+        let reorder = run("""
+            (()=>{const a=document.querySelector('[data-asset="a"]'),[ax,ay]=__center(a),[bx,by]=__center(document.querySelector('[data-asset="b"]'));
+            __fire(a,'pointerdown',ax,ay);__fire(document,'pointermove',ax+10,ay);const lifted=a.classList.contains('is-dragging')&&getComputedStyle(a).position==='fixed';
+            __fire(document,'pointermove',bx+40,by);const slot=!!document.querySelector('.domain .drop-slot');__fire(document,'pointerup',bx+40,by);return JSON.stringify({lifted,slot});})()
+            """)
+        check(reorder == "{\"lifted\":true,\"slot\":true}", "Card drag must lift and preview in WebKit: " + reorder)
+        wait("card order") { run("String(state.cardOrder?.domain?.join(','))") == "b,a" && run("String(!document.querySelector('.drop-slot,.is-dragging'))") == "true" }
+        let crossed = run("""
+            (()=>{const b=document.querySelector('[data-asset="b"]'),server=document.querySelector('.block.server'),[x,y]=__center(b),[sx,sy]=__center(server);
+            __fire(b,'pointerdown',x,y);__fire(document,'pointermove',x+10,y);__fire(document,'pointermove',sx,sy);const into=server.classList.contains('drop-into');__fire(document,'pointerup',sx,sy);return String(into);})()
+            """)
+        wait("cross-block category") { run("state.assets.find(a=>a.id==='b').type") == "server" }
+        check(crossed == "true", "Cross-block target must be highlighted in WebKit")
+        // The off-screen test view runs no animation frames, so the release applies the last pointer position directly.
+        let resized = run("""
+            (()=>{const edge=document.querySelector('.block.domain > .resize-edge[data-edge="x"]'),r=edge.getBoundingClientRect(),x=r.left+4,y=r.top+r.height/2;
+            __fire(edge,'pointerdown',x,y);__fire(edge,'pointermove',x-60,y);__fire(edge,'pointerup',x-60,y);return String(state.blocks.find(b=>b.id==='domain').width<50);})()
+            """)
+        check(resized == "true", "Edge resize must change the width in WebKit")
+        check(run("JSON.stringify(window.__errors)") == "[]", "Page reported script errors: " + run("JSON.stringify(window.__errors)"))
+        print("PASS: WebKit board load, evidence bridge candidates, agenda, in-page delete confirmation, toast undo, AI reply parsing, light/dark appearance, card drag, cross-block move, edge resize")
     } catch { fputs("WebView test failed: \(error)\n", stderr); exit(1) }
 }
 
