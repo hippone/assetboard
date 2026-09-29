@@ -283,3 +283,21 @@ button.block-empty:hover{background:rgba(255,255,255,.5);color:var(--ink)}
 .ai-error{color:#9a4630}
 .chip.ai{background:rgb(var(--tone-primary));border-color:transparent;color:#fff}
 .inline-button{display:inline;padding:0 3px;font-size:inherit;text-decoration:underline;text-underline-offset:3px}
+
+/* Clarity pass: distinct layers, readable secondary text, fuller colour. Structure, gaps and radii unchanged. */
+.art{filter:saturate(.8)}
+.art svg,.art img{opacity:1}
+:root .block,.native-app .block{border:1px solid rgba(var(--tone-ink),.08);box-shadow:0 1px 2px rgba(var(--tone-ink),.05)}
+.asset-card:not(.flip-card){background:rgba(var(--tone-card),.95);border:1px solid rgba(var(--tone-ink),.09);box-shadow:0 1px 2px rgba(var(--tone-ink),.07),0 6px 14px -8px rgba(var(--tone-ink),.24)}
+.asset-card:not(.flip-card):hover{background:rgb(var(--tone-card));border-color:rgba(var(--tone-ink),.16);box-shadow:0 1px 2px rgba(var(--tone-ink),.08),0 8px 18px -8px rgba(var(--tone-ink),.30)}
+.block-title{font-size:13px}
+.asset-count{font-size:11px}
+.card-name{font-size:13px;font-weight:600}
+.card-provider,.card-purpose,.card-event,.card-hide,.repo-swap{font-size:11px}
+.block-summary{font-size:11px;color:#6e4a1b}
+.card-event.warn{color:#77501a}
+.card-event.overdue,.block-summary.overdue,.agenda-item.overdue span{color:#8f3d27}
+.compact-repositories-title,.compact-repo-open{font-size:12px}
+.asset-card:has(.source-art) .card-open .art{height:64px;padding-top:14px}
+.asset-card:has(.source-art) .source-art svg{width:34px;height:34px;opacity:.8}
+.search,.button,.search input{font-size:12px}
