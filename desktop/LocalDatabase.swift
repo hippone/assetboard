@@ -102,16 +102,18 @@ final class LocalDatabase {
         guard sqlite3_step(query) == SQLITE_DONE else { throw failure("保存导入证据失败") }
     }
 
-    func listEvidence(limit: Int = 100) throws -> [[String: String]] {
-        let query = try statement("SELECT id,kind,source,title,body,imported_at FROM evidence ORDER BY imported_at DESC LIMIT ?")
+    /// Most recent evidence first. Bodies are clipped so the list stays small enough to hand to the web view.
+    func listEvidence(limit: Int = 500, bodyLimit: Int = 6000) throws -> [[String: String]] {
+        let query = try statement("SELECT id,kind,source,title,substr(body,1,?),imported_at,payload FROM evidence ORDER BY imported_at DESC, rowid DESC LIMIT ?")
         defer { sqlite3_finalize(query) }
-        guard sqlite3_bind_int(query, 1, Int32(max(1, min(limit, 500)))) == SQLITE_OK else { throw failure("查询数量无效") }
+        guard sqlite3_bind_int(query, 1, Int32(max(1, bodyLimit))) == SQLITE_OK,
+              sqlite3_bind_int(query, 2, Int32(max(1, min(limit, 2000)))) == SQLITE_OK else { throw failure("查询数量无效") }
         var rows: [[String: String]] = []
         while true {
             let status = sqlite3_step(query)
             if status == SQLITE_DONE { return rows }
             guard status == SQLITE_ROW else { throw failure("无法读取导入资料") }
-            let columns = ["id", "kind", "source", "title", "body", "importedAt"]
+            let columns = ["id", "kind", "source", "title", "body", "importedAt", "payload"]
             var row: [String: String] = [:]
             for (index, name) in columns.enumerated() {
                 row[name] = sqlite3_column_text(query, Int32(index)).map { String(cString: $0) } ?? ""

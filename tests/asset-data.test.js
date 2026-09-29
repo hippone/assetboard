@@ -46,3 +46,129 @@ test('preserves a user card order and places newly synced cards afterward',()=>{
  assert.deepEqual(orderAssets(assets,ids).map(asset=>asset.id),['second','first','new']);
  assert.deepEqual(moveAsset(ids,'second','second'),ids);
 });
+
+const {assetDateStatus,upcomingEvents,nextOccurrence,dayNumber,addMonths,mergeCloudflare,mergeGitHub,applyCollision,evidenceFacts,buildCandidates,inferCycle,parseSender,registrableDomain}=require('../asset-data.js');
+const now=new Date(2026,8,29,15,0);
+
+test('describes upcoming, due and overdue dates in local calendar days',()=>{
+ assert.equal(assetDateStatus({date:'2026-10-06'},now).label,'7 天后到期');
+ assert.equal(assetDateStatus({date:'2026-10-06'},now).level,'soon');
+ assert.equal(assetDateStatus({date:'2026-09-29',dateKind:'renew'},now).label,'今天扣款');
+ assert.equal(assetDateStatus({date:'2026-09-30',dateKind:'trial'},now).label,'明天试用结束');
+ assert.equal(assetDateStatus({date:'2026-09-26'},now).label,'已过期 3 天');
+ assert.equal(assetDateStatus({date:'2026-09-26'},now).level,'overdue');
+ assert.equal(assetDateStatus({date:'2027-03-01'},now).label,'2027-03-01 到期');
+ assert.equal(assetDateStatus({date:'2027-03-01'},now).level,'upcoming');
+ assert.equal(assetDateStatus({date:''},now).level,'none');
+ assert.equal(assetDateStatus({date:'2026-02-30'},now).level,'none');
+});
+
+test('rolls recurring dates forward from their anchor',()=>{
+ const monthly=assetDateStatus({date:'2026-01-31',dateKind:'renew',cycle:'monthly'},now);
+ assert.equal(monthly.date,'2026-09-30');
+ assert.equal(monthly.rolled,true);
+ assert.equal(addMonths('2026-01-31',1),'2026-02-28');
+ assert.equal(nextOccurrence('2024-02-29','yearly',dayNumber('2026-09-29')),'2027-02-28');
+ assert.equal(nextOccurrence('2025-10-15','yearly',dayNumber('2026-09-29')),'2026-10-15');
+ assert.equal(nextOccurrence('2026-09-29','monthly',dayNumber('2026-09-29')),'2026-09-29');
+});
+
+test('lists visible dated assets soonest first',()=>{
+ const assets=[{id:'late',name:'b',date:'2026-11-10'},{id:'hidden',name:'h',date:'2026-10-01',hiddenAt:'x'},{id:'soon',name:'a',date:'2026-10-02'},{id:'none',name:'n'},{id:'past',name:'p',date:'2026-09-20'},{id:'far',name:'f',date:'2027-06-01'}];
+ assert.deepEqual(upcomingEvents(assets,now).map(item=>item.asset.id),['past','soon','late']);
+});
+
+test('merges Cloudflare resources without touching local notes and reports name collisions',()=>{
+ const board={blocks:[],assets:[
+  {id:'cloudflare-zone-z1',type:'domain',name:'old.dev',source:'cloudflare',resourceKind:'zone',externalId:'z1',notes:'mine',url:'https://dash.example.org'},
+  {id:'asset-1',type:'domain',name:'clash.dev',source:'manual'},
+  {id:'moved',type:'domain',name:'moved.dev',source:'cloudflare',resourceKind:'zone',externalId:'z3'},
+  {id:'cloudflare-r2-gone',type:'storage',name:'gone',source:'cloudflare',resourceKind:'r2',externalId:'gone'},
+  {id:'cloudflare-zone-gone',type:'domain',name:'gone.dev',source:'cloudflare',resourceKind:'zone',externalId:'gone'}
+ ],deletedExternalIds:['cloudflare:zone:z9']};
+ const result=mergeCloudflare(board,{queriedKinds:['zone'],resources:[
+  {id:'z1',name:'new.dev',account:'acct',status:'active'},{id:'z2',name:'clash.dev',status:'active'},
+  {id:'z3',name:'moved.dev',status:'active'},{id:'z9',name:'deleted.dev'},{id:'p1',kind:'pages',name:'site',status:'ok'}]},'2026-09-29T00:00:00Z');
+ const byId=id=>result.board.assets.find(asset=>asset.id===id);
+ assert.equal(board.assets[0].name,'old.dev','input board must not be mutated');
+ assert.equal(byId('cloudflare-zone-z1').name,'new.dev');
+ assert.equal(byId('cloudflare-zone-z1').notes,'mine');
+ assert.equal(byId('cloudflare-zone-z1').url,'https://dash.example.org');
+ assert.equal(byId('moved').syncMissing,false,'a record matched by platform id is not missing');
+ assert.equal(byId('cloudflare-zone-gone').syncMissing,true);
+ assert.equal(byId('cloudflare-r2-gone').syncMissing,undefined,'kinds that were not queried stay untouched');
+ assert.equal(byId('cloudflare-zone-z9'),undefined,'deleted records are not re-added');
+ assert.equal(byId('cloudflare-pages-p1').type,'deployment');
+ assert.equal(result.added,1);
+ assert.deepEqual(result.collisions.map(item=>item.assetId),['asset-1']);
+ assert.equal(byId('asset-1').source,'manual','collisions wait for confirmation');
+ assert.deepEqual(result.board.blocks.map(block=>block.id),['domain','deployment']);
+ assert.ok(applyCollision(result.board,result.collisions[0]));
+ assert.equal(byId('asset-1').source,'cloudflare');
+ assert.equal(byId('asset-1').syncMissing,false);
+});
+
+test('merges GitHub repositories and marks missing ones',()=>{
+ const board={blocks:[],assets:[{id:'github-repo-1',type:'repository',name:'me/a',source:'github',externalId:'1',notes:'keep'},{id:'github-repo-2',type:'repository',name:'me/b',source:'github',externalId:'2'},{id:'asset-x',type:'repository',name:'me/c',source:'manual'}]};
+ const result=mergeGitHub(board,{repositories:[{id:'1',name:'me/a',owner:'me',url:'https://github.com/me/a',private:true},{id:'3',name:'me/c',owner:'me',archived:true}]});
+ const byId=id=>result.board.assets.find(asset=>asset.id===id);
+ assert.equal(byId('github-repo-1').notes,'keep');
+ assert.equal(byId('github-repo-1').event,'私有仓库');
+ assert.equal(byId('github-repo-2').syncMissing,true);
+ assert.equal(result.collisions[0].fields.event,'已归档');
+ assert.deepEqual(result.board.blocks.map(block=>block.id),['repository']);
+});
+
+test('reads sender, merchant and registrable domain',()=>{
+ assert.deepEqual(parseSender('"Figma" <Billing@Figma.com>'),{name:'Figma',address:'billing@figma.com',host:'figma.com'});
+ assert.equal(parseSender('noreply@github.com').name,'');
+ assert.equal(registrableDomain('mail.notify.cloudflare.com'),'cloudflare.com');
+ assert.equal(registrableDomain('billing.example.com.cn'),'example.com.cn');
+ assert.equal(evidenceFacts({id:'g',kind:'gmail',source:'Namecheap Support <support@namecheap.com>',title:'Hi',body:''}).merchant,'Namecheap');
+ assert.equal(evidenceFacts({id:'g',kind:'gmail',source:'no-reply@vercel.com',title:'Hi',body:''}).merchant,'Vercel');
+});
+
+test('extracts a stated renewal, amount and cycle from an English notice',()=>{
+ const [candidate]=buildCandidates([{id:'gmail-1',kind:'gmail',source:'Figma <billing@figma.com>',title:'Your Professional plan renews soon',body:'Your Figma Professional plan will renew on October 6, 2026.\nYou will be charged $15.00/month.\nTax: $1.20',payload:JSON.stringify({date:'Mon, 21 Sep 2026 10:00:00 +0000'})}],{now});
+ assert.equal(candidate.merchant,'Figma');
+ assert.equal(candidate.type,'subscription');
+ assert.equal(candidate.cost,'$15.00 / 月');
+ assert.deepEqual(candidate.date,{value:'2026-10-06',kind:'renew',source:'stated',basis:'通知中写明'});
+ assert.equal(candidate.pending,true);
+});
+
+test('recognizes a Chinese domain expiry notice',()=>{
+ const [candidate]=buildCandidates([{id:'gmail-2',kind:'gmail',source:'阿里云通知 <noreply@notice.aliyun.com>',title:'域名到期提醒',body:'尊敬的用户，您的域名 halfnote.cn 将于 2026年10月20日 到期，请及时续费。\n续费价格：¥ 89 / 年\n详情见 https://www.aliyun.com/renew',payload:{date:'2026-09-20'}}],{assets:[{id:'mine',type:'domain',name:'halfnote.cn'}],now});
+ assert.equal(candidate.merchant,'阿里云');
+ assert.equal(candidate.type,'domain');
+ assert.equal(candidate.name,'halfnote.cn');
+ assert.equal(candidate.cost,'¥89 / 年');
+ assert.equal(candidate.cycle,'yearly');
+ assert.equal(candidate.date.value,'2026-10-20');
+ assert.equal(candidate.date.kind,'expire');
+ assert.equal(candidate.match,'mine');
+});
+
+test('groups monthly receipts and infers the next charge from their spacing',()=>{
+ const receipt=(id,date)=>({id,kind:'gmail',source:'Notion Team <team@makenotion.com>',title:'Your receipt',body:'Total $10.00\nThanks for your payment.',payload:{date}});
+ const candidates=buildCandidates([receipt('r1','2026-07-03'),receipt('r2','2026-08-03'),receipt('r3','2026-09-03'),{id:'other',kind:'gmail',source:'Acme <receipts+acct_1@stripe.com>',title:'Your receipt from Acme #1',body:'Amount paid ¥20'},{id:'other2',kind:'gmail',source:'Beta Co <receipts+acct_2@stripe.com>',title:'Your receipt from Beta Co #2',body:'Amount paid ¥30'}],{now,decisions:{other2:{status:'dismissed'}}});
+ const notion=candidates.find(item=>item.key==='makenotion.com');
+ assert.equal(notion.count,3);
+ assert.equal(notion.merchant,'Notion');
+ assert.equal(notion.cycle,'monthly');
+ assert.equal(notion.cost,'$10.00 / 月');
+ assert.equal(notion.date.value,'2026-10-03');
+ assert.equal(notion.date.source,'inferred');
+ assert.match(notion.date.basis,/3 封收据/);
+ assert.equal(candidates.filter(item=>item.key.startsWith('stripe.com:')).length,2,'payment processor receipts stay separate per merchant');
+ assert.equal(candidates.at(-1).key,'stripe.com:beta co');
+ assert.equal(candidates.at(-1).pending,false);
+ assert.equal(inferCycle([1,366,731]),'yearly');
+ assert.equal(inferCycle([1,3]),null);
+});
+
+test('keeps pasted text without a date as a weak candidate',()=>{
+ const [candidate]=buildCandidates([{id:'paste',kind:'paste',title:'粘贴的文字',body:'感谢订阅，我们会不定期发送更新。',importedAt:'2026-09-29T08:00:00Z'}],{now});
+ assert.equal(candidate.weak,true);
+ assert.equal(candidate.date,null);
+});

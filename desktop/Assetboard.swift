@@ -208,6 +208,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     var localRoot: URL!
     let searchField = NSSearchField(frame: NSRect(x: 0, y: 0, width: 200, height: 28))
     var layoutButton: NSButton!
+    var inboxButton: NSButton!
     var connectionStateJSON: String?
     var boardLoaded = false
 
@@ -304,7 +305,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, .init("search"), .init("theme"), .init("layout"), .init("add")]
+        [.flexibleSpace, .init("search"), .init("inbox"), .init("theme"), .init("layout"), .init("add")]
     }
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         toolbarDefaultItemIdentifiers(toolbar)
@@ -323,6 +324,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             searchField.sendsSearchStringImmediately = true
             item.label = "搜索资产"
             item.view = searchField
+        case "inbox":
+            inboxButton = NSButton(title: "待确认", target: self, action: #selector(openInbox))
+            inboxButton.bezelStyle = .rounded
+            item.label = "待确认"
+            item.view = inboxButton
         case "layout":
             layoutButton = NSButton(title: "调整布局", target: self, action: #selector(toggleLayout))
             layoutButton.bezelStyle = .rounded
@@ -349,6 +355,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     @objc func openCloudflare() { webView.evaluateJavaScript("cloudflareDialog()") }
     @objc func openGitHub() { webView.evaluateJavaScript("githubDialog()") }
     @objc func openGmail() { webView.evaluateJavaScript("gmailDialog()") }
+    @objc func openInbox() { webView.evaluateJavaScript("inboxDialog()") }
     func gmailResult(_ result: [String: Any]) {
         DispatchQueue.main.async {
             guard let data = try? JSONSerialization.data(withJSONObject: result), let json = String(data: data, encoding: .utf8) else { return }
@@ -425,7 +432,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
                     DispatchQueue.main.async {
                         do {
                             try self.store.database.saveEvidence(id: "ocr-" + digest, kind: "ocr", source: url.lastPathComponent, title: url.lastPathComponent, body: text)
-                            self.ocrResult(["ok": true, "title": url.lastPathComponent, "body": String(text.prefix(2000))])
+                            self.ocrResult(["ok": true, "id": "ocr-" + digest, "title": url.lastPathComponent])
                         } catch { self.ocrResult(["ok": false, "error": error.localizedDescription]) }
                     }
                 } catch {
@@ -434,12 +441,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             }
         }
     }
-    @objc func showImportedEvidence() {
+    @objc func showImportedEvidence() { openInbox() }
+    func sendEvidenceList() {
         do {
             let rows = try store.database.listEvidence()
             guard let data = try? JSONSerialization.data(withJSONObject: rows), let json = String(data: data, encoding: .utf8) else { return }
-            webView.evaluateJavaScript("window.assetboardEvidenceResult(\(json))")
-        } catch { ocrResult(["ok": false, "error": error.localizedDescription]) }
+            webView.evaluateJavaScript("window.assetboardEvidenceList(\(json))")
+        } catch {
+            guard let data = try? JSONSerialization.data(withJSONObject: [error.localizedDescription]), let json = String(data: data, encoding: .utf8) else { return }
+            webView.evaluateJavaScript("window.assetboardEvidenceList(null, \(json)[0])")
+        }
     }
     func ocrResult(_ result: [String: Any]) {
         guard let data = try? JSONSerialization.data(withJSONObject: result), let json = String(data: data, encoding: .utf8) else { return }
@@ -506,6 +517,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         }
         if body["action"] as? String == "toolbarState" {
             layoutButton.title = body["editing"] as? Bool == true ? "完成" : "调整布局"
+            let pending = body["pending"] as? Int ?? 0
+            inboxButton?.title = pending > 0 ? "待确认 \(pending)" : "待确认"
             searchField.stringValue = body["query"] as? String ?? ""
             return
         }
@@ -552,6 +565,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         }
         if body["action"] as? String == "githubSyncLocal" {
             syncGitHubWithLocalCLI()
+            return
+        }
+        if body["action"] as? String == "evidenceList" {
+            sendEvidenceList()
             return
         }
         if body["action"] as? String == "ocrImport" {
@@ -624,7 +641,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         let ocrItem = NSMenuItem(title: "导入截图或 PDF（本地识别）…", action: #selector(importDocumentOCR), keyEquivalent: "")
         ocrItem.target = self
         fileMenu.addItem(ocrItem)
-        let evidenceItem = NSMenuItem(title: "查看导入资料…", action: #selector(showImportedEvidence), keyEquivalent: "")
+        let evidenceItem = NSMenuItem(title: "待确认资料…", action: #selector(showImportedEvidence), keyEquivalent: "")
         evidenceItem.target = self
         fileMenu.addItem(evidenceItem)
         let folderItem = NSMenuItem(title: "打开本地数据文件夹", action: #selector(openDataFolder), keyEquivalent: "")
@@ -792,6 +809,68 @@ func testCloudflareInventory() {
     } catch { fputs("Cloudflare inventory test failed: \(error)\n", stderr); exit(1) }
 }
 
+final class WebViewTestHandler: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
+    var actions: [String] = []
+    var loaded = false
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        if let action = (message.body as? [String: Any])?["action"] as? String { actions.append(action) }
+    }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { loaded = true }
+}
+
+// Runs the bundled board in WebKit/JavaScriptCore: the in-page confirmation, undo and evidence bridge.
+func testWebView() {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    func wait(_ condition: () -> Bool) {
+        let deadline = Date().addingTimeInterval(10)
+        while !condition() && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+        precondition(condition(), "WebView test timed out")
+    }
+    do {
+        guard let board = Bundle.main.resourceURL?.appendingPathComponent("Board", isDirectory: true) else { fatalError("Missing Board resources") }
+        let store = try BoardStore(root: root)
+        try store.database.saveEvidence(id: "gmail-a", kind: "gmail", source: "Figma <billing@figma.com>", title: "Your plan renews", body: "Your Figma plan will renew on October 6, 2099.\nYou will be charged $15.00/month.", payload: ["date": "Mon, 21 Sep 2026 10:00:00 +0000"])
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let soon = formatter.string(from: Date().addingTimeInterval(3 * 86400))
+        let data: [String: Any] = ["blocks": [["id": "domain", "width": 50, "collapsed": false, "height": NSNull()]],
+                                   "assets": [["id": "a", "type": "domain", "name": "soon.dev", "provider": "Registrar", "account": "", "date": soon, "art": "generic", "source": "manual"]]]
+        let initial = String(data: try JSONSerialization.data(withJSONObject: ["data": data, "cloudflareConnected": false, "githubConnected": false, "gmailConfigured": false]), encoding: .utf8)!
+        let handler = WebViewTestHandler()
+        let controller = WKUserContentController()
+        controller.addUserScript(WKUserScript(source: "window.__errors=[];addEventListener('error',e=>__errors.push(e.message));window.__ASSETBOARD_NATIVE__ = \(initial);", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        controller.add(handler, name: "assetboard")
+        let configuration = WKWebViewConfiguration()
+        configuration.userContentController = controller
+        configuration.websiteDataStore = .nonPersistent()
+        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 1200, height: 800), configuration: configuration)
+        webView.navigationDelegate = handler
+        webView.loadFileURL(board.appendingPathComponent("index.html"), allowingReadAccessTo: board)
+        wait { handler.loaded && handler.actions.contains("evidenceList") }
+        func run(_ script: String) -> String {
+            var result: String?
+            webView.evaluateJavaScript(script) { value, error in result = error.map { "ERROR: \($0)" } ?? (value as? String ?? "") }
+            wait { result != nil }
+            return result!
+        }
+        let rows = String(data: try JSONSerialization.data(withJSONObject: try store.database.listEvidence()), encoding: .utf8)!
+        _ = run("window.assetboardEvidenceList(\(rows));''")
+        let evidence = run("JSON.stringify({pending:pendingCount(),date:candidates()[0]?.date?.value,cost:candidates()[0]?.cost,agenda:document.querySelector('#agenda').innerText})")
+        precondition(evidence.contains("\"pending\":1") && evidence.contains("2099-10-06") && evidence.contains("$15.00 / 月") && evidence.contains("3 天后到期"), evidence)
+        let opened = run("document.querySelector('[data-asset=\"a\"] .card-open').click();document.querySelector('#detail [data-action=\"delete-asset\"]').click();String(!!document.querySelector('#modal[open] #confirm-yes'))")
+        precondition(opened == "true", "Delete must ask with the in-page dialog in WebKit")
+        let saves = handler.actions.filter { $0 == "save" }.count
+        let deleted = run("document.querySelector('#confirm-yes').click();''")
+        wait { handler.actions.filter { $0 == "save" }.count > saves }
+        precondition(deleted == "" && run("String(state.assets.length)") == "0", "Confirmed delete must remove the record")
+        precondition(run("document.querySelector('#toast .toast-undo').click();String(state.assets.length)") == "1", "Toast undo must restore the record")
+        precondition(run("JSON.stringify(window.__errors)") == "[]", "Page reported script errors")
+        print("PASS: WebKit board load, evidence bridge candidates, agenda, in-page delete confirmation, toast undo")
+    } catch { fputs("WebView test failed: \(error)\n", stderr); exit(1) }
+}
+
 func makeIcon(at path: String) {
     let image = NSImage(size: NSSize(width: 1024, height: 1024))
     image.lockFocus()
@@ -827,9 +906,12 @@ if CommandLine.arguments.contains("--make-icon"), let target = CommandLine.argum
         precondition((loaded?["assets"] as? [[String: Any]])?.count == 1)
         let storedCount = try reopened.database.assetCount()
         precondition(storedCount == 1)
-        try reopened.database.saveEvidence(id: "ocr-sample", kind: "ocr", source: "sample.png", title: "Sample", body: "Renewal notice")
+        try reopened.database.saveEvidence(id: "ocr-sample", kind: "ocr", source: "sample.png", title: "Sample", body: "Renewal notice", payload: ["date": "2026-09-20"])
         let evidence = try reopened.database.listEvidence()
-        precondition(evidence.count == 1 && evidence[0]["body"] == "Renewal notice")
+        precondition(evidence.count == 1 && evidence[0]["body"] == "Renewal notice" && evidence[0]["payload"]?.contains("2026-09-20") == true)
+        try reopened.database.saveEvidence(id: "ocr-long", kind: "ocr", source: "long.png", title: "Long", body: String(repeating: "x", count: 9000))
+        let clipped = try reopened.database.listEvidence(bodyLimit: 6000).first { $0["id"] == "ocr-long" }
+        precondition(clipped?["body"]?.count == 6000)
         try reopened.save(data)
         precondition(FileManager.default.fileExists(atPath: root.appendingPathComponent("board.previous.json").path))
         do { try reopened.save(["invalid": true]); fatalError("Invalid data accepted") } catch {}
@@ -844,7 +926,7 @@ if CommandLine.arguments.contains("--make-icon"), let target = CommandLine.argum
         let migratedCount = try migrated.database.assetCount()
         precondition((migratedBoard?["assets"] as? [[String: Any]])?.count == 1)
         precondition(migratedCount == 1)
-        print("PASS: SQLite save, JSON migration and backup, reopen, reject invalid data")
+        print("PASS: SQLite save, JSON migration and backup, reopen, reject invalid data, evidence list payload and clipping")
     } catch { fputs("Store test failed: \(error)\n", stderr); exit(1) }
 } else if CommandLine.arguments.contains("--test-cloudflare") {
     testCloudflare()
@@ -852,6 +934,8 @@ if CommandLine.arguments.contains("--make-icon"), let target = CommandLine.argum
     testGitHub()
 } else if CommandLine.arguments.contains("--test-cloudflare-inventory") {
     testCloudflareInventory()
+} else if CommandLine.arguments.contains("--test-webview") {
+    testWebView()
 } else if CommandLine.arguments.contains("--test-ocr") {
     let sample = NSImage(size: NSSize(width: 900, height: 180))
     sample.lockFocus()

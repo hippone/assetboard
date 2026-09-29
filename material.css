@@ -217,3 +217,56 @@ button.block-empty:hover{background:rgba(255,255,255,.5);color:var(--ink)}
 .dirty-actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:8px}
 .block.showing-hidden .cards{grid-auto-rows:max-content}
 @media(prefers-reduced-motion:reduce){.flip-inner{transition:none}}
+
+/* Dates, undo, inbox */
+.agenda{display:flex;align-items:center;gap:10px;padding:6px 14px;border-bottom:1px solid var(--line);background:rgba(var(--tone-category),.36);font-size:11px;color:var(--ink);min-height:40px}
+.agenda-label{flex:none;font-size:10px;letter-spacing:.08em;color:var(--muted)}
+.agenda-items{display:flex;flex-wrap:wrap;gap:6px;align-items:center;flex:1;min-width:0}
+.agenda-item{display:flex;align-items:baseline;gap:6px;min-width:0;max-width:100%;padding:5px 10px;border:1px solid var(--line);border-radius:8px;background:rgba(var(--tone-card),.5);color:var(--ink);font-size:11px;text-align:left}
+.agenda-item:hover{background:rgba(var(--tone-card),.82)}
+.agenda-item strong{font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.agenda-item span{color:var(--muted);white-space:nowrap}
+.agenda-item small{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);opacity:.85}
+.agenda-item.soon span{color:#805a28}
+.agenda-item.overdue{border-color:rgba(154,70,48,.35)}
+.agenda-item.overdue span,.card-event.overdue,.block-summary.overdue{color:#9a4630;font-weight:600}
+.agenda .text-button{font-size:11px;padding:5px 6px}
+.agenda-empty{color:var(--muted)}
+.agenda-list{display:grid;gap:6px;margin-bottom:12px}
+.agenda-list .agenda-item{width:100%}
+.agenda-list .agenda-item strong{max-width:none}
+@media(max-width:760px){.agenda{flex-wrap:wrap}.agenda-item small{display:none}}
+#toast{display:flex;align-items:center;gap:14px}
+#toast.show{pointer-events:auto}
+.toast-undo{padding:0;color:#fff;font-size:12px;font-weight:600;text-decoration:underline;text-underline-offset:3px}
+@media(hover:hover){.asset-card .card-hide,.asset-card .repo-swap{opacity:0;transition:opacity .15s}.asset-card:hover .card-hide,.asset-card:focus-within .card-hide,.asset-card:hover .repo-swap,.asset-card:focus-within .repo-swap{opacity:1}}
+@media(hover:none){.asset-card .card-hide{display:none}}
+.button.danger{background:#9a4630;border-color:transparent;color:#fff}
+.button.danger:hover{background:#86392a}
+.confirm-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px}
+.confirm-message{font-size:12px;color:var(--ink)}
+.collision-list{display:grid;gap:8px;margin:6px 0 4px;font-size:12px}
+.field-row{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:8px}
+@media(max-width:520px){.field-row{grid-template-columns:1fr}}
+.inbox{display:grid;gap:14px}
+.inbox-paste{gap:10px}
+.inbox-paste .button{margin-top:0}
+.inbox-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding-top:12px;border-top:1px solid var(--line);font-size:12px}
+.inbox-head .text-button{font-size:11px;padding:4px 6px}
+.candidate{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.candidate.resolved{opacity:.7}
+.candidate-main{display:grid;gap:4px;min-width:0}
+.candidate-main strong{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.candidate-meta,.candidate-status{font-size:11px;color:var(--muted)}
+.candidate-actions{display:flex;align-items:center;gap:6px;flex:none}
+.candidate-actions .button{height:28px;padding:0 12px}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.chip{padding:2px 7px;border:1px solid var(--line);border-radius:6px;background:rgba(var(--tone-card),.6);color:var(--ink);font-size:10px}
+.chip.inferred{border-style:dashed}
+.chip.match{color:rgb(var(--tone-primary))}
+.inbox-more summary{padding:6px 0;color:var(--muted);font-size:12px;cursor:pointer}
+.candidate-review .facts{margin:0}
+.candidate-review .fact{padding:10px 0}
+.candidate-review details summary{cursor:pointer;font-size:12px;color:var(--muted)}
+.inbox-back{justify-self:start}
+@media(max-width:520px){.candidate{flex-direction:column;align-items:stretch}.candidate-actions{justify-content:flex-end}}

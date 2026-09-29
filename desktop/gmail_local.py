@@ -20,7 +20,8 @@ AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 API_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages"
 SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
-SEARCH = "{invoice receipt billing renewal subscription payment 账单 续费 订阅 服务通知} -in:spam -in:trash"
+# 14 months still covers the previous charge of a yearly subscription.
+SEARCH = "{invoice receipt billing renewal subscription payment 账单 续费 订阅 服务通知} newer_than:14m -in:spam -in:trash"
 MAX_MATCHES = 2000
 
 

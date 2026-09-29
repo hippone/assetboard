@@ -30,4 +30,5 @@ codesign --verify --deep --strict "$app_dir"
 "$app_dir/Contents/MacOS/Assetboard" --test-cloudflare-inventory
 "$app_dir/Contents/MacOS/Assetboard" --test-github
 "$app_dir/Contents/MacOS/Assetboard" --test-ocr
+"$app_dir/Contents/MacOS/Assetboard" --test-webview
 printf '%s\n' "$app_dir"
