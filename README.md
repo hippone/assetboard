@@ -26,9 +26,10 @@ v0.1.0 使用 Developer ID 签名，已通过 Apple 公证并装订票据。每�
 - macOS App 的“文件 → GitHub 只读接入…”可使用本机已登录的 GitHub CLI，或填写 GitHub 令牌，同步授权范围内仓库的名称、归属、可见性、归档状态和仓库链接。推荐仅授予仓库 Metadata Read 权限的细粒度令牌；使用本机 `gh` 时，实际权限取决于已有令牌。`gh` 路径不会将令牌另存到 Assetboard 钥匙串，手动填写的令牌经验证后会保存。
 - 仓库区块按 GitHub 最近更新时间以卡片显示 6 个，其余以图标与名称列在下方；点击“移到列表”或“显示卡片”可在两组间互换，并保留选择。
 - macOS App 可从本机截图/PDF 识别文字，以及通过本机 Google OAuth 搜索最近 14 个月的 Gmail 账单、续费和服务通知；结果保存在 SQLite 的导入资料中。“待确认”把同一发件人的邮件归为一组，识别金额与日期；没有写明日期时，按收据间隔或写明的月付 / 年付推算下一次扣款并标为“推算”。每组由你核对后新建、补充或忽略，不会自动变成资产。Gmail 设置见 [本地 Gmail 导入](docs/gmail-local.md)。
+- macOS App 可选接入你自己的模型（Anthropic Claude、OpenAI 兼容接口或本机 Ollama 等）来识别截图、邮件和粘贴文字：API key 存在钥匙串，只有在你点“用 AI 识别”、确认批量识别或勾选“导入截图后自动识别”时才发送，结果仍需核对确认。见 [AI 识别](docs/ai-recognition.md)；尚未用真实 API key 验证。
 - macOS 版以 `~/Library/Application Support/Assetboard/assetboard.sqlite` 保存资产、布局及导入资料，同时维护 `board.json` 和 `board.previous.json` 作为可读备份；“文件”菜单可导出 JSON 备份或打开数据文件夹。
 
-当前构建不再预装演示资产。升级时只移除与旧版原始内容完全一致的演示记录和未改动的默认区块；编辑过的记录及自定义布局保留。旧 `board.json` 首次打开时迁入 SQLite；JSON 镜像保存前将上一份写入 `board.previous.json`，后续保存会覆盖该备份。手动录入的资产可填写真实链接。Cloudflare 的 Zone 不等于注册记录，不能由此推断域名到期日或账单；其他资源也只读列表元数据，不读取脚本代码或 R2 对象。GitHub 接入只读取仓库元数据，不读取代码、密钥或账单。macOS SQLite、JSON 镜像和自定义图标均留在本机，不上传到 Assetboard 服务。浏览器版本支持手动录入，暂不支持平台同步、OCR 或 Gmail。当前没有多设备同步或后端。请按需导出备份。
+当前构建不再预装演示资产。升级时只移除与旧版原始内容完全一致的演示记录和未改动的默认区块；编辑过的记录及自定义布局保留。旧 `board.json` 首次打开时迁入 SQLite；JSON 镜像保存前将上一份写入 `board.previous.json`，后续保存会覆盖该备份。手动录入的资产可填写真实链接。Cloudflare 的 Zone 不等于注册记录，不能由此推断域名到期日或账单；其他资源也只读列表元数据，不读取脚本代码或 R2 对象。GitHub 接入只读取仓库元数据，不读取代码、密钥或账单。macOS SQLite、JSON 镜像和自定义图标均留在本机，不上传到 Assetboard 服务；启用 AI 识别后，你选中的资料会发送到你配置的模型服务。浏览器版本支持手动录入，暂不支持平台同步、OCR 或 Gmail。当前没有多设备同步或后端。请按需导出备份。
 
 Cloudflare 令牌建议在[官方 API Token 页面](https://dash.cloudflare.com/profile/api-tokens)新建，按需授予 **Zone Read、Account Read、Pages Read、Workers Scripts Read、R2 Storage Read** 并限定资源范围。App 只调用对应列表的 GET 接口，按资源标识更新，保留本地备注、图标和管理链接。未获授权的类别不会被标记为缺失；已完整查询的类别中未返回的旧记录会标记出来，不会自动删除。要彻底撤销访问，需在 Cloudflare 后台删除该令牌。
 

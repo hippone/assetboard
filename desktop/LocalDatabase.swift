@@ -93,13 +93,46 @@ final class LocalDatabase {
     }
 
     func saveEvidence(id: String, kind: String, source: String, title: String, body: String, assetId: String? = nil, payload: [String: Any] = [:]) throws {
-        let bytes = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        // Re-importing the same file keeps earlier annotations such as an AI reading.
+        let merged = (try evidencePayload(id: id) ?? [:]).merging(payload) { _, new in new }
+        let bytes = try JSONSerialization.data(withJSONObject: merged, options: [.sortedKeys])
         let query = try statement("INSERT INTO evidence(id,kind,source,title,body,imported_at,asset_id,payload) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title,body=excluded.body,imported_at=excluded.imported_at,asset_id=excluded.asset_id,payload=excluded.payload")
         defer { sqlite3_finalize(query) }
         for (index, value) in [id,kind,source,title,body,ISO8601DateFormatter().string(from: Date()),assetId ?? "",String(data: bytes, encoding: .utf8) ?? "{}"].enumerated() {
             try bind(value, to: query, at: Int32(index + 1))
         }
         guard sqlite3_step(query) == SQLITE_DONE else { throw failure("保存导入证据失败") }
+    }
+
+    private func evidencePayload(id: String) throws -> [String: Any]? {
+        let query = try statement("SELECT payload FROM evidence WHERE id=?")
+        defer { sqlite3_finalize(query) }
+        try bind(id, to: query, at: 1)
+        guard sqlite3_step(query) == SQLITE_ROW, let raw = sqlite3_column_text(query, 0) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: Data(String(cString: raw).utf8))) as? [String: Any] ?? [:]
+    }
+
+    func evidence(id: String, bodyLimit: Int = 8000) throws -> [String: String]? {
+        let query = try statement("SELECT id,kind,source,title,substr(body,1,?),imported_at,payload FROM evidence WHERE id=?")
+        defer { sqlite3_finalize(query) }
+        guard sqlite3_bind_int(query, 1, Int32(max(1, bodyLimit))) == SQLITE_OK else { throw failure("查询数量无效") }
+        try bind(id, to: query, at: 2)
+        guard sqlite3_step(query) == SQLITE_ROW else { return nil }
+        var row: [String: String] = [:]
+        for (index, name) in ["id", "kind", "source", "title", "body", "importedAt", "payload"].enumerated() {
+            row[name] = sqlite3_column_text(query, Int32(index)).map { String(cString: $0) } ?? ""
+        }
+        return row
+    }
+
+    func mergeEvidencePayload(id: String, values: [String: Any]) throws {
+        guard let current = try evidencePayload(id: id) else { throw failure("找不到这条导入资料") }
+        let bytes = try JSONSerialization.data(withJSONObject: current.merging(values) { _, new in new }, options: [.sortedKeys])
+        let query = try statement("UPDATE evidence SET payload=? WHERE id=?")
+        defer { sqlite3_finalize(query) }
+        try bind(String(data: bytes, encoding: .utf8) ?? "{}", to: query, at: 1)
+        try bind(id, to: query, at: 2)
+        guard sqlite3_step(query) == SQLITE_DONE else { throw failure("保存识别结果失败") }
     }
 
     /// Most recent evidence first. Bodies are clipped so the list stays small enough to hand to the web view.

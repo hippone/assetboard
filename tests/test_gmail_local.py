@@ -45,10 +45,16 @@ class GmailImportTests(unittest.TestCase):
                  patch.object(gmail_local, "matching_ids", return_value=["abc"]), \
                  patch.object(gmail_local, "request_json", return_value=message):
                 self.assertEqual(gmail_local.sync(str(credentials), str(database), str(folder / "token.json")), 1)
+                with sqlite3.connect(database) as connection:
+                    payload = json.loads(connection.execute("SELECT payload FROM evidence").fetchone()[0])
+                    connection.execute("UPDATE evidence SET payload=?", (json.dumps({**payload, "ai": {"text": "{}"}}),))
                 self.assertEqual(gmail_local.sync(str(credentials), str(database), str(folder / "token.json")), 1)
             with sqlite3.connect(database) as connection:
                 self.assertEqual(connection.execute("SELECT COUNT(*) FROM evidence").fetchone()[0], 1)
                 self.assertEqual(connection.execute("SELECT title FROM evidence").fetchone()[0], "Invoice")
+                payload = json.loads(connection.execute("SELECT payload FROM evidence").fetchone()[0])
+                self.assertEqual(payload["ai"], {"text": "{}"}, "re-import keeps an earlier AI reading")
+                self.assertEqual(payload["messageId"], "abc")
 
 
 if __name__ == "__main__":

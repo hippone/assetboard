@@ -270,3 +270,16 @@ button.block-empty:hover{background:rgba(255,255,255,.5);color:var(--ink)}
 .candidate-review details summary{cursor:pointer;font-size:12px;color:var(--muted)}
 .inbox-back{justify-self:start}
 @media(max-width:520px){.candidate{flex-direction:column;align-items:stretch}.candidate-actions{justify-content:flex-end}}
+
+/* Own-key AI recognition */
+.inbox-head{flex-wrap:wrap}
+.inbox-head>span{display:flex;flex-wrap:wrap;align-items:center;gap:2px}
+.ai-panel{display:grid;gap:8px;padding:12px;border:1px solid var(--line);border-radius:10px;background:rgba(var(--tone-card),.35)}
+.ai-panel .button{margin-top:0;justify-self:start;height:30px;padding:0 14px}
+.ai-panel .form-note{margin:0}
+.ai-items{display:grid;gap:6px}
+.form .ai-item{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink)}
+.form .ai-item input{width:auto}
+.ai-error{color:#9a4630}
+.chip.ai{background:rgb(var(--tone-primary));border-color:transparent;color:#fff}
+.inline-button{display:inline;padding:0 3px;font-size:inherit;text-decoration:underline;text-underline-offset:3px}

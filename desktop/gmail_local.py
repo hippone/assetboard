@@ -208,11 +208,19 @@ def sync(credentials, database, token_file):
         for message_id in ids:
             url = API_URL + "/" + urllib.parse.quote(message_id, safe="") + "?format=full"
             record = message_evidence(request_json(url, token=token))
+            payload = {"messageId": record["messageId"], "date": record["date"]}
+            existing = connection.execute("SELECT payload FROM evidence WHERE id=?", (record["id"],)).fetchone()
+            if existing:
+                try:
+                    # Keep annotations such as an AI reading when a message is imported again.
+                    payload = {**json.loads(existing[0]), **payload}
+                except (TypeError, ValueError):
+                    pass
             connection.execute(
                 "INSERT INTO evidence(id,kind,source,title,body,imported_at,asset_id,payload) VALUES(?,?,?,?,?,?,?,?) "
                 "ON CONFLICT(id) DO UPDATE SET source=excluded.source,title=excluded.title,body=excluded.body,imported_at=excluded.imported_at,payload=excluded.payload",
                 (record["id"], record["kind"], record["source"], record["title"], record["body"],
-                 time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "", json.dumps({"messageId": record["messageId"], "date": record["date"]})),
+                 time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "", json.dumps(payload)),
             )
         connection.commit()
     finally:

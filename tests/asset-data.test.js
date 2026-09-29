@@ -172,3 +172,54 @@ test('keeps pasted text without a date as a weak candidate',()=>{
  assert.equal(candidate.weak,true);
  assert.equal(candidate.date,null);
 });
+
+const {parseAiItems,applyAiItem}=require('../asset-data.js');
+const types=['domain','server','subscription','database','license','repository','deployment','storage'];
+
+test('keeps only well-formed fields from a model reply',()=>{
+ const reply='Here you go:\n```json\n{"items":[{"name":"  example.dev ","merchant":"Namecheap","type":"domain","amount":"1,299.00","currency":"rmb","cycle":"yearly","date":"2026-10-20","dateKind":"expire","paidDate":"null","account":null,"quote":"expires on Oct 20"},{"name":"x","type":"spaceship","amount":"free","currency":"dollars","cycle":"weekly","date":"2026-02-30","dateKind":"soon"},{"merchant":""},"junk"]}\n```';
+ const items=parseAiItems(reply,types);
+ assert.equal(items.length,2);
+ assert.deepEqual(items[0],{name:'example.dev',merchant:'Namecheap',type:'domain',amount:'1299.00',currency:'CNY',cycle:'yearly',date:'2026-10-20',dateKind:'expire',paidDate:null,account:'',quote:'expires on Oct 20'});
+ assert.deepEqual(items[1],{name:'x',merchant:'',type:null,amount:'',currency:'',cycle:null,date:null,dateKind:null,paidDate:null,account:'',quote:''});
+ assert.deepEqual(parseAiItems('{"items":[]}',types),[]);
+ assert.equal(parseAiItems('I cannot help with that.',types),null);
+ assert.deepEqual(parseAiItems('[{"name":"Figma"}]',types).map(item=>item.name),['Figma']);
+});
+
+test('prefers an AI reading over rules and keeps rule inference it cannot see',()=>{
+ const receipt=(id,date,ai)=>({id,kind:'gmail',source:'Apple <no_reply@email.apple.com>',title:'Your receipt from Apple.',body:'Total ¥68.00',payload:{date,...(ai?{ai:{provider:'anthropic',model:'m',at:'t',text:ai}}:{})}});
+ const single=buildCandidates([receipt('a1','2026-07-10'),receipt('a2','2026-08-10'),receipt('a3','2026-09-10','{"items":[{"name":"iCloud+ 200GB","merchant":"Apple","type":"storage","amount":"21","currency":"CNY","cycle":"monthly","paidDate":"2026-09-10"}]}')],{now,types})[0];
+ assert.equal(single.name,'iCloud+ 200GB');
+ assert.equal(single.type,'storage');
+ assert.equal(single.cost,'¥21 / 月');
+ assert.deepEqual([single.date.value,single.date.source],['2026-10-10','ai']);
+ assert.equal(single.ai.rowId,'a3');
+ assert.equal(single.base.cost,'¥68.00 / 月','the rule reading stays available');
+ const multi=buildCandidates([receipt('b1','2026-09-01','{"items":[{"name":"Notes Pro","merchant":"Acme","amount":"12","currency":"USD","cycle":"yearly","date":"2027-09-01","dateKind":"renew"},{"name":"Photo Lab","merchant":"Beta"}]}')],{now,types})[0];
+ assert.equal(multi.name,'Notes Pro');
+ const second=applyAiItem(multi.base,multi.ai.items[1],{now,fallback:false});
+ assert.equal(second.name,'Photo Lab');
+ assert.equal(second.date,null,'a second item does not borrow the first item\'s date');
+ assert.equal(second.cost,'');
+ const empty=buildCandidates([{id:'n',kind:'gmail',source:'News <hi@letters.io>',title:'Weekly',body:'Total $5',payload:{ai:{text:'{"items":[]}'}}}],{now,types})[0];
+ assert.equal(empty.weak,true);
+ const unreadable=buildCandidates([{id:'u',kind:'gmail',source:'Figma <billing@figma.com>',title:'Receipt',body:'Total $15.00',payload:{ai:{text:'sorry'}}}],{now,types})[0];
+ assert.equal(unreadable.ai.unreadable,true);
+ assert.equal(unreadable.cost,'$15.00','an unreadable reply keeps the rule reading');
+});
+
+test('rolls a past AI date forward only when it repeats',()=>{
+ const base=buildCandidates([{id:'p',kind:'paste',title:'t',body:'',importedAt:'2026-09-29T00:00:00Z'}],{now})[0];
+ assert.equal(applyAiItem(base,{name:'Figma',date:'2026-01-15',dateKind:'renew',cycle:'monthly'},{now}).date.value,'2026-10-15');
+ assert.equal(applyAiItem(base,{name:'old.dev',date:'2026-01-15',dateKind:'expire'},{now}).date.value,'2026-01-15');
+});
+
+test('suggests an existing asset by its own name, not by a shared merchant',()=>{
+ const {matchAsset}=require('../asset-data.js');
+ const assets=[{id:'music',name:'Apple Music',provider:'Apple'},{id:'figma',name:'Figma Professional',provider:'Figma'},{id:'site',name:'example.dev',provider:'Registrar'}];
+ assert.equal(matchAsset(assets,{name:'iCloud+ 200GB',merchant:'Apple',domains:[]}),null);
+ assert.equal(matchAsset(assets,{name:'Apple Music',merchant:'Apple',domains:[]}),'music');
+ assert.equal(matchAsset(assets,{name:'Figma',merchant:'Figma',domains:[]}),'figma');
+ assert.equal(matchAsset(assets,{name:'example.dev',merchant:'Namecheap',domains:['example.dev']}),'site');
+});

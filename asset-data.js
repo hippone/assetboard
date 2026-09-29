@@ -335,9 +335,14 @@ function guessAssetType(text,domains){
  return 'subscription';
 }
 
-function evidenceFacts(row){
+function evidencePayload(row){
  let payload=row.payload||{};
  if(typeof payload==='string'){try{payload=JSON.parse(payload)||{};}catch{payload={};}}
+ return payload&&typeof payload==='object'?payload:{};
+}
+
+function evidenceFacts(row,types=[]){
+ const payload=evidencePayload(row);
  const sender=parseSender(row.kind==='gmail'?row.source:''),senderDomain=registrableDomain(sender.host),processor=paymentProcessors.includes(senderDomain);
  const title=String(row.title||''),body=String(row.body||''),text=`${title}\n${body}`;
  let merchant=cleanMerchant(sender.name);
@@ -349,7 +354,8 @@ function evidenceFacts(row){
   id:row.id,kind:row.kind||'',title,merchant,senderDomain,
   merchantKey:senderDomain?(processor?`${senderDomain}:${merchant.toLowerCase()}`:senderDomain):null,
   day:dayFromDateString(payload.date)??dayFromDateString(row.importedAt),
-  amount,cycle:amount?.cycle||textCycle(head),dates,domains,type:guessAssetType(head,domains)
+  amount,cycle:amount?.cycle||textCycle(head),dates,domains,type:guessAssetType(head,domains),
+  ai:payload.ai&&typeof payload.ai.text==='string'?{provider:String(payload.ai.provider||''),model:String(payload.ai.model||''),at:String(payload.ai.at||''),items:parseAiItems(payload.ai.text,types)}:null
  };
 }
 
@@ -363,29 +369,32 @@ function inferCycle(days){
 
 function formatCost(amount,cycle){
  if(!amount)return '';
- return `${currencyDisplay[amount.currency]||amount.currency+' '}${amount.value}${billingCycles[cycle]?` / ${billingCycles[cycle].suffix}`:''}`;
+ return `${currencyDisplay[amount.currency]??(amount.currency?amount.currency+' ':'')}${amount.value}${billingCycles[cycle]?` / ${billingCycles[cycle].suffix}`:''}`;
 }
 
+// The asset's own name counts most; a merchant alone (e.g. "Apple") must not pull in a sibling product.
 function matchAsset(assets,facts){
- const normalize=value=>String(value||'').toLowerCase().replace(/[^a-z0-9一-龥]+/g,'');
- const merchant=normalize(facts.merchant);
+ const normalize=value=>String(value||'').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g,'');
+ const merchant=normalize(facts.merchant),name=normalize(facts.name),byMerchant=!name||name===merchant;
+ const similar=(left,right)=>left.length>=3&&right.length>=3&&(left.includes(right)||right.includes(left));
  let best=null,bestScore=0;
  for(const asset of assets){
-  const name=normalize(asset.name),provider=normalize(asset.provider);
+  const assetName=normalize(asset.name),provider=normalize(asset.provider);
   let score=0;
   if(facts.domains.includes(String(asset.name).toLowerCase()))score+=5;
-  if(merchant.length>=3&&name.length>=3&&(name.includes(merchant)||merchant.includes(name)))score+=3;
-  if(merchant.length>=3&&provider.length>=3&&(provider.includes(merchant)||merchant.includes(provider)))score+=2;
+  if(similar(assetName,name))score+=4;
+  else if(byMerchant&&similar(assetName,merchant))score+=3;
+  if(similar(provider,merchant))score+=2;
   try{if(facts.senderDomain&&registrableDomain(new URL(asset.url).hostname)===facts.senderDomain)score+=2;}catch{}
   if(score>bestScore){best=asset;bestScore=score;}
  }
  return bestScore>=3?best.id:null;
 }
 
-function buildCandidates(rows,{assets=[],decisions={},now=new Date()}={}){
+function buildCandidates(rows,{assets=[],decisions={},now=new Date(),types=[]}={}){
  const today=localDay(now),groups=new Map();
  for(const row of rows){
-  const facts=evidenceFacts(row),key=facts.merchantKey||'row:'+row.id;
+  const facts=evidenceFacts(row,types),key=facts.merchantKey||'row:'+row.id;
   if(!groups.has(key))groups.set(key,[]);
   groups.get(key).push(facts);
  }
@@ -404,16 +413,53 @@ function buildCandidates(rows,{assets=[],decisions={},now=new Date()}={}){
   else if(cycle&&chargeDay!=null)date={value:nextOccurrence(isoDay(chargeDay),cycle,today),kind:'renew',source:'inferred',basis:inferredCycle&&!items.some(item=>item.cycle)?`根据 ${items.length} 封收据的间隔推算`:`按${billingCycles[cycle].label}周期从最近一次付款（${isoDay(chargeDay)}）推算`};
   const domains=[...new Set(items.flatMap(item=>item.domains))],type=items.find(item=>item.type!=='subscription')?.type||'subscription';
   const merchant=items.find(item=>item.merchant)?.merchant||'';
-  const facts={merchant,domains,senderDomain:latest.senderDomain};
+  const facts={merchant,name:type==='domain'&&domains[0]?domains[0]:merchant,domains,senderDomain:latest.senderDomain};
   const pendingIds=items.filter(item=>!decisions[item.id]).map(item=>item.id);
-  return {
+  const base={
    key,ids:items.map(item=>item.id),pendingIds,count:items.length,latest:{id:latest.id,title:latest.title,day:latest.day,kind:latest.kind},
-   merchant,name:type==='domain'&&domains[0]?domains[0]:merchant,type,amount,cycle,cost:formatCost(amount,cycle),date,domains,
-   match:matchAsset(assets,facts),weak:!amount&&!date&&!(type==='domain'&&domains.length),pending:pendingIds.length>0
+   merchant,name:type==='domain'&&domains[0]?domains[0]:merchant,type,amount,cycle,cost:formatCost(amount,cycle),date,domains,senderDomain:latest.senderDomain,account:'',quote:'',
+   match:matchAsset(assets,facts),weak:!amount&&!date&&!(type==='domain'&&domains.length),pending:pendingIds.length>0,ai:null
   };
+  const analyzed=items.find(item=>item.ai);
+  if(!analyzed)return base;
+  const ai={rowId:analyzed.id,provider:analyzed.ai.provider,model:analyzed.ai.model,at:analyzed.ai.at,items:analyzed.ai.items||[],unreadable:!analyzed.ai.items};
+  const candidate=ai.unreadable?base:ai.items.length?applyAiItem(base,ai.items[0],{assets,now,fallback:ai.items.length===1}):{...base,weak:true};
+  return {...candidate,ai,base};
  });
  const days=candidate=>candidate.date?dayNumber(candidate.date.value)-today:Infinity;
  return candidates.sort((left,right)=>right.pending-left.pending||left.weak-right.weak||days(left)-days(right)||(right.latest.day??0)-(left.latest.day??0));
 }
 
-if(typeof module!=='undefined')module.exports={assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset,dateKinds,billingCycles,dayNumber,localDay,isoDay,addMonths,nextOccurrence,assetDateStatus,upcomingEvents,syncKey,assetSyncKey,isBlacklisted,findByExternal,findNameCollision,mergeCloudflare,mergeGitHub,applyCollision,parseSender,registrableDomain,cleanMerchant,findAmounts,findDates,findDomains,evidenceFacts,inferCycle,formatCost,matchAsset,buildCandidates};
+// Replies from a person's own model are untrusted text: parse, then keep only known fields with bounded length.
+function parseAiItems(text,types=[]){
+ const raw=String(text||'').replace(/```(?:json)?/gi,''),start=raw.indexOf('{'),end=raw.lastIndexOf('}');
+ const read=part=>{try{return JSON.parse(part);}catch{return null;}},open=raw.indexOf('['),close=raw.lastIndexOf(']');
+ let value=start>=0&&end>start?read(raw.slice(start,end+1)):null;
+ if(!Array.isArray(value?.items)){const list=open>=0&&close>open?read(raw.slice(open,close+1)):null;value=Array.isArray(list)?{items:list}:null;}
+ if(!value)return null;
+ const clean=(input,max)=>{const field=typeof input==='string'||typeof input==='number'?String(input).replace(/\s+/g,' ').trim():'';return /^(?:null|none|n\/a|unknown|未知|无)$/i.test(field)?'':field.slice(0,max);};
+ return value.items.slice(0,10).filter(item=>item&&typeof item==='object').map(item=>{
+  const amount=clean(item.amount,24).replace(/,/g,'').replace(/^[^\d]+/,''),code=clean(item.currency,8).toUpperCase(),date=clean(item.date,10),paidDate=clean(item.paidDate,10);
+  return {
+   name:clean(item.name,100),merchant:clean(item.merchant,80),type:types.includes(item.type)?item.type:null,
+   amount:/^\d+(?:\.\d{1,2})?$/.test(amount)&&Number(amount)>0?amount:'',currency:code==='RMB'?'CNY':/^[A-Z]{3}$/.test(code)?code:'',
+   cycle:billingCycles[item.cycle]?item.cycle:null,date:dayNumber(date)!==null?date:null,dateKind:dateKinds[item.dateKind]?item.dateKind:null,
+   paidDate:dayNumber(paidDate)!==null?paidDate:null,account:clean(item.account,100),quote:clean(item.quote,120)
+  };
+ }).filter(item=>item.name||item.merchant);
+}
+
+// Overlay one AI item on the rule-based candidate. With several items, fields are not borrowed from the rules.
+function applyAiItem(base,item,{assets=[],now=new Date(),fallback=true}={}){
+ const today=localDay(now),cycle=item.cycle||(fallback?base.cycle:null);
+ const amount=item.amount?{currency:item.currency||(fallback?base.amount?.currency||'':''),value:item.amount}:fallback?base.amount:null;
+ let date=fallback?base.date:null;
+ if(item.date){const value=cycle&&dayNumber(item.date)<today?nextOccurrence(item.date,cycle,today):item.date;date={value,kind:item.dateKind||'expire',source:'ai',basis:value===item.date?'AI 从原文识别':`AI 识别为 ${item.date}，按${billingCycles[cycle].label}顺延`};}
+ else if(item.paidDate&&cycle)date={value:nextOccurrence(item.paidDate,cycle,today),kind:'renew',source:'ai',basis:`AI 识别付款日 ${item.paidDate}，按${billingCycles[cycle].label}推算`};
+ const merchant=item.merchant||base.merchant,name=item.name||(fallback?base.name:merchant),type=item.type||base.type;
+ const domains=type==='domain'&&name?[name.toLowerCase(),...base.domains]:base.domains;
+ return {...base,merchant,name,type,amount,cycle,cost:formatCost(amount,cycle),date,account:item.account,quote:item.quote,
+  match:matchAsset(assets,{merchant,name,domains,senderDomain:base.senderDomain})||(fallback&&!item.name?base.match:null),weak:false};
+}
+
+if(typeof module!=='undefined')module.exports={assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset,dateKinds,billingCycles,dayNumber,localDay,isoDay,addMonths,nextOccurrence,assetDateStatus,upcomingEvents,syncKey,assetSyncKey,isBlacklisted,findByExternal,findNameCollision,mergeCloudflare,mergeGitHub,applyCollision,parseSender,registrableDomain,cleanMerchant,findAmounts,findDates,findDomains,evidenceFacts,inferCycle,formatCost,matchAsset,buildCandidates,evidencePayload,parseAiItems,applyAiItem};

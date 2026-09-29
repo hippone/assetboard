@@ -203,6 +203,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     var window: NSWindow!
     var webView: WKWebView!
     var store: BoardStore!
+    var ai: AIRecognizer!
     let cloudflare = CloudflareConnector()
     let github = GitHubConnector()
     var localRoot: URL!
@@ -225,13 +226,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
             store = try BoardStore()
+            ai = AIRecognizer(directory: store.directory)
             let saved = try store.load()
             guard let root = Bundle.main.resourceURL?.appendingPathComponent("Board", isDirectory: true) else { return }
             localRoot = root
             let controller = WKUserContentController()
             let initial: [String: Any] = ["data": saved as Any? ?? NSNull(), "cloudflareConnected": false, "githubConnected": false,
                                           "cloudflareChecking": true, "githubChecking": true,
-                                          "gmailConfigured": FileManager.default.fileExists(atPath: store.directory.appendingPathComponent("gmail-client.json").path)]
+                                          "gmailConfigured": FileManager.default.fileExists(atPath: store.directory.appendingPathComponent("gmail-client.json").path),
+                                          "ai": ai.loadSettings()?.summary ?? NSNull()]
             let json = String(data: try JSONSerialization.data(withJSONObject: initial), encoding: .utf8)!
             controller.addUserScript(WKUserScript(source: "window.__ASSETBOARD_NATIVE__ = \(json);", injectionTime: .atDocumentStart, forMainFrameOnly: true))
             controller.add(self, name: "assetboard")
@@ -283,7 +286,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             NSApplication.shared.activate(ignoringOtherApps: true)
             DispatchQueue.global(qos: .utility).async {
                 let connections: [String: Any] = ["cloudflareConnected": self.cloudflare.token() != nil, "githubConnected": self.github.token() != nil,
-                                                  "cloudflareChecking": false, "githubChecking": false]
+                                                  "aiKeySaved": self.ai.key() != nil, "cloudflareChecking": false, "githubChecking": false]
                 guard let bytes = try? JSONSerialization.data(withJSONObject: connections),
                       let json = String(data: bytes, encoding: .utf8) else { return }
                 DispatchQueue.main.async { self.connectionStateJSON = json; self.publishConnectionState() }
@@ -356,6 +359,79 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     @objc func openGitHub() { webView.evaluateJavaScript("githubDialog()") }
     @objc func openGmail() { webView.evaluateJavaScript("gmailDialog()") }
     @objc func openInbox() { webView.evaluateJavaScript("inboxDialog()") }
+    @objc func openAISettings() { webView.evaluateJavaScript("aiDialog()") }
+    func aiResult(_ result: [String: Any]) {
+        DispatchQueue.main.async {
+            guard let data = try? JSONSerialization.data(withJSONObject: result), let json = String(data: data, encoding: .utf8) else { return }
+            self.webView.evaluateJavaScript("window.assetboardAIResult(\(json))")
+        }
+    }
+    func saveAISettings(_ body: [String: Any]) {
+        let supplied = (body["apiKey"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard supplied.count <= 512, !supplied.contains(where: { $0.isWhitespace }) else { aiResult(["kind": "settings", "ok": false, "error": "API key 格式无效。"]); return }
+        let settings: AISettings
+        do {
+            settings = try AIRecognizer.validate(provider: body["provider"] as? String ?? "", baseURL: body["baseURL"] as? String ?? "",
+                                                 model: body["model"] as? String ?? "", autoImages: body["autoImages"] as? Bool ?? true)
+        } catch { aiResult(["kind": "settings", "ok": false, "error": error.localizedDescription]); return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let key = supplied.isEmpty ? self.ai.key() : supplied
+            guard key != nil || AIRecognizer.isLocal(URL(string: settings.baseURL)!) else {
+                self.aiResult(["kind": "settings", "ok": false, "error": "请填写 API key。"]); return
+            }
+            // A tiny request proves the endpoint, model and key work before anything is stored.
+            self.ai.recognize(settings: settings, key: key, text: "连接测试：没有需要分析的材料，请只回复 {\"items\":[]}", image: nil) { result in
+                if case .failure(let error) = result { self.aiResult(["kind": "settings", "ok": false, "error": error.localizedDescription]); return }
+                do { try self.ai.saveSettings(settings) } catch { self.aiResult(["kind": "settings", "ok": false, "error": "无法保存 AI 设置：\(error.localizedDescription)"]); return }
+                if !supplied.isEmpty && !self.ai.saveKey(supplied) {
+                    self.aiResult(["kind": "settings", "ok": false, "error": "无法将 API key 保存到 macOS 钥匙串。"]); return
+                }
+                self.aiResult(["kind": "settings", "ok": true, "ai": settings.summary, "aiKeySaved": self.ai.key() != nil])
+            }
+        }
+    }
+    func recognizeWithAI(_ body: [String: Any]) {
+        let requestId = body["requestId"] as? Int ?? 0
+        let evidenceId = body["evidenceId"] as? String
+        let pasted = String((body["text"] as? String ?? "").prefix(8000))
+        DispatchQueue.global(qos: .userInitiated).async {
+            func fail(_ message: String) { self.aiResult(["kind": "recognize", "requestId": requestId, "ok": false, "error": message]) }
+            guard let settings = self.ai.loadSettings() else { fail("尚未配置 AI 识别。"); return }
+            let key = self.ai.key()
+            guard key != nil || AIRecognizer.isLocal(URL(string: settings.baseURL)!) else { fail("没有找到已保存的 API key，请在 AI 识别设置中重新填写。"); return }
+            let today = ISO8601DateFormatter.string(from: Date(), timeZone: .current, formatOptions: [.withFullDate])
+            var text = "今天：\(today)\n"
+            var image: Data?
+            if let evidenceId {
+                guard let row = try? self.store.database.evidence(id: evidenceId) else { fail("找不到这条导入资料。"); return }
+                let payload = (try? JSONSerialization.jsonObject(with: Data((row["payload"] ?? "{}").utf8))) as? [String: Any] ?? [:]
+                if row["kind"] == "gmail" {
+                    text += "来源：Gmail 邮件\n发件人：\(row["source"] ?? "")\n主题：\(row["title"] ?? "")\n邮件日期：\(payload["date"] as? String ?? "")\n正文：\n\(row["body"] ?? "")"
+                } else {
+                    // Send the original screenshot only when it is still the same file that was imported.
+                    if let path = payload["file"] as? String, let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+                       "ocr-" + SHA256.hash(data: data).map({ String(format: "%02x", $0) }).joined() == evidenceId {
+                        image = AIRecognizer.preparedImage(at: URL(fileURLWithPath: path))
+                    }
+                    text += "来源：截图或 PDF（\(row["title"] ?? "")）\n" + (image != nil ? "请以附图为准；以下本机识别文字可能有误：\n" : "本机识别出的文字：\n") + String((row["body"] ?? "").prefix(image != nil ? 3000 : 8000))
+                }
+            } else {
+                guard !pasted.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { fail("没有可识别的文字。"); return }
+                text += "来源：用户粘贴的文字\n\(pasted)"
+            }
+            self.ai.recognize(settings: settings, key: key, text: text, image: image) { result in
+                switch result {
+                case .failure(let error): fail(error.localizedDescription)
+                case .success(let reply):
+                    let reading: [String: Any] = ["provider": settings.provider, "model": settings.model, "at": ISO8601DateFormatter().string(from: Date()), "text": String(reply.prefix(20000)), "image": image != nil]
+                    if let evidenceId {
+                        do { try self.store.database.mergeEvidencePayload(id: evidenceId, values: ["ai": reading]) } catch { fail(error.localizedDescription); return }
+                    }
+                    self.aiResult(["kind": "recognize", "requestId": requestId, "ok": true, "evidenceId": evidenceId ?? NSNull(), "ai": reading])
+                }
+            }
+        }
+    }
     func gmailResult(_ result: [String: Any]) {
         DispatchQueue.main.async {
             guard let data = try? JSONSerialization.data(withJSONObject: result), let json = String(data: data, encoding: .utf8) else { return }
@@ -431,7 +507,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
                     let digest = SHA256.hash(data: try Data(contentsOf: url)).map { String(format: "%02x", $0) }.joined()
                     DispatchQueue.main.async {
                         do {
-                            try self.store.database.saveEvidence(id: "ocr-" + digest, kind: "ocr", source: url.lastPathComponent, title: url.lastPathComponent, body: text)
+                            try self.store.database.saveEvidence(id: "ocr-" + digest, kind: "ocr", source: url.lastPathComponent, title: url.lastPathComponent, body: text, payload: ["file": url.path])
                             self.ocrResult(["ok": true, "id": "ocr-" + digest, "title": url.lastPathComponent])
                         } catch { self.ocrResult(["ok": false, "error": error.localizedDescription]) }
                     }
@@ -567,6 +643,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             syncGitHubWithLocalCLI()
             return
         }
+        if body["action"] as? String == "aiSave" {
+            saveAISettings(body)
+            return
+        }
+        if body["action"] as? String == "aiDisconnect" {
+            ai.removeSettings()
+            if ai.deleteKey() { aiResult(["kind": "settings", "ok": true, "disconnected": true]) }
+            else { aiResult(["kind": "settings", "ok": false, "error": "无法从 macOS 钥匙串删除 API key，请重试。"]) }
+            return
+        }
+        if body["action"] as? String == "aiRecognize" {
+            recognizeWithAI(body)
+            return
+        }
         if body["action"] as? String == "evidenceList" {
             sendEvidenceList()
             return
@@ -644,6 +734,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         let evidenceItem = NSMenuItem(title: "待确认资料…", action: #selector(showImportedEvidence), keyEquivalent: "")
         evidenceItem.target = self
         fileMenu.addItem(evidenceItem)
+        let aiItem = NSMenuItem(title: "AI 识别设置…", action: #selector(openAISettings), keyEquivalent: "")
+        aiItem.target = self
+        fileMenu.addItem(aiItem)
         let folderItem = NSMenuItem(title: "打开本地数据文件夹", action: #selector(openDataFolder), keyEquivalent: "")
         folderItem.target = self
         fileMenu.addItem(folderItem)
@@ -809,6 +902,109 @@ func testCloudflareInventory() {
     } catch { fputs("Cloudflare inventory test failed: \(error)\n", stderr); exit(1) }
 }
 
+func mockRequestBody(_ request: URLRequest) -> [String: Any] {
+    var data = request.httpBody ?? Data()
+    if data.isEmpty, let stream = request.httpBodyStream {
+        stream.open()
+        defer { stream.close() }
+        var buffer = [UInt8](repeating: 0, count: 65536)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            if count <= 0 { break }
+            data.append(buffer, count: count)
+        }
+    }
+    return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+}
+
+func testAI() {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    do {
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        precondition((try? AIRecognizer.validate(provider: "openai", baseURL: "http://api.example.org/v1", model: "m", autoImages: true)) == nil, "Remote http must be rejected")
+        precondition((try? AIRecognizer.validate(provider: "openai", baseURL: "https://user:secret@api.example.org/v1", model: "m", autoImages: true)) == nil, "Credentials in URL must be rejected")
+        precondition((try? AIRecognizer.validate(provider: "other", baseURL: "https://api.example.org", model: "m", autoImages: true)) == nil)
+        precondition((try? AIRecognizer.validate(provider: "anthropic", baseURL: "https://api.anthropic.com", model: " ", autoImages: true)) == nil)
+        let local = try AIRecognizer.validate(provider: "openai", baseURL: " http://127.0.0.1:11434/v1 ", model: "qwen2.5vl:7b", autoImages: false)
+        precondition(local.baseURL == "http://127.0.0.1:11434/v1" && AIRecognizer.isLocal(URL(string: local.baseURL)!))
+        func endpoint(_ provider: String, _ base: String) -> String { AIRecognizer.endpoint(for: AISettings(provider: provider, baseURL: base, model: "m", autoImages: true))!.absoluteString }
+        precondition(endpoint("anthropic", "https://api.anthropic.com") == "https://api.anthropic.com/v1/messages")
+        precondition(endpoint("anthropic", "https://api.anthropic.com/v1/") == "https://api.anthropic.com/v1/messages")
+        precondition(endpoint("openai", "https://api.openai.com/v1") == "https://api.openai.com/v1/chat/completions")
+        precondition(endpoint("openai", "https://gateway.example.org/v1/chat/completions") == "https://gateway.example.org/v1/chat/completions")
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockCloudflareProtocol.self]
+        let recognizer = AIRecognizer(directory: root, session: URLSession(configuration: configuration))
+        func run(_ settings: AISettings, key: String?, image: Data?, _ reply: @escaping (URLRequest) -> (Int, Any)) -> Result<String, Error> {
+            MockCloudflareProtocol.reply = reply
+            let done = DispatchSemaphore(value: 0)
+            var outcome: Result<String, Error>!
+            recognizer.recognize(settings: settings, key: key, text: "材料", image: image) { outcome = $0; done.signal() }
+            precondition(done.wait(timeout: .now() + 5) == .success)
+            return outcome
+        }
+        let anthropic = AISettings(provider: "anthropic", baseURL: "https://api.anthropic.com", model: "claude-opus-5-5", autoImages: true)
+        let claude = run(anthropic, key: "sk-test", image: Data([1, 2, 3])) { request in
+            let body = mockRequestBody(request), content = ((body["messages"] as? [[String: Any]])?.first?["content"]) as? [[String: Any]] ?? []
+            precondition(request.httpMethod == "POST" && request.url?.absoluteString == "https://api.anthropic.com/v1/messages")
+            precondition(request.value(forHTTPHeaderField: "x-api-key") == "sk-test" && request.value(forHTTPHeaderField: "anthropic-version") == "2023-06-01")
+            precondition(request.value(forHTTPHeaderField: "Authorization") == nil)
+            precondition(body["model"] as? String == "claude-opus-5-5" && body["system"] as? String == AIRecognizer.prompt && body["max_tokens"] as? Int == 2000)
+            precondition(content.first?["type"] as? String == "image" && ((content.first?["source"] as? [String: Any])?["data"] as? String) == "AQID")
+            precondition(content.last?["text"] as? String == "材料")
+            return (200, ["content": [["type": "text", "text": "{\"items\":[]}"]]])
+        }
+        guard case .success(let claudeReply) = claude, claudeReply == "{\"items\":[]}" else { fatalError("Anthropic reply not read") }
+        let compatible = AISettings(provider: "openai", baseURL: "https://api.example.org/v1", model: "vision-model", autoImages: true)
+        let openai = run(compatible, key: "key-1", image: Data([1, 2, 3])) { request in
+            let body = mockRequestBody(request), messages = body["messages"] as? [[String: Any]] ?? []
+            let user = messages.last?["content"] as? [[String: Any]] ?? []
+            precondition(request.url?.absoluteString == "https://api.example.org/v1/chat/completions" && request.value(forHTTPHeaderField: "Authorization") == "Bearer key-1")
+            precondition(messages.first?["role"] as? String == "system" && messages.first?["content"] as? String == AIRecognizer.prompt)
+            precondition(((user.last?["image_url"] as? [String: Any])?["url"] as? String) == "data:image/jpeg;base64,AQID")
+            return (200, ["choices": [["message": ["content": "ok"]]]])
+        }
+        guard case .success("ok") = openai else { fatalError("Compatible reply not read") }
+        let textOnly = run(local, key: nil, image: nil) { request in
+            let messages = mockRequestBody(request)["messages"] as? [[String: Any]] ?? []
+            precondition(request.value(forHTTPHeaderField: "Authorization") == nil && messages.last?["content"] as? String == "材料")
+            return (200, ["choices": [["message": ["content": [["type": "text", "text": "part"]]]]]])
+        }
+        guard case .success("part") = textOnly else { fatalError("Text-only request failed") }
+        let denied = run(anthropic, key: "bad", image: nil) { _ in (401, ["type": "error", "error": ["type": "authentication_error", "message": "invalid x-api-key"]]) }
+        guard case .failure(let error) = denied, error.localizedDescription.contains("API key 无效"), error.localizedDescription.contains("invalid x-api-key") else { fatalError("401 not explained") }
+        let missing = run(compatible, key: "k", image: nil) { _ in (404, ["error": ["message": "model not found"]]) }
+        guard case .failure(let notFound) = missing, notFound.localizedDescription.contains("模型不存在") else { fatalError("404 not explained") }
+        let odd = run(compatible, key: "k", image: nil) { _ in (200, ["unexpected": true]) }
+        guard case .failure = odd else { fatalError("Unexpected reply accepted") }
+
+        try recognizer.saveSettings(anthropic)
+        precondition(recognizer.loadSettings() == anthropic)
+        let permissions = try FileManager.default.attributesOfItem(atPath: recognizer.settingsFile.path)[.posixPermissions] as? Int
+        precondition(permissions == 0o600)
+        try Data("{\"provider\":\"anthropic\",\"baseURL\":\"http://evil.example\",\"model\":\"m\",\"autoImages\":true}".utf8).write(to: recognizer.settingsFile)
+        precondition(recognizer.loadSettings() == nil, "Tampered settings must not load")
+
+        let wide = NSImage(size: NSSize(width: 3200, height: 800))
+        wide.lockFocus(); NSColor.systemBlue.setFill(); NSRect(x: 0, y: 0, width: 3200, height: 800).fill(); wide.unlockFocus()
+        let imageURL = root.appendingPathComponent("wide.png")
+        try NSBitmapImageRep(data: wide.tiffRepresentation!)!.representation(using: .png, properties: [:])!.write(to: imageURL)
+        guard let prepared = AIRecognizer.preparedImage(at: imageURL), let rep = NSBitmapImageRep(data: prepared) else { fatalError("Image not prepared") }
+        precondition(rep.pixelsWide == 1600 && rep.pixelsHigh == 400)
+
+        let store = try BoardStore(root: root.appendingPathComponent("store"))
+        try store.database.saveEvidence(id: "ocr-x", kind: "ocr", source: "x.png", title: "x.png", body: "text", payload: ["file": "/tmp/x.png"])
+        try store.database.mergeEvidencePayload(id: "ocr-x", values: ["ai": ["text": "{}"]])
+        try store.database.saveEvidence(id: "ocr-x", kind: "ocr", source: "x.png", title: "x.png", body: "text", payload: ["file": "/tmp/y.png"])
+        let row = try store.database.evidence(id: "ocr-x")
+        let payload = (try? JSONSerialization.jsonObject(with: Data((row?["payload"] ?? "").utf8))) as? [String: Any]
+        precondition(payload?["ai"] != nil && payload?["file"] as? String == "/tmp/y.png", "Re-import must keep the AI reading")
+        print("PASS: AI settings validation, endpoints, Anthropic and compatible requests with images, error messages, settings file, image downscale, evidence annotation")
+    } catch { fputs("AI test failed: \(error)\n", stderr); exit(1) }
+}
+
 final class WebViewTestHandler: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
     var actions: [String] = []
     var loaded = false
@@ -866,8 +1062,10 @@ func testWebView() {
         wait { handler.actions.filter { $0 == "save" }.count > saves }
         precondition(deleted == "" && run("String(state.assets.length)") == "0", "Confirmed delete must remove the record")
         precondition(run("document.querySelector('#toast .toast-undo').click();String(state.assets.length)") == "1", "Toast undo must restore the record")
+        let reading = run("window.assetboardAIResult({kind:'recognize',requestId:0,ok:true,evidenceId:'gmail-a',ai:{provider:'anthropic',model:'m',at:'t',text:'```json\\n{\"items\":[{\"name\":\"Figma Professional\",\"merchant\":\"Figma\",\"type\":\"subscription\",\"amount\":\"15\",\"currency\":\"USD\",\"cycle\":\"monthly\",\"date\":\"2099-10-06\",\"dateKind\":\"renew\"}]}\\n```'}});const c=candidates()[0];JSON.stringify([c.name,c.cost,c.date.source])")
+        precondition(reading == "[\"Figma Professional\",\"$15 / 月\",\"ai\"]", "AI reading must parse in WebKit: " + reading)
         precondition(run("JSON.stringify(window.__errors)") == "[]", "Page reported script errors")
-        print("PASS: WebKit board load, evidence bridge candidates, agenda, in-page delete confirmation, toast undo")
+        print("PASS: WebKit board load, evidence bridge candidates, agenda, in-page delete confirmation, toast undo, AI reply parsing")
     } catch { fputs("WebView test failed: \(error)\n", stderr); exit(1) }
 }
 
@@ -934,6 +1132,8 @@ if CommandLine.arguments.contains("--make-icon"), let target = CommandLine.argum
     testGitHub()
 } else if CommandLine.arguments.contains("--test-cloudflare-inventory") {
     testCloudflareInventory()
+} else if CommandLine.arguments.contains("--test-ai") {
+    testAI()
 } else if CommandLine.arguments.contains("--test-webview") {
     testWebView()
 } else if CommandLine.arguments.contains("--test-ocr") {
