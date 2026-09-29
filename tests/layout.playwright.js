@@ -82,6 +82,12 @@ async (page) => {
   await p.mouse.dblclick(y.x+y.width/2,y.y+4);await settle();
   check(await p.evaluate(()=>state.blocks.find(b=>b.id==='domain').height)===null,'Double-click must restore auto height');
 
+  // Restoring the last hidden asset returns the block to its normal view.
+  await p.evaluate(()=>{state.assets.find(a=>a.id==='d4').hiddenAt='2026-09-01';render();});await settle();
+  await p.locator('[data-action="toggle-hidden"][data-id="domain"]').click();
+  await p.locator('.block.domain [data-asset="d4"] [data-action="restore-asset"]').click({force:true});await settle();
+  check(await p.locator('.block.domain.showing-hidden').count()===0,'Restoring the last hidden asset must leave the hidden view');
+  check(await p.evaluate(()=>document.activeElement?.closest('[data-asset]')?.dataset.asset)==='d4','Focus must move to the restored card');
   await p.emulateMedia({reducedMotion:'reduce'});
   await p.locator('[data-action="collapse"][data-id="domain"]').click();
   check(await p.locator('.domain .asset-card').first().evaluate(e=>e.offsetHeight<60),'Compact card must shrink');
@@ -89,6 +95,6 @@ async (page) => {
   await p.setViewportSize({width:390,height:844});
   check(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Mobile horizontal overflow');
   check(!errors.length,'Page errors: '+errors.join(' | '));
-  return 'PASS: click vs drag, card and block reorder, cross-block move and refusal, Esc cancel, keyboard move, edge resize with snapping and auto height, stable resize DOM, compact cards, reduced motion, mobile bounds';
+  return 'PASS: click vs drag, hidden view exit after last restore, card and block reorder, cross-block move and refusal, Esc cancel, keyboard move, edge resize with snapping and auto height, stable resize DOM, compact cards, reduced motion, mobile bounds';
  } finally { await p.close(); }
 }
