@@ -200,7 +200,7 @@ final class BoardStore {
 }
 
 /// `--demo`: the fictional board from demo-data.js, for screenshots. Uses a throwaway temporary store instead of
-/// Application Support, never reads the Keychain and refuses imports, sync, AI and export.
+/// Application Support, never reads the Keychain and refuses network/Keychain imports, sync, AI, OCR and export. In-page CSV/JSON demo samples still run in JS without saving.
 let demoMode = CommandLine.arguments.contains("--demo")
 
 final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavigationDelegate, NSWindowDelegate, NSToolbarDelegate, NSSearchFieldDelegate {
@@ -367,6 +367,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     @objc func openCloudflare() { if demoMode { demoBlocked(); return }; webView.evaluateJavaScript("cloudflareDialog()") }
     @objc func openGitHub() { if demoMode { demoBlocked(); return }; webView.evaluateJavaScript("githubDialog()") }
     @objc func openGmail() { if demoMode { demoBlocked(); return }; webView.evaluateJavaScript("gmailDialog()") }
+    @objc func openImport() { webView.evaluateJavaScript("importHub()") }
     @objc func openInbox() { webView.evaluateJavaScript("inboxDialog()") }
     @objc func openIconBatch() { if demoMode { demoBlocked(); return }; webView.evaluateJavaScript("iconBatchDialog()") }
     @objc func openAISettings() { if demoMode { demoBlocked(); return }; webView.evaluateJavaScript("aiDialog()") }
@@ -525,6 +526,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
                 } catch {
                     DispatchQueue.main.async { self.ocrResult(["ok": false, "error": error.localizedDescription]) }
                 }
+            }
+        }
+    }
+    func importDroppedOCR(_ body: [String: Any]) {
+        if demoMode { demoBlocked(); return }
+        guard let name = body["name"] as? String, !name.isEmpty, name.count <= 200,
+              let base64 = body["base64"] as? String, !base64.isEmpty, base64.count <= 36_000_000,
+              let data = Data(base64Encoded: base64), !data.isEmpty, data.count <= 25 * 1024 * 1024 else {
+            ocrResult(["ok": false, "error": "无法读取拖入的文件。"])
+            return
+        }
+        let ext = (name as NSString).pathExtension.lowercased()
+        guard ["png", "jpg", "jpeg", "webp", "pdf"].contains(ext) else {
+            ocrResult(["ok": false, "error": "请拖入 PNG、JPEG、WebP 图片或 PDF。"])
+            return
+        }
+        let temp = FileManager.default.temporaryDirectory.appendingPathComponent("assetboard-ocr-" + UUID().uuidString + "." + ext)
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try data.write(to: temp, options: .atomic)
+                defer { try? FileManager.default.removeItem(at: temp) }
+                let text = try OCRImporter.recognize(at: temp)
+                let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+                DispatchQueue.main.async {
+                    do {
+                        try self.store.database.saveEvidence(id: "ocr-" + digest, kind: "ocr", source: name, title: name, body: text, payload: ["file": name])
+                        self.ocrResult(["ok": true, "id": "ocr-" + digest, "title": name])
+                    } catch { self.ocrResult(["ok": false, "error": error.localizedDescription]) }
+                }
+            } catch {
+                DispatchQueue.main.async { self.ocrResult(["ok": false, "error": error.localizedDescription]) }
             }
         }
     }
@@ -710,6 +742,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             importDocumentOCR()
             return
         }
+        if body["action"] as? String == "ocrImportData" {
+            importDroppedOCR(body)
+            return
+        }
         if body["action"] as? String == "gmailSync" {
             syncGmail(configure: body["configure"] as? Bool == true)
             return
@@ -760,25 +796,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         menu.addItem(appItem)
         let fileItem = NSMenuItem()
         let fileMenu = NSMenu(title: "文件")
+        let importItem = NSMenuItem(title: "导入…", action: #selector(openImport), keyEquivalent: "i")
+        importItem.keyEquivalentModifierMask = [.command]
+        importItem.target = self
+        fileMenu.addItem(importItem)
         let exportItem = NSMenuItem(title: "导出资产备份…", action: #selector(exportBoard), keyEquivalent: "s")
         exportItem.keyEquivalentModifierMask = [.command, .shift]
         exportItem.target = self
         fileMenu.addItem(exportItem)
-        let cloudflareItem = NSMenuItem(title: "Cloudflare 只读接入…", action: #selector(openCloudflare), keyEquivalent: "")
-        cloudflareItem.target = self
-        fileMenu.addItem(cloudflareItem)
-        let githubItem = NSMenuItem(title: "GitHub 只读接入…", action: #selector(openGitHub), keyEquivalent: "")
-        githubItem.target = self
-        fileMenu.addItem(githubItem)
-        let gmailItem = NSMenuItem(title: "Gmail 账单与服务通知…", action: #selector(openGmail), keyEquivalent: "")
-        gmailItem.target = self
-        fileMenu.addItem(gmailItem)
         let iconsItem = NSMenuItem(title: "为全部资产获取网站图标…", action: #selector(openIconBatch), keyEquivalent: "")
         iconsItem.target = self
         fileMenu.addItem(iconsItem)
-        let ocrItem = NSMenuItem(title: "导入截图或 PDF（本地识别）…", action: #selector(importDocumentOCR), keyEquivalent: "")
-        ocrItem.target = self
-        fileMenu.addItem(ocrItem)
         let evidenceItem = NSMenuItem(title: "待确认资料…", action: #selector(showImportedEvidence), keyEquivalent: "")
         evidenceItem.target = self
         fileMenu.addItem(evidenceItem)

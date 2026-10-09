@@ -357,6 +357,160 @@ function refreshMarkTones(){document.querySelectorAll('.tile.custom-art img,.sit
 function closeDetail(){ $('#detail').hidden=true;activeAsset=null;if(lastFocus?.isConnected)lastFocus.focus();}
 function modal(title,html,view=''){$('#modal-title').textContent=title;$('#modal-content').innerHTML=html;$('#modal').dataset.view=view;if(!html.includes('id="asset-form"')&&!html.includes("id='asset-form'")&&!html.includes('id="dirty-save"'))assetFormSnapshot=null;if(nativeStore)$('#modal-content').querySelectorAll('.form-note').forEach(el=>{if(el.textContent.includes('浏览器'))el.textContent=el.textContent.replaceAll('当前浏览器','此 Mac').replaceAll('此浏览器','此 Mac');});if(!$('#modal').open)$('#modal').showModal();}
 function addBlock(){modal('给大板添一个区块',Object.entries(cats).map(([id,c])=>`<button class="category-choice" data-action="choose-block" data-id="${id}" ${state.blocks.some(b=>b.id===id)?'disabled':''}><span class="tile type-art" aria-hidden="true">${icon(id)}</span><span>${c.name}<small>${c.hint}</small></span><span class="plus">${state.blocks.some(b=>b.id===id)?'✓':'＋'}</span></button>`).join('')+'<p class="form-note">区块按类别展示已有资产。添加后可以自由移动、调整大小。</p>');}
+let importPlan=null,importKind=null;
+function importHub(){
+ const deleted=(state.deletedExternalIds||[]).length;
+ const native=!!nativeStore;
+ modal('导入',`<div class="form import-hub">
+  <div class="import-drop" id="import-drop" tabindex="0" role="button" aria-label="拖入文件或点击选择"><strong>拖入文件到这里</strong><span>CSV / 表格、JSON 备份${native?'、截图或 PDF':''}；也可 ⌘V 粘贴</span><input id="import-file" type="file" accept=".csv,.tsv,.json,text/csv,application/json${native?',image/png,image/jpeg,image/webp,application/pdf':''}" hidden multiple></div>
+  <div class="import-actions">
+   <button class="button" data-action="import-pick-file">选择文件</button>
+   <button class="button" data-action="manual-import">手动录入</button>
+   <button class="button" data-action="inbox">粘贴续费通知</button>
+   ${native?`<button class="button" data-action="github-import">GitHub</button><button class="button" data-action="cloudflare-import">Cloudflare</button><button class="button" data-action="gmail-import">Gmail</button><button class="button" data-action="ocr-import">截图/PDF</button>`:''}
+   ${demoMode?`<button class="button primary" data-action="import-demo-sample">试用示例 CSV</button>`:''}
+  </div>
+  <p class="form-note">无冲突时直接写入资产板，可用 ⌘Z 整批撤销；同名、已删除或读不懂时会先预览。表格一次最多 ${IMPORT_ROW_LIMIT} 行，同名默认跳过。疑似密钥列会当场丢弃。</p>
+  ${deleted?`<details class="import-deleted"><summary>已删除的同步项 · ${formatCount(deleted)}</summary><p class="form-note">这些项再次导入时默认跳过。在导入预览里勾选「恢复」可重新加入。</p><ul class="import-deleted-list">${(state.deletedExternalIds||[]).slice(0,40).map(key=>`<li><code>${esc(key)}</code></li>`).join('')}${(state.deletedExternalIds||[]).length>40?`<li>…共 ${state.deletedExternalIds.length} 项</li>`:''}</ul></details>`:''}
+ </div>`,'import');
+ $('#import-drop')?.addEventListener('click',()=>$('#import-file')?.click());
+ $('#import-file')?.addEventListener('change',e=>{const files=[...e.target.files||[]];e.target.value='';if(files.length)handleImportFiles(files);});
+}
+function importPreviewHtml(plan,meta={}){
+ const group=(title,rows,render)=>rows.length?`<section class="import-group"><h3>${title} · ${rows.length}</h3><div class="import-rows">${rows.map(render).join('')}</div></section>`:'';
+ const name=row=>esc(row.item?.name||row.name||'未命名');
+ const type=row=>esc(cats[row.item?.type||row.type]?.name||row.item?.type||'');
+ return `<div class="form import-preview" id="import-preview">
+  ${meta.note?`<p class="form-note">${esc(meta.note)}</p>`:''}
+  ${meta.truncated?`<p class="form-note">只读取前 ${IMPORT_ROW_LIMIT} 行（共 ${meta.totalRows} 行）。</p>`:''}
+  ${meta.droppedSecrets?.length?`<p class="form-note">已丢弃疑似密钥列：${esc(meta.droppedSecrets.join('、'))}</p>`:''}
+  ${meta.preset?`<p class="form-note">识别为 ${esc(meta.preset.label)} 导出格式。</p>`:''}
+  ${group('新增',plan.added||[],row=>`<div class="import-row"><strong>${name(row)}</strong><span>${type(row)}</span></div>`)}
+  ${group('更新',plan.updated||[],row=>`<div class="import-row"><strong>${name(row)}</strong><span>${type(row)} · 将更新已有记录</span></div>`)}
+  ${group('同名待定',[...(plan.collisions||[]),...(plan.skippedSame||[])],(row,i)=>`<label class="check-label import-row"><input type="checkbox" name="import-same" value="${esc(row.assetId)}"><span><strong>${name(row)}</strong><small>已有同名记录，默认跳过；勾选则用导入内容更新</small></span></label>`)}
+  ${group('已删除跳过',plan.skippedDeleted||[],row=>`<label class="check-label import-row"><input type="checkbox" name="import-restore" value="${esc(row.key)}"><span><strong>${name(row)}</strong><small>曾删除，默认跳过；勾选可恢复并导入</small></span></label>`)}
+  ${group('已隐藏',plan.hidden||[],row=>`<div class="import-row"><strong>${name(row)}</strong><span>会更新资料，但仍保持隐藏</span></div>`)}
+  ${group('没读懂',meta.unreadable||[],row=>`<div class="import-row"><strong>${esc(row.reason||'无法识别')}</strong><span>${row.line?`第 ${row.line} 行`:''}</span></div>`)}
+  <div class="confirm-actions"><button class="button primary" data-action="import-apply">导入所选</button><button class="button" data-action="import-hub">返回</button></div>
+ </div>`;
+}
+function commitImportPlan(plan,meta={},opts={}){
+ const restoreKeys=opts.restoreKeys||[];
+ const applySame=opts.applySame||[];
+ const applyCollisions=opts.applyCollisions||[];
+ const beforeCount=state.assets.length;
+ checkpoint();
+ if(importKind==='json')state=applyBoardBackup(state,plan,{restoreKeys});
+ else state=applyImport(state,plan,{restoreKeys,applySame,applyCollisions});
+ if(!Array.isArray(state.deletedExternalIds))state.deletedExternalIds=[];
+ save();render();
+ const added=state.assets.length-beforeCount;
+ const updated=(plan.updated||[]).length+(plan.hidden||[]).length+applySame.length+applyCollisions.length;
+ const skipped=(plan.skippedSame||[]).length;const parts=[added?`新增 ${added}`:'',updated?`更新 ${updated}`:'',restoreKeys.length?`恢复 ${restoreKeys.length}`:'',skipped?`同名跳过 ${skipped}`:''].filter(Boolean);
+ $('#modal').close();
+ toast(parts.length?`已导入：${parts.join(' · ')}`:'没有写入新内容',true);
+ importPlan=null;importKind=null;
+}
+function runImportPlan(plan,meta={}){
+ importPlan=plan;
+ const skipped=plan.skippedSame?.length||0;const needsPreview=!!(plan.conflicts||(meta.unreadable||[]).length||meta.truncated||plan.mode==='replace');
+ if(!needsPreview&&skipped)meta.note=((meta.note?meta.note+' · ':'')+`同名已跳过 ${skipped} 项`);
+ if(!needsPreview){
+  const empty=!(plan.added||[]).length&&!(plan.updated||[]).length&&!(plan.hidden||[]).length;
+  if(empty){toast(skipped?`同名已全部跳过（${skipped} 项）`:meta.unreadable?.length?'没有可导入的行':'没有可导入的内容');return;}
+  commitImportPlan(plan,meta);
+  return;
+ }
+ modal('导入预览',importPreviewHtml(plan,meta),'import-preview');
+}
+function importCsvText(text,{filename=''}={}){
+ const parsed=parseDelimitedText(text);
+ if(!parsed.ok){toast(parsed.error||'无法解析表格');return;}
+ const {items,unreadable,preset,droppedSecrets,truncated,totalRows}=rowsToImportItems(parsed,{types:Object.keys(cats)});
+ const plan=planImport(state,items,{sameName:'skip'});
+ if(unreadable.length)plan.conflicts=true;
+ runImportPlan(plan,{unreadable,preset,droppedSecrets,truncated,totalRows,note:filename?`来自 ${filename}`:''});
+}
+function importJsonText(text,{filename='',mode}={}){
+ const backup=parseBoardBackup(text);
+ if(!backup.ok){toast(backup.error||'无法读取备份');return;}
+ const chosen=mode||'merge';
+ const plan=planBoardBackup(state,backup,{mode:chosen});
+ if(!plan.ok){toast(plan.error||'无法合并备份');return;}
+ if(chosen==='merge'&&!plan.conflicts&&!(plan.added||[]).length&&!(plan.updated||[]).length&&!(plan.hidden||[]).length){
+  // Offer replace when merge would change nothing meaningful but user dropped a backup — still show preview with mode choice.
+ }
+ importKind='json';
+ const modeNote=chosen==='replace'?'将用备份整体替换当前资产板（可撤销）。':'默认合并同 id 记录；需要整体替换请勾选下方选项。';
+ const extra=chosen==='merge'?`<label class="check-label"><input type="checkbox" id="import-replace">整体替换当前资产板</label>`:'';
+ runImportPlan(plan,{note:`${filename?filename+' · ':''}${modeNote}`,unreadable:[]});
+ // If preview opened, inject replace checkbox
+ if($('#import-preview')&&chosen==='merge'){
+  const actions=$('#import-preview .confirm-actions');
+  if(actions&&!$('#import-replace'))actions.insertAdjacentHTML('beforebegin',extra);
+ }
+}
+function routeImportText(text,{filename='',mime=''}={}){
+ const classified=classifyImportPayload({text,filename,mime});
+ if(classified.kind==='csv'){importKind='csv';importCsvText(classified.text||text,{filename});return;}
+ if(classified.kind==='json'){importKind='json';importJsonText(classified.text||text,{filename});return;}
+ if(classified.kind==='paste'){
+  pasteRow={id:'paste-'+Date.now(),kind:'paste',source:'',title:String(text).split('\n')[0].slice(0,60),body:String(text),importedAt:new Date().toISOString()};
+  pasteRecorded=new Set();candidateReview(buildPasteCandidate());return;
+ }
+ if(classified.kind==='empty'){toast('没有可导入的内容');return;}
+ toast('无法识别这份内容');
+}
+async function handleImportFiles(files){
+ const list=[...files].slice(0,20);
+ const images=[],docs=[];
+ for(const file of list){
+  const classified=classifyImportPayload({filename:file.name,mime:file.type});
+  if(classified.kind==='image'||classified.kind==='pdf')images.push(file);
+  else docs.push(file);
+ }
+ if(images.length){
+  if(!nativeStore){toast('截图与 PDF 识别仅在 macOS App 中可用');}
+  else if(demoMode){toast('演示模式不读写本机文件；可用「试用示例 CSV」体验导入');}
+  else{
+   for(const file of images.slice(0,5)){
+    const buffer=await file.arrayBuffer();
+    const bytes=new Uint8Array(buffer);
+    let binary='';for(let i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);
+    window.webkit.messageHandlers.assetboard.postMessage({action:'ocrImportData',name:file.name,base64:btoa(binary)});
+   }
+  }
+ }
+ for(const file of docs){
+  const text=await file.text();
+  routeImportText(text,{filename:file.name,mime:file.type});
+  break; // one table/backup at a time
+ }
+}
+function typingTarget(el){return !!el&&(el.closest?.('input,textarea,select,[contenteditable="true"]')||['INPUT','TEXTAREA','SELECT'].includes(el.tagName));}
+function installImportDropPaste(){
+ let dragDepth=0;
+ const board=document.documentElement;
+ board.addEventListener('dragenter',e=>{if(!e.dataTransfer?.types?.includes('Files'))return;e.preventDefault();dragDepth++;document.body.classList.add('import-drag');});
+ board.addEventListener('dragover',e=>{if(!e.dataTransfer?.types?.includes('Files'))return;e.preventDefault();e.dataTransfer.dropEffect='copy';});
+ board.addEventListener('dragleave',()=>{dragDepth=Math.max(0,dragDepth-1);if(!dragDepth)document.body.classList.remove('import-drag');});
+ board.addEventListener('drop',e=>{
+  dragDepth=0;document.body.classList.remove('import-drag');
+  if(typingTarget(e.target))return;
+  const files=[...e.dataTransfer?.files||[]];
+  if(files.length){e.preventDefault();handleImportFiles(files);return;}
+  const text=e.dataTransfer?.getData('text/plain');
+  if(text&&text.trim()){e.preventDefault();routeImportText(text);}
+ });
+ document.addEventListener('paste',e=>{
+  if(typingTarget(e.target)||$('#modal')?.open)return;
+  const items=[...e.clipboardData?.items||[]];
+  const fileItems=items.filter(item=>item.kind==='file').map(item=>item.getAsFile()).filter(Boolean);
+  if(fileItems.length){e.preventDefault();handleImportFiles(fileItems);return;}
+  const text=e.clipboardData?.getData('text/plain');
+  if(text&&text.trim()){e.preventDefault();routeImportText(text);}
+ });
+}
 function manualImport(){modal('选择资产类别',Object.entries(cats).map(([id,c])=>`<button class="category-choice" data-action="choose-asset-type" data-id="${id}"><span class="tile type-art" aria-hidden="true">${icon(id)}</span><span>${c.name}<small>${c.hint}</small></span><span class="plus">＋</span></button>`).join(''));}
 
 function snapshotAssetForm(form){if(!form)return null;const data=new FormData(form);const values={};for(const [k,v] of data.entries()){if(k==='icon')continue;values[k]=String(v);}return {id:form.dataset.id||'',type:form.dataset.type||'',values,hadFile:false};}
@@ -506,7 +660,7 @@ function inboxDialog(refresh=true){
  const list=candidates(),pending=list.filter(c=>c.pending),strong=pending.filter(c=>!c.weak),weak=pending.filter(c=>c.weak),resolved=list.filter(c=>!c.pending);
  const paste=`<form class="form inbox-paste" id="paste-form"><label>粘贴续费通知、账单或收据的文字<textarea id="paste-text" rows="3" placeholder="例如：Your plan renews on October 6, 2026 for $15.00/month"></textarea></label><button class="button primary" type="submit">识别</button><span class="form-note">先在${nativeStore?'此 Mac':'此浏览器'}按规则识别，不上传；确认前不会写入资产。</span></form>`;
  const aiControls=!nativeStore?'':aiBatchState?`<span id="ai-progress" class="candidate-meta">${aiProgressText()}</span><button class="text-button" data-action="ai-stop">停止</button>`:aiReady()?`${pending.some(c=>!c.ai)?'<button class="text-button" data-action="ai-batch">用 AI 识别全部</button>':''}<button class="text-button" data-action="ai-settings">AI 设置</button>`:'<button class="text-button" data-action="ai-settings">配置 AI 识别</button>';
- const imported=nativeStore||evidenceRows.length?`<div class="inbox-head"><strong>待确认 · ${strong.length}</strong><span>${aiControls}${nativeStore?'<button class="text-button" data-action="gmail-import">导入 Gmail</button><button class="text-button" data-action="ocr-import">识别截图/PDF</button>':''}</span></div>${strong.length?strong.slice(0,100).map(candidateRow).join(''):`<p class="form-note">${evidenceRows.length?'没有待确认的资料。':'还没有导入资料。可以导入 Gmail 账单通知，或识别截图/PDF。'}</p>`}${weak.length?`<details class="inbox-more"><summary>另有 ${weak.length} 组未识别出金额或日期</summary>${weak.slice(0,100).map(candidateRow).join('')}<button class="text-button" data-action="dismiss-weak">全部忽略</button></details>`:''}${resolved.length?`<details class="inbox-more"><summary>已处理 ${resolved.length} 组</summary>${resolved.slice(0,100).map(candidateRow).join('')}</details>`:''}`:'';
+ const imported=nativeStore||evidenceRows.length?`<div class="inbox-head"><strong>待确认 · ${strong.length}</strong><span>${aiControls}${nativeStore?'<button class="text-button" data-action="import-hub">打开导入</button>':''}</span></div>${strong.length?strong.slice(0,100).map(candidateRow).join(''):`<p class="form-note">${evidenceRows.length?'没有待确认的资料。':'还没有导入资料。可以导入 Gmail 账单通知，或识别截图/PDF。'}</p>`}${weak.length?`<details class="inbox-more"><summary>另有 ${weak.length} 组未识别出金额或日期</summary>${weak.slice(0,100).map(candidateRow).join('')}<button class="text-button" data-action="dismiss-weak">全部忽略</button></details>`:''}${resolved.length?`<details class="inbox-more"><summary>已处理 ${resolved.length} 组</summary>${resolved.slice(0,100).map(candidateRow).join('')}</details>`:''}`:'';
  modal('待确认资料',`<div class="inbox">${paste}${imported}</div>`,'inbox');
  if(refresh&&nativeStore)requestEvidence();
 }
@@ -572,11 +726,23 @@ document.addEventListener('click',e=>{const button=e.target.closest('[data-actio
  else if(action==='pin-front')pinFront(id);
  else if(action==='auto-order')autoOrder(id);
  else if(action==='repo-swap'){checkpoint();state.featuredRepositoryIds=swapRepositoryDisplay(state.assets,state.featuredRepositoryIds,id);save();render();}
+ else if(action==='import-hub')importHub();
+ else if(action==='import-pick-file')$('#import-file')?.click();
+ else if(action==='import-demo-sample'){if(!demoMode)return;importKind='csv';importCsvText(demoImportSampleCsv(),{filename:'demo-sample.csv'});}
+ else if(action==='import-apply'){
+  if(!importPlan)return;
+  if(importKind==='json'&&$('#import-replace')?.checked){
+   const backup={ok:true,board:importPlan.board};importPlan=planBoardBackup(state,backup,{mode:'replace'});
+  }
+  const restoreKeys=[...document.querySelectorAll('input[name="import-restore"]:checked')].map(input=>input.value);
+  const applySame=[...document.querySelectorAll('input[name="import-same"]:checked')].map(input=>input.value);
+  commitImportPlan(importPlan,{},{restoreKeys,applySame,applyCollisions:applySame});
+ }
  else if(action==='manual-import')manualImport();
  else if(action==='github-import')githubDialog();
  else if(action==='cloudflare-import')cloudflareDialog();
  else if(action==='gmail-import')gmailDialog();
- else if(action==='ocr-import'){if(nativeStore)window.webkit.messageHandlers.assetboard.postMessage({action:'ocrImport'});}
+ else if(action==='ocr-import'){if(demoMode){window.assetboardDemoBlocked();return;}if(nativeStore)window.webkit.messageHandlers.assetboard.postMessage({action:'ocrImport'});}
  else if(action==='setup-cloudflare'||action==='setup-gmail'){
   const url=action==='setup-cloudflare'?'https://dash.cloudflare.com/profile/api-tokens':'https://console.cloud.google.com/apis/credentials';
   if(nativeStore)window.webkit.messageHandlers.assetboard.postMessage({action:'openExternal',url});
@@ -634,7 +800,7 @@ function markSwap(el){
 }
 function keysHelpHtml(){
  const row=(keys,label)=>`<li><span>${label}</span><span class="keys">${keys.map(k=>`<kbd>${k}</kbd>`).join('')}</span></li>`;
- const groups=[['浏览',[[['⌘K','/'],'搜索'],[['←','→','↑','↓'],'在卡片之间移动'],[['↩'],'打开详情'],[['esc'],'关闭或返回']]],['整理',[[['N'],'新建资产'],[['E'],'编辑资料'],[['H'],'隐藏 / 恢复'],[['F'],'放到前面'],[['⌥','← →'],'和相邻卡交换'],[['X'],'选两张卡交换位置']]],['快捷操作',[[['O'],'打开链接或本机目录'],[['⌘C'],'复制 SSH、域名或克隆地址']]],['编辑',[[['⌘Z'],'撤销'],[['⇧⌘Z'],'重做'],[['⌘↩'],'在表单里保存'],[['tab'],'在表单里切换字段']]]];
+ const groups=[['浏览',[[['⌘K','/'],'搜索'],[['←','→','↑','↓'],'在卡片之间移动'],[['↩'],'打开详情'],[['esc'],'关闭或返回']]],['整理',[[['I'],'打开导入'],[['N'],'新建资产'],[['E'],'编辑资料'],[['H'],'隐藏 / 恢复'],[['F'],'放到前面'],[['⌥','← →'],'和相邻卡交换'],[['X'],'选两张卡交换位置']]],['快捷操作',[[['O'],'打开链接或本机目录'],[['⌘C'],'复制 SSH、域名或克隆地址']]],['编辑',[[['⌘Z'],'撤销'],[['⇧⌘Z'],'重做'],[['⌘↩'],'在表单里保存'],[['tab'],'在表单里切换字段']]]];
  return `<div class="keys-card" role="document" tabindex="-1"><div class="keys-head"><h2 id="keys-help-title">键盘快捷键</h2><button class="close" data-action="keys-help" aria-label="关闭快捷键说明">×</button></div><div class="keys-grid">${groups.map(([title,rows])=>`<section><h3>${title}</h3><ul>${rows.map(([k,l])=>row(k,l)).join('')}</ul></section>`).join('')}</div><p class="keys-foot">在输入框里打字时，字母快捷键不会生效。</p></div>`;
 }
 function toggleKeysHelp(show){
@@ -665,6 +831,7 @@ document.addEventListener('keydown',e=>{
  if(key==='/'){e.preventDefault();focusSearchBox();return;}
  if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(key)){const from=e.target.closest?.('#board .block-title,#board .card-open,#board .compact-repo-open,#board .flip-actions .button');if(!from)return;e.preventDefault();moveFocus(from.closest('.flip-actions')?.querySelector('.button')||from,key);return;}
  if(e.shiftKey&&key!=='n')return;
+ if(key==='i'){e.preventDefault();importHub();return;}
  if(key==='n'){e.preventDefault();const type=e.target.closest?.('#board .block')?.dataset.block||(e.target.closest?.('#detail')&&state.assets.find(a=>a.id===activeAsset)?.type)||focusCategory;if(cats[type])assetForm(type);else manualImport();return;}
  const id=keyAsset(e),a=id&&state.assets.find(x=>x.id===id);if(!a)return;
  if(key==='e'){e.preventDefault();assetForm(a.type,id);}
@@ -950,6 +1117,7 @@ $('#board').addEventListener('focusout',e=>{if(!e.relatedTarget?.closest?.('#boa
 addEventListener('scroll',clearLinks,{passive:true});
 let viewportFrame=0;
 window.addEventListener('resize',()=>{if(gesture?.active)dropDrag(gesture,true);if(viewportFrame)return;viewportFrame=requestAnimationFrame(()=>{viewportFrame=0;updateOverflow();});});render();
+installImportDropPaste();
 if(nativeStore){document.documentElement.classList.add('native-app');if(!demoMode)requestEvidence();document.querySelectorAll('.form-note').forEach(el=>{el.textContent=el.textContent.replaceAll('当前浏览器','此 Mac').replaceAll('此浏览器','此 Mac');});if(!nativeStore.data||migratedLegacyData)save();}
 else if(migratedLegacyData)save();
 if(demoMode){document.documentElement.classList.add('demo-mode');const badge=document.createElement('div');badge.className='demo-badge';badge.setAttribute('role','note');badge.textContent='演示模式 · 全部为虚构数据 · 不会保存';document.body.append(badge);}

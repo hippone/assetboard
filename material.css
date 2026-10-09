@@ -569,3 +569,26 @@ body.drag-active .quick-action,.block.compact .quick-action{visibility:hidden}
 .block-title>span:not(.tile):not(.asset-count):not(.chevron){white-space:nowrap}
 .block-head .block-summary{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .block-actions .text-button{white-space:nowrap}
+
+/* Import hub & drop (2026-10-09) */
+.import-hub{gap:14px}
+.import-drop{border:1px dashed var(--border);border-radius:var(--radius-md);padding:22px 16px;text-align:center;cursor:pointer;background:var(--surface-card);display:grid;gap:6px;transition:border-color var(--motion-fast) var(--ease),background var(--motion-fast) var(--ease)}
+.import-drop:hover,.import-drop:focus-visible{border-color:rgba(var(--tone-primary),.45);background:var(--surface-panel);outline:none}
+.import-drop strong{font-size:13px;font-weight:600}
+.import-drop span{color:var(--muted);font-size:12px;line-height:1.5}
+.import-actions{display:flex;flex-wrap:wrap;gap:8px}
+.import-actions .button{margin:0}
+.import-deleted{border-top:1px solid var(--border);padding-top:8px}
+.import-deleted summary{cursor:pointer;color:var(--muted);font-size:12px}
+.import-deleted-list{list-style:none;padding:0;margin:8px 0 0;display:grid;gap:4px;font-size:11px;color:var(--muted)}
+.import-deleted-list code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}
+.import-preview{gap:12px}
+.import-group h3{margin:0;font-size:12px;font-weight:600;color:var(--muted)}
+.import-rows{display:grid;gap:6px}
+.import-row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-card);font-size:12px}
+.import-row strong{font-weight:600}
+.import-row span,.import-row small{color:var(--muted)}
+.check-label.import-row{display:flex;align-items:flex-start;gap:8px}
+body.import-drag::after{content:'松开以导入';position:fixed;inset:12px;border:2px dashed rgba(var(--tone-primary),.55);border-radius:var(--radius-lg);background:rgba(var(--tone-primary),.08);color:var(--ink);display:grid;place-items:center;font-size:15px;font-weight:600;pointer-events:none;z-index:80}
+.welcome-choice strong{display:flex;align-items:center;gap:8px}
+.welcome-choice .tile{flex:none}
