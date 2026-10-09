@@ -36,6 +36,7 @@ async (page) => {
   check(result.site,'A fetched site icon replaces the category icon');
   check(result.custom,'A custom icon wins over a site icon and the category icon');
   check(result.bank,'Priority types use a real icon too when there is one');
+  check(!result.serif.length,'Only system sans-serif fonts: '+result.serif.join(' | '));
   check(result.maxLayers<=3,'A card shows at most three text layers, got '+result.maxLayers);
   check(result.purposeOnCard===0&&result.purposeHover,'Purpose lives in the hover title and detail, not on the card');
   check(result.maxHeight<=104,'Full cards stay compact, tallest is '+result.maxHeight);
@@ -53,10 +54,17 @@ async (page) => {
    out.flip=!!document.querySelector('#board .flip-card .flip-face.front .tile.type-art svg');showHiddenBlocks.clear();render();
    return out;});
   for(const [k,v] of Object.entries(spots))check(v,'Tile missing in '+k);
+  // Hovering a card swaps link chips for actions without changing its height; a hidden card keeps its name readable.
+  const card=p.locator('#board [data-asset="t-server"]');const rest=(await card.boundingBox()).height;await card.hover();await p.waitForTimeout(250);
+  check(Math.abs((await card.boundingBox()).height-rest)<.5,'Hover must not change the card height');
+  await p.mouse.move(1,1);
+  await p.evaluate(()=>{showHiddenBlocks.add('license');render();});
+  check(await p.locator('#board .flip-card .flip-face.back strong').evaluate(e=>e.getBoundingClientRect().height>=14&&e.textContent.length>0),'A hidden card shows its name on the back');
+  await p.evaluate(()=>{showHiddenBlocks.clear();render();});
   await p.fill('#search','只在悬停');await p.waitForTimeout(250);
   check(await p.locator('#board .asset-card .card-head .tile').count()>0&&await p.locator('#board .card-hit').count()>0,'Search results show tiles and say when the match is in the purpose');
   await p.fill('#search','');
   check(!errors.length,'Page errors: '+errors.join(' | '));
-  return 'PASS: every category has a distinct 1.5px icon, real icons win, system sans only, three text layers, compact cards, tiles in header/detail/agenda/compact/peek/flip/search';
+  return 'PASS: every category has a distinct 1.5px icon, real icons win, system sans only, three text layers, compact cards, tiles in header/detail/agenda/compact/peek/flip/search, stable hover height, readable hidden card';
  } finally { await p.close(); }
 }

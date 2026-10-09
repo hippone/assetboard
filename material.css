@@ -527,7 +527,12 @@ body.drag-active .quick-action,.block.compact .quick-action{visibility:hidden}
 :root .block.compact .card-name{font-size:13px}
 :root .block.compact .card-sub,:root .block.compact .card-hit{display:none}
 :root .block.compact .card-glance{margin:0;font-size:11px;line-height:15px}
-:root .asset-card.flip-card,:root .flip-inner{min-height:148px}
+/* The back face sits in flow so a hidden card is as tall as its text needs (a fixed height squeezed the name out); the front stays absolute. */
+:root .asset-card.flip-card,:root .flip-inner{min-height:0}
+:root .flip-face.back{position:relative;inset:auto;min-height:100%;padding:14px 16px;gap:8px;justify-content:flex-start}
+:root .flip-face.back>*{flex-shrink:0}
+:root .flip-face.back strong{font-size:13px;line-height:18px}
+:root .flip-actions{margin-top:2px}
 .flip-face.front .card-head{padding:12px}
 .block-title .tile{margin-right:-1px}
 .peek-mark{width:auto;height:auto;background:none}
