@@ -1152,13 +1152,15 @@ func testCloudflareInventory() {
             return (200, ["success": true, "result": [["id": "my-worker"]]])
         case "/client/v4/accounts/\(accountId)/r2/buckets":
             return (200, ["success": true, "result": ["buckets": [["name": "my-bucket"]]], "result_info": [:]])
-        default: fatalError("Unexpected Cloudflare endpoint")
+        case "/client/v4/accounts/\(accountId)/registrar/registrations":
+            return (200, ["success": true, "result": [["domain_name": "example.org", "expires_at": "2027-01-01T00:00:00Z", "status": "active", "auto_renew": true]], "result_info": [:]])
+        default: fatalError("Unexpected Cloudflare endpoint \(request.url!.path)")
         }
     }
     do {
         let result = try inventory.discover(token: "test-token")
-        precondition((result["resources"] as? [[String: String]])?.count == 4)
-        precondition(Set(result["queriedKinds"] as? [String] ?? []) == Set(["zone", "pages", "worker", "r2"]))
+        precondition((result["resources"] as? [[String: String]])?.count == 5)
+        precondition(Set(result["queriedKinds"] as? [String] ?? []) == Set(["zone", "pages", "worker", "r2", "registrar"]))
         MockCloudflareProtocol.reply = { request in
             request.url!.path == "/client/v4/zones"
                 ? (200, ["success": true, "result": [], "result_info": ["total_pages": 1]])
