@@ -466,3 +466,29 @@ body.drag-active .quick-action,.block.compact .quick-action{visibility:hidden}
 @media(prefers-reduced-motion:reduce){.keys-help,.keys-card{animation:none}}
 .keys-head .close{position:static;flex:none}
 .keys-card:focus{outline:none}
+
+/* Scale (2026-10-09, DESIGN-PRINCIPLES §9): radius, elevation and motion tokens; off-scale sizes, weights, radii and timings folded in. */
+:root{--radius-sm:6px;--radius-md:10px;--radius-lg:14px;--elevation-1:var(--shadow-card);--elevation-2:var(--shadow-pop);--motion-fast:80ms;--motion-base:150ms;--motion-slow:200ms;--ease:cubic-bezier(.2,0,0,1);--ease-exit:cubic-bezier(.3,0,1,1)}
+:root .agenda-label,:root .block-actions .text-button,:root .eyebrow,:root .flip-label{font-size:11px}
+:root .detail h2{font-size:22px}
+:root .welcome>p,:root .welcome-choice strong{font-size:13px}
+:root #modal-title,:root .detail-links-head strong,:root .flip-face strong,:root #welcome-title{font-weight:600}
+:root .button,:root .search,:root .agenda-item,:root .icon-button,:root .compact-repo,:root .form input,:root .form select,:root .form textarea,:root .detail-badge,:root kbd{border-radius:var(--radius-sm)}
+:root .welcome-choice{border-radius:var(--radius-md);box-shadow:var(--elevation-1)}
+:root #toast,:root dialog{border-radius:var(--radius-lg)}
+:root .detail{border-radius:var(--radius-lg) 0 0 var(--radius-lg);animation-duration:var(--motion-slow);animation-timing-function:var(--ease)}
+:root #toast{padding:12px 16px;gap:12px}
+:root .card-copy{padding:10px 16px 4px}
+:root .card-foot{padding:4px 12px 12px 16px}
+:root .block.compact .card-copy{padding:0}
+.flip-inner{transition:transform var(--motion-slow) var(--ease)}
+.button,.icon-button,.text-button,.card-hide,.repo-swap,.quick-action,.agenda-item,.compact-repo-open{transition:background-color var(--motion-fast) var(--ease),border-color var(--motion-fast) var(--ease),color var(--motion-fast) var(--ease)}
+@media(hover:hover){.asset-card .card-hide,.asset-card .repo-swap,.asset-card .quick-action{transition:opacity var(--motion-base) var(--ease),background-color var(--motion-fast) var(--ease),color var(--motion-fast) var(--ease)}
+ .compact-repo .repo-swap{opacity:0;transition:opacity var(--motion-base) var(--ease)}.compact-repo:hover .repo-swap,.compact-repo:focus-within .repo-swap{opacity:1}}
+.card-event,.card-glance,.agenda-item,.asset-count,.fact,.block-summary,.limit-divider,.compact-repositories-title{font-variant-numeric:tabular-nums}
+/* Hidden cards read as recessed, not as an inverted slab: same quiet surface in light and dark. */
+:root .flip-face.back{background:var(--surface-panel);color:var(--ink);border:1px dashed var(--border-strong);box-shadow:none}
+:root .flip-face.back .flip-label,:root .flip-face.back .flip-note{color:var(--muted);opacity:1}
+:root .flip-actions .button{background:var(--surface-card);border-color:var(--border);color:var(--ink)}
+:root .flip-actions .button:hover{background:var(--surface-card);border-color:var(--border-strong)}
+#board .flip-actions .button:focus-visible{outline-color:rgb(var(--tone-primary));outline-offset:2px}
