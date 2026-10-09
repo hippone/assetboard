@@ -592,3 +592,8 @@ body.drag-active .quick-action,.block.compact .quick-action{visibility:hidden}
 body.import-drag::after{content:'松开以导入';position:fixed;inset:12px;border:2px dashed rgba(var(--tone-primary),.55);border-radius:var(--radius-lg);background:rgba(var(--tone-primary),.08);color:var(--ink);display:grid;place-items:center;font-size:15px;font-weight:600;pointer-events:none;z-index:80}
 .welcome-choice strong{display:flex;align-items:center;gap:8px}
 .welcome-choice .tile{flex:none}
+
+/* Phase-2 import: account tags + local CLI strip */
+.account-tag{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;border:1px solid var(--border);background:var(--surface-panel);font-size:11px;font-weight:500;color:var(--muted);vertical-align:middle;max-width:9em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.import-cli{display:grid;gap:8px;padding:12px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface-card)}
+.import-cli strong{font-size:12px;font-weight:600}

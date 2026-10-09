@@ -93,8 +93,12 @@ window.assetboardLocalResult=ok=>toast(ok?'已用本机编辑器打开':'找不�
 // Only the most urgent few "soon" dates in a block stay amber (DISPLAY_LIMITS.strongDates); overdue always stays red.
 function mutedEvent(event,strong){return strong||event.cls!=='warn'?event:{...event,cls:''};}
 // Card text has three layers at most: name, one source line (provider · account, or region + masked identifier for priority types), one status in the foot.
+function accountTag(a){return a.account?`<span class="account-tag" title="账号">${esc(a.account)}</span>`:'';}
 function cardSub(a){
- if(!assetProfiles[a.type]){const text=[a.provider,a.account].filter(Boolean).join(' · ');return text?`<span class="card-sub card-provider">${esc(text)}</span>`:'';}
+ if(!assetProfiles[a.type]){
+  if(['cloudflare','github','ssh'].includes(a.source)&&a.account)return `<span class="card-sub card-provider">${esc(a.provider||'')}${accountTag(a)}</span>`;
+  const text=[a.provider,a.account].filter(Boolean).join(' · ');return text?`<span class="card-sub card-provider">${esc(text)}</span>`:'';
+ }
  const flag=regionFlag(a.region),identity={bankcard:[[a.network,a.last4&&`•••• ${a.last4}`].filter(Boolean).join(' ')],phone:[maskPhone(a.phone)],appleid:[maskEmail(a.account)||regionName(a.region)],google:[maskEmail(a.account)||regionName(a.region)],ai:[a.provider,a.cost&&a.cost!=='未知'?a.cost:'']}[a.type].filter(Boolean).join(' · '),extra={bankcard:a.provider,phone:a.provider}[a.type],text=[identity,extra].filter(Boolean).join(' · ');
  return text||flag?`<span class="card-sub card-identity">${flag?`<span class="flag">${flag}</span>`:''}<span class="sub-text">${esc(text)}</span></span>`:'';
 }
@@ -361,13 +365,18 @@ let importPlan=null,importKind=null;
 function importHub(){
  const deleted=(state.deletedExternalIds||[]).length;
  const native=!!nativeStore;
+ const cli=window.__localCli||{};
+ const ghAccounts=cli.ghAccounts||[];
+ const ghLine=cli.gh?`<button class="button primary" data-action="github-local-sync">${ghAccounts.length?`用本机 gh 同步（${esc(ghAccounts.join('、'))}）`:'用本机 gh 同步'}</button>`:`<button class="button" data-action="github-import">GitHub 令牌…</button>`;
+ const sshLine=cli.sshConfig?`<button class="button primary" data-action="ssh-import">导入 ~/.ssh/config</button>`:`<button class="button" data-action="ssh-import" disabled title="未找到配置文件">未检测到 ~/.ssh/config</button>`;
  modal('导入',`<div class="form import-hub">
-  <div class="import-drop" id="import-drop" tabindex="0" role="button" aria-label="拖入文件或点击选择"><strong>拖入文件到这里</strong><span>CSV / 表格、JSON 备份${native?'、截图或 PDF':''}；也可 ⌘V 粘贴</span><input id="import-file" type="file" accept=".csv,.tsv,.json,text/csv,application/json${native?',image/png,image/jpeg,image/webp,application/pdf':''}" hidden multiple></div>
+  <div class="import-drop" id="import-drop" tabindex="0" role="button" aria-label="拖入文件或点击选择"><strong>拖入文件到这里</strong><span>CSV / 表格、JSON 备份、.eml 邮件${native?'、截图或 PDF':''}；也可 ⌘V 粘贴</span><input id="import-file" type="file" accept=".csv,.tsv,.json,.eml,text/csv,application/json,message/rfc822${native?',image/png,image/jpeg,image/webp,application/pdf':''}" hidden multiple></div>
+  ${native?`<div class="import-cli"><strong>本机已登录</strong><div class="import-actions">${ghLine}${sshLine}<button class="button" data-action="local-cli-refresh">重新检测</button></div><p class="form-note">只调用 gh 等命令读取公开元数据，不读取它们自存的凭据文件；SSH 只读 Host/HostName/User/Port。</p></div>`:''}
   <div class="import-actions">
    <button class="button" data-action="import-pick-file">选择文件</button>
    <button class="button" data-action="manual-import">手动录入</button>
    <button class="button" data-action="inbox">粘贴续费通知</button>
-   ${native?`<button class="button" data-action="github-import">GitHub</button><button class="button" data-action="cloudflare-import">Cloudflare</button><button class="button" data-action="gmail-import">Gmail</button><button class="button" data-action="ocr-import">截图/PDF</button>`:''}
+   ${native?`<button class="button" data-action="cloudflare-import">Cloudflare</button><button class="button" data-action="gmail-import">Gmail</button><button class="button" data-action="ocr-import">截图/PDF</button>`:''}
    ${demoMode?`<button class="button primary" data-action="import-demo-sample">试用示例 CSV</button>`:''}
   </div>
   <p class="form-note">无冲突时直接写入资产板，可用 ⌘Z 整批撤销；同名、已删除或读不懂时会先预览。表格一次最多 ${IMPORT_ROW_LIMIT} 行，同名默认跳过。疑似密钥列会当场丢弃。</p>
@@ -375,6 +384,7 @@ function importHub(){
  </div>`,'import');
  $('#import-drop')?.addEventListener('click',()=>$('#import-file')?.click());
  $('#import-file')?.addEventListener('change',e=>{const files=[...e.target.files||[]];e.target.value='';if(files.length)handleImportFiles(files);});
+ if(native&&!demoMode)requestLocalCliDetect();
 }
 function importPreviewHtml(plan,meta={}){
  const group=(title,rows,render)=>rows.length?`<section class="import-group"><h3>${title} · ${rows.length}</h3><div class="import-rows">${rows.map(render).join('')}</div></section>`:'';
@@ -450,10 +460,40 @@ function importJsonText(text,{filename='',mode}={}){
   if(actions&&!$('#import-replace'))actions.insertAdjacentHTML('beforebegin',extra);
  }
 }
+function importEmlText(raw,{filename=''}={}){
+ const parsed=parseEml(raw);
+ if(!parsed.ok){toast(parsed.error||'无法解析邮件');return;}
+ pasteRow={id:'eml-'+Date.now(),kind:'paste',source:parsed.from||'',title:(parsed.subject||filename||'邮件').slice(0,80),body:`From: ${parsed.from}\nSubject: ${parsed.subject}\nDate: ${parsed.date}\n\n${parsed.body}`,importedAt:new Date().toISOString()};
+ pasteRecorded=new Set();candidateReview(buildPasteCandidate());
+ toast(filename?`已识别邮件 ${filename}`:'已识别拖入的邮件');
+}
+function requestLocalCliDetect(){
+ if(!nativeStore||demoMode){window.__localCli={gh:false,ghAccounts:[],sshConfig:false};return;}
+ window.webkit.messageHandlers.assetboard.postMessage({action:'localCliDetect'});
+}
+window.assetboardLocalCliDetect=info=>{window.__localCli=info||{};if($('#modal')?.open&&$('#modal').dataset.view==='import')importHub();};
+window.assetboardSshResult=result=>{
+ if(!result.ok){
+  const steps=(result.nextSteps||[]).map(s=>esc(s)).join('；');
+  toast(result.error+(steps?' · '+steps:''));
+  return;
+ }
+ const hosts=parseSshConfig(result.text||'');
+ if(!hosts.length){toast('~/.ssh/config 里没有可导入的 Host');return;}
+ // Convert to planImport-compatible items via mergeSshConfig under checkpoint path similar to platform sync
+ checkpoint();
+ const merge=mergeSshConfig(state,hosts);
+ state=merge.board;save();render();
+ $('#modal')?.close();
+ toast(`SSH 配置：读取 ${merge.read} 项，新增 ${merge.added} 项`,true);
+ syncFollowUp('SSH',merge,[]);
+};
+
 function routeImportText(text,{filename='',mime=''}={}){
  const classified=classifyImportPayload({text,filename,mime});
  if(classified.kind==='csv'){importKind='csv';importCsvText(classified.text||text,{filename});return;}
  if(classified.kind==='json'){importKind='json';importJsonText(classified.text||text,{filename});return;}
+ if(classified.kind==='eml'){importEmlText(classified.text||text,{filename});return;}
  if(classified.kind==='paste'){
   pasteRow={id:'paste-'+Date.now(),kind:'paste',source:'',title:String(text).split('\n')[0].slice(0,60),body:String(text),importedAt:new Date().toISOString()};
   pasteRecorded=new Set();candidateReview(buildPasteCandidate());return;
@@ -481,10 +521,16 @@ async function handleImportFiles(files){
    }
   }
  }
- for(const file of docs){
+ // One CSV/JSON at a time; multiple .eml ok (each opens review sequentially — last wins UI, all become paste candidates one by one)
+ const tables=docs.filter(f=>!/\.eml$/i.test(f.name)&&f.type!=='message/rfc822');
+ const mails=docs.filter(f=>/\.eml$/i.test(f.name)||f.type==='message/rfc822');
+ for(const file of mails.slice(0,10)){
   const text=await file.text();
-  routeImportText(text,{filename:file.name,mime:file.type});
-  break; // one table/backup at a time
+  routeImportText(text,{filename:file.name,mime:file.type||'message/rfc822'});
+ }
+ if(tables[0]){
+  const text=await tables[0].text();
+  routeImportText(text,{filename:tables[0].name,mime:tables[0].type});
  }
 }
 function typingTarget(el){return !!el&&(el.closest?.('input,textarea,select,[contenteditable="true"]')||['INPUT','TEXTAREA','SELECT'].includes(el.tagName));}
@@ -535,7 +581,8 @@ function profileFields(type,v){
 function cloudflareDialog(){
  if(!nativeStore){toast('Cloudflare 同步仅在 macOS App 中可用');return;}
  const connected=nativeStore.cloudflareConnected;
- modal('Cloudflare · 只读同步',`<div class="form"><p class="form-note">使用 Cloudflare API Token。按需授予 Zone Read、Account Read、Pages Read、Workers Scripts Read 和 R2 Storage Read。应用只列出授权范围内的 Zone、Pages 项目、Worker 脚本与 R2 Bucket，不读取脚本代码、对象内容或账单。权限不足的类别会明确跳过。</p><button class="button" data-action="setup-cloudflare">前往 Cloudflare 网页创建只读 Token ↗</button><label>${connected?'更换令牌（留空则使用已保存令牌）':'只读 API 令牌'}<input id="cloudflare-token" type="password" autocomplete="off" spellcheck="false" placeholder="${connected?'留空使用现有令牌':'粘贴令牌'}"></label><p id="cloudflare-status" class="form-note">${connected?'已连接 · 可重新同步或更换令牌':nativeStore.cloudflareChecking?'正在检查本机钥匙串…':nativeStore.keychainUnavailable?'本机钥匙串暂未响应，可重新输入令牌同步':'尚未连接'}</p><button id="cloudflare-sync" class="button primary">${connected?'重新同步':'验证权限并同步'}</button>${connected?'<button id="cloudflare-disconnect" class="button">断开本机连接</button>':''}<p class="form-note">令牌经验证后存入 macOS 钥匙串。断开不会撤销 Cloudflare 后台的令牌，已同步资产仍保留。</p></div>`);
+ const tokenUrl=cloudflareTokenTemplateUrl({name:'Assetboard'});
+ modal('Cloudflare · 只读同步',`<div class="form"><p class="form-note">使用只读 API Token。预填权限：Zone、Account Settings、Pages、Workers Scripts、R2（均为 Read）。若令牌含 Registrar 读权限，还会写入域名到期日（新接口 /registrar/registrations）。多账户资源在同一区块内用账号标签区分。不读取脚本代码、对象内容或账单。</p><button class="button" data-action="setup-cloudflare" data-url="${esc(tokenUrl)}">打开预填权限的建令牌页 ↗</button><label>${connected?'更换令牌（留空则使用已保存令牌）':'只读 API 令牌'}<input id="cloudflare-token" type="password" autocomplete="off" spellcheck="false" placeholder="${connected?'留空使用现有令牌':'粘贴令牌'}"></label><p id="cloudflare-status" class="form-note">${connected?'已连接 · 可重新同步或更换令牌':nativeStore.cloudflareChecking?'正在检查本机钥匙串…':nativeStore.keychainUnavailable?'本机钥匙串暂未响应，可重新输入令牌同步':'尚未连接'}</p><button id="cloudflare-sync" class="button primary">${connected?'重新同步':'验证权限并同步'}</button>${connected?'<button id="cloudflare-disconnect" class="button">断开本机连接</button>':''}<p class="form-note">令牌经验证后存入 macOS 钥匙串。断开不会撤销 Cloudflare 后台的令牌，已同步资产仍保留。</p></div>`);
  $('#cloudflare-sync').onclick=()=>{const token=$('#cloudflare-token').value;$('#cloudflare-token').value='';$('#cloudflare-sync').disabled=true;$('#cloudflare-status').textContent='正在验证权限并读取全部分页…';window.webkit.messageHandlers.assetboard.postMessage({action:'cloudflareSync',token});};
  if(connected)$('#cloudflare-disconnect').onclick=()=>window.webkit.messageHandlers.assetboard.postMessage({action:'cloudflareDisconnect'});
 }
@@ -549,8 +596,11 @@ window.assetboardCloudflareResult=result=>{
 function githubDialog(){
  if(!nativeStore){toast('GitHub 同步仅在 macOS App 中可用');return;}
  const connected=nativeStore.githubConnected;
- modal('GitHub · 只读同步',`<div class="form"><p class="form-note">推荐创建 GitHub 细粒度个人访问令牌，只选择需要整理的仓库，仓库权限保留 Metadata → Read。也可使用已有令牌，但其实际权限可能更广。应用只读取授权范围内的仓库名称、归属、可见性、归档状态和链接；不请求代码或账单。组织仓库可能需要管理员审批。</p><button id="github-local-sync" class="button primary">使用本机 gh 登录同步</button><span class="form-note">需已安装并登录 GitHub CLI。此次不会将令牌另存到 Assetboard 钥匙串；后续可再次用 gh 同步。</span><label>${connected?'更换令牌（留空则使用已保存令牌）':'或者填写 GitHub 令牌'}<input id="github-token" type="password" autocomplete="off" spellcheck="false" placeholder="${connected?'留空使用现有令牌':'粘贴令牌'}"></label><p id="github-status" class="form-note">${connected?'已连接 · 可重新同步或更换令牌':'尚未连接'}</p><button id="github-sync" class="button">${connected?'使用已保存令牌重新同步':'验证填写的令牌并同步'}</button>${connected?'<button id="github-disconnect" class="button">断开本机连接</button>':''}<p class="form-note">填写的令牌经验证后保存在 macOS 钥匙串。断开会删除 Assetboard 保存的令牌，已同步资产仍保留；彻底撤销访问需前往 GitHub 后台删除令牌。</p></div>`);
- $('#github-local-sync').onclick=()=>{$('#github-local-sync').disabled=true;$('#github-status').textContent='正在使用本机 gh 登录读取仓库…';window.webkit.messageHandlers.assetboard.postMessage({action:'githubSyncLocal'});};
+ const cli=window.__localCli||{};
+ const accounts=cli.ghAccounts||[];
+ const localLabel=accounts.length?`使用本机 gh 同步（${esc(accounts.join('、'))}）`:'使用本机 gh 登录同步';
+ modal('GitHub · 只读同步',`<div class="form"><p class="form-note">优先用本机已登录的 gh（支持多账号，只调用 gh 命令，不读其凭据文件）。仓库按 owner 账号标签显示在同一「代码仓库」区块。失败时可用细粒度令牌（Metadata → Read）。</p><button id="github-local-sync" class="button primary" data-action="github-local-sync">${localLabel}</button><span class="form-note">需已安装并登录 GitHub CLI。此次不会将令牌另存到 Assetboard 钥匙串。</span><button class="button" data-action="setup-github-token">打开 GitHub 细粒度令牌页 ↗</button><label>${connected?'更换令牌（留空则使用已保存令牌）':'或者填写 GitHub 令牌'}<input id="github-token" type="password" autocomplete="off" spellcheck="false" placeholder="${connected?'留空使用现有令牌':'粘贴令牌'}"></label><p id="github-status" class="form-note">${connected?'已连接 · 可重新同步或更换令牌':cli.gh===false?'未检测到 gh · 可安装或改用令牌':'尚未连接'}</p><button id="github-sync" class="button">${connected?'使用已保存令牌重新同步':'验证填写的令牌并同步'}</button>${connected?'<button id="github-disconnect" class="button">断开本机连接</button>':''}<p class="form-note">填写的令牌经验证后保存在 macOS 钥匙串。断开会删除 Assetboard 保存的令牌，已同步资产仍保留。</p></div>`);
+ if(!cli.gh&&cli.gh!==false)requestLocalCliDetect();
  $('#github-sync').onclick=()=>{const token=$('#github-token').value;$('#github-token').value='';$('#github-sync').disabled=true;$('#github-status').textContent='正在验证权限并读取全部分页…';window.webkit.messageHandlers.assetboard.postMessage({action:'githubSync',token});};
  if(connected)$('#github-disconnect').onclick=()=>window.webkit.messageHandlers.assetboard.postMessage({action:'githubDisconnect'});
 }
@@ -565,11 +615,23 @@ window.assetboardGmailResult=result=>{
  nativeStore.gmailConfigured=true;$('#modal').close();toast(`Gmail 本地导入完成：匹配 ${result.count} 封邮件`);requestEvidence(()=>inboxDialog(false));
 };
 window.assetboardGitHubResult=result=>{
- if(!result.ok){const status=$('#github-status');if(status)status.textContent=result.error||'同步失败';for(const id of ['#github-sync','#github-local-sync']){const button=$(id);if(button)button.disabled=false;}return;}
+ if(!result.ok){
+  const status=$('#github-status');
+  const steps=(result.nextSteps||[]).join(' · ');
+  if(status)status.textContent=(result.error||'同步失败')+(steps?' · '+steps:'');
+  for(const id of ['#github-sync','#github-local-sync']){const button=$(id);if(button)button.disabled=false;}
+  if(result.tokenUrl){
+   const form=$('#modal-content .form');
+   if(form&&!$('#github-fallback-link'))form.insertAdjacentHTML('beforeend',`<button class="button" id="github-fallback-link" data-action="setup-github-token">打开建令牌页（退路）↗</button>`);
+  }
+  return;
+ }
  if(result.disconnected){nativeStore.githubConnected=false;githubDialog();toast('已删除本机保存的 GitHub 令牌');return;}
  checkpoint();const merge=mergeGitHub(state,result);state=merge.board;
- nativeStore.githubConnected=!!result.connected||nativeStore.githubConnected;save();render();$('#modal').close();toast(`GitHub 读取成功：读取 ${merge.read} 个仓库，新增 ${merge.added} 项`,true);
- syncFollowUp('GitHub',merge,[]);
+ nativeStore.githubConnected=!!result.connected||nativeStore.githubConnected;save();render();$('#modal').close();
+ const who=(result.accounts||[]).length?`（${result.accounts.join('、')}）`:'';
+ toast(`GitHub 读取成功${who}：读取 ${merge.read} 个仓库，新增 ${merge.added} 项`,true);
+ syncFollowUp('GitHub',merge,result.warnings||[]);
 };
 let pendingCollisions=[];
 function syncFollowUp(source,merge,warnings){
@@ -743,9 +805,23 @@ document.addEventListener('click',e=>{const button=e.target.closest('[data-actio
  else if(action==='cloudflare-import')cloudflareDialog();
  else if(action==='gmail-import')gmailDialog();
  else if(action==='ocr-import'){if(demoMode){window.assetboardDemoBlocked();return;}if(nativeStore)window.webkit.messageHandlers.assetboard.postMessage({action:'ocrImport'});}
+ else if(action==='setup-github-token'){const url=githubTokenTemplateUrl();if(nativeStore)window.webkit.messageHandlers.assetboard.postMessage({action:'openExternal',url});}
  else if(action==='setup-cloudflare'||action==='setup-gmail'){
-  const url=action==='setup-cloudflare'?'https://dash.cloudflare.com/profile/api-tokens':'https://console.cloud.google.com/apis/credentials';
+  const url=action==='setup-cloudflare'?(button.dataset.url||cloudflareTokenTemplateUrl()):'https://console.cloud.google.com/apis/credentials';
   if(nativeStore)window.webkit.messageHandlers.assetboard.postMessage({action:'openExternal',url});
+ }
+ else if(action==='local-cli-refresh')requestLocalCliDetect();
+ else if(action==='ssh-import'){
+  if(demoMode){window.assetboardDemoBlocked();return;}
+  if(!nativeStore){toast('SSH 配置导入仅在 macOS App 中可用');return;}
+  window.webkit.messageHandlers.assetboard.postMessage({action:'sshConfigImport'});
+ }
+ else if(action==='github-local-sync'){
+  if(demoMode){window.assetboardDemoBlocked();return;}
+  if(!nativeStore)return;
+  const btn=button;btn.disabled=true;
+  const status=$('#github-status');if(status)status.textContent='正在用本机 gh 读取各账号仓库…';
+  window.webkit.messageHandlers.assetboard.postMessage({action:'githubSyncLocal'});
  }
  else if(action==='choose-asset-type')assetForm(id);
  else if(action==='external'){const a=state.assets.find(a=>a.id===id),url=safeManagementUrl(a?.url);if(!url||new URL(url).hostname==='example.com'){toast('请先在资产资料中填写真实管理链接');return;}if(nativeStore)window.webkit.messageHandlers.assetboard.postMessage({action:'openExternal',url});else window.open(url,'_blank','noopener,noreferrer');}
