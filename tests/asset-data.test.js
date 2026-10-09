@@ -319,3 +319,30 @@ test('display limits cap counts, rows and amber dates without touching data',()=
  assert.deepEqual([...ids].sort(),['a0','a1','a2','a3']);
  assert.equal(DISPLAY_LIMITS.columns,4);
 });
+
+test('display order: manual order first, then most recently updated, never by urgency',()=>{
+ const {arrangeAssets,recentFirst,touchedPrefix,swapInOrder,bringToFront,recencyTime}=require('../asset-data.js');
+ const assets=[
+  {id:'old',name:'old'},
+  {id:'created',name:'created',createdAt:'2026-10-01T00:00:00Z'},
+  {id:'edited',name:'edited',createdAt:'2026-01-01T00:00:00Z',updatedAt:'2026-10-05T00:00:00Z'},
+  {id:'older',name:'older'},
+  {id:'urgent',name:'urgent',date:'2026-10-10',createdAt:'2026-02-01T00:00:00Z'}
+ ];
+ assert.equal(recencyTime(assets[0]),0);
+ assert.deepEqual(recentFirst(assets).map(a=>a.id),['edited','created','urgent','old','older']);
+ assert.deepEqual(arrangeAssets(assets,[]).map(a=>a.id),['edited','created','urgent','old','older']);
+ assert.deepEqual(arrangeAssets(assets,['older','gone']).map(a=>a.id),['older','edited','created','urgent','old']);
+ assert.deepEqual(arrangeAssets(assets,undefined).map(a=>a.id),['edited','created','urgent','old','older'],'old saves without cardOrder still work');
+ assert.deepEqual(touchedPrefix(['a','b','c','d'],['b','a','c','d']),['b','a']);
+ assert.deepEqual(touchedPrefix(['a','b'],['a','b']),[]);
+ assert.deepEqual(swapInOrder(['a','b','c','d'],'d','b'),['a','d','c','b']);
+ assert.deepEqual(swapInOrder(['a','b'],'a','x'),['a','b']);
+ assert.deepEqual(bringToFront(['a','b','c'],'c'),['c','a','b']);
+ assert.deepEqual(bringToFront(undefined,'c'),['c']);
+});
+
+test('repositories feature the most recently updated, falling back to import time',()=>{
+ const assets=[{id:'a',type:'repository',name:'a',createdAt:'2026-10-01T00:00:00Z'},...Array.from({length:6},(_,i)=>({id:'r'+i,type:'repository',name:'r'+i,updatedAt:`2026-09-0${i+1}T00:00:00Z`}))];
+ assert.deepEqual(repositoryGroups(assets,[]).featured.map(a=>a.id),['a','r5','r4','r3','r2','r1']);
+});

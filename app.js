@@ -114,8 +114,8 @@ function renderBlock(b){
  const hiddenCount=state.assets.filter(a=>a.type===b.id&&isHidden(a)).length;
  if(!hiddenCount)showHiddenBlocks.delete(b.id); // restoring or deleting the last hidden asset leaves the hidden view, which would otherwise have no way back
  const viewingHidden=showHiddenBlocks.has(b.id);
- const visible=orderAssets(typed.filter(a=>!isHidden(a)),state.cardOrder?.[b.id]);
- const hiddenAssets=orderAssets(typed.filter(a=>isHidden(a)),state.cardOrder?.[b.id]);
+ const visible=arrangeAssets(typed.filter(a=>!isHidden(a)),state.cardOrder?.[b.id]);
+ const hiddenAssets=arrangeAssets(typed.filter(a=>isHidden(a)),state.cardOrder?.[b.id]);
  const assets=viewingHidden?hiddenAssets:visible;
  // Search and the full view always show full, unfolded cards; the board keeps each block's own style.
  const folded=!!b.folded&&!query&&!focusCategory,compact=!folded&&!query&&!focusCategory&&blockDensity(b)==='compact';
@@ -123,11 +123,16 @@ function renderBlock(b){
  const levels=state.assets.filter(a=>a.type===b.id&&!isHidden(a)).map(a=>assetDateStatus(a).level),overdue=levels.filter(level=>level==='overdue').length,soon=levels.filter(level=>level==='soon').length;
  const summary=[overdue&&`${overdue} 项已过期`,soon&&`${soon} 项即将到期`].filter(Boolean).join(' · ');
  const repositoryLayout=b.id==='repository'&&!query&&!focusCategory&&!folded&&!compact&&!viewingHidden&&assets.length>6;
- const rawGroups=repositoryLayout?repositoryGroups(assets,state.featuredRepositoryIds):null;
- const groups=rawGroups?{featured:orderAssets(rawGroups.featured,state.cardOrder?.repository),compact:orderAssets(rawGroups.compact,state.cardOrder?.repository)}:null;
+ // The full view lists repositories in the board's order (featured, then the list) so its divider matches what the board shows.
+ const repositoryOrder=b.id==='repository'&&!query&&!viewingHidden&&assets.length>6&&(repositoryLayout||focusCategory===b.id);
+ const rawGroups=repositoryOrder?repositoryGroups(assets,state.featuredRepositoryIds):null;
+ const ordered=rawGroups?{featured:arrangeAssets(rawGroups.featured,state.cardOrder?.repository),compact:arrangeAssets(rawGroups.compact,state.cardOrder?.repository)}:null;
+ const groups=repositoryLayout?ordered:null,listed=ordered&&!groups?[...ordered.featured,...ordered.compact]:assets;
+ // In the full view a divider marks where the board's display area ended; dragging a card across it onto another card swaps the two.
+ const shownOnBoard=focusCategory===b.id&&!viewingHidden&&!query?boardShown.get(b.id):undefined,divider=shownOnBoard>0&&shownOnBoard<listed.length?shownOnBoard:-1;
  const strong=strongDateIds(visible),limited=!folded&&!fixed&&!viewingHidden&&!query&&!focusCategory;
  const searchHiddenHtml=(!viewingHidden&&query&&hiddenAssets.length)?hiddenAssets.map(flippedCard).join(''):'';
- const cardsHtml=viewingHidden?assets.map(flippedCard).join(''):groups?`${groups.featured.map(a=>card(a,true,strong.has(a.id))).join('')}<div class="compact-repositories"><div class="compact-repositories-title" data-count="${groups.compact.length}">其余 ${formatCount(groups.compact.length)} 个仓库</div><div class="compact-repositories-grid">${limited?groups.featured.map(a=>compactRepository(a,true)).join(''):''}${groups.compact.map(a=>compactRepository(a)).join('')}</div></div>${searchHiddenHtml}`:(assets.map(a=>card(a,false,strong.has(a.id))).join('')+searchHiddenHtml);
+ const cardsHtml=viewingHidden?assets.map(flippedCard).join(''):groups?`${groups.featured.map(a=>card(a,true,strong.has(a.id))).join('')}<div class="compact-repositories"><div class="compact-repositories-title" data-count="${groups.compact.length}">其余 ${formatCount(groups.compact.length)} 个仓库</div><div class="compact-repositories-grid">${limited?groups.featured.map(a=>compactRepository(a,true)).join(''):''}${groups.compact.map(a=>compactRepository(a)).join('')}</div></div>${searchHiddenHtml}`:(listed.map((a,i)=>(i===divider?'<div class="limit-divider" role="separator">以下在大板上收起 · 拖到上方的卡片上可交换位置</div>':'')+card(a,false,strong.has(a.id))).join('')+searchHiddenHtml);
  const emptyHtml=viewingHidden?'<div class="block-empty">这个区块没有已隐藏的资产</div>':`<button type="button" class="block-empty" data-action="add-asset" data-id="${b.id}">添加你的第一项资产</button>`;
  const hiddenToggle=hiddenCount?`<button class="text-button hidden-toggle ${viewingHidden?'active':''}" data-action="toggle-hidden" data-id="${b.id}" aria-pressed="${viewingHidden}" title="${viewingHidden?'返回显示未隐藏资产':'查看本区块已隐藏资产'}">${viewingHidden?'返回':`已隐藏 (${formatCount(hiddenCount)})`}</button>`:'';
  return `<section class="block ${b.id} ${folded?'folded':''} ${compact?'compact':''} ${fixed?'fixed':''} ${limited?'limited':''} ${viewingHidden?'showing-hidden':''}" data-block="${b.id}" style="--width:${b.width}">
@@ -197,11 +202,16 @@ function updateOverflow(){
  for(const {grid,minHeight} of grids){const value=minHeight+'px';if(grid.style.minHeight!==value)grid.style.minHeight=value;}
  const visibility=grids.map(item=>{const limit=item.grid.offsetTop+item.grid.clientHeight-item.bottom+1;return {...item,hidden:item.cards.map(card=>card.offsetTop+card.offsetHeight>limit)};});
  for(const {block,cards,hidden} of visibility){cards.forEach((card,i)=>{const value=hidden[i]?'hidden':'';if(card.style.visibility!==value)card.style.visibility=value;if(card.inert!==hidden[i])card.inert=hidden[i];});const all=block.querySelector('[data-action="all"]');all.hidden=!hidden.some(Boolean);all.title='还有资产未显示，查看全部';}
+ if(onBoard())for(const {block,hidden} of visibility)boardShown.set(block.dataset.block,hidden.filter(h=>!h).length);
 }
 // Auto-height blocks show at most DISPLAY_LIMITS rows; the header's 查看全部 opens the rest. Fixed-height blocks are clipped by height below.
 function gridColumns(grid){return Math.max(1,getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length);}
 function showItem(el,show){const value=show?'':'none';if(el.style.display!==value)el.style.display=value;if(el.inert===show)el.inert=!show;}
+// How many cards each block showed on the board last time (its display area). The full view draws its divider there.
+const boardShown=new Map();
+function onBoard(){let active=false;try{active=!!gesture?.active;}catch{}return !focusCategory&&!query&&!active;}
 function limitRows(){
+ const record=onBoard();if(record)boardShown.clear();
  for(const block of document.querySelectorAll('#board .block.limited')){
   const grid=block.querySelector('.cards'),all=block.querySelector('[data-action="all"]');if(!grid||!all)continue;
   const cards=[...grid.querySelectorAll(':scope > .asset-card:not(.is-dragging)')];cards.forEach(el=>showItem(el,true));
@@ -212,16 +222,23 @@ function limitRows(){
    const tiles=[...list.children].filter(el=>el.dataset.asset||el.style.display!=='none'),title=grid.querySelector('.compact-repositories-title');
    if(title){title.textContent=`其余 ${formatCount(tiles.length)} 个仓库`;title.dataset.count=tiles.length;}
    tiles.forEach(el=>showItem(el,true));const max=rowLimit(tiles.length,gridColumns(list),DISPLAY_LIMITS.listRows);tiles.forEach((el,i)=>showItem(el,i<max));hidden=tiles.length-max;
+   if(record)boardShown.set(block.dataset.block,keep);
   }else{
    const max=rowLimit(cards.length,cols,block.classList.contains('compact')?DISPLAY_LIMITS.compactRows:DISPLAY_LIMITS.cardRows);
    cards.forEach((el,i)=>showItem(el,i<max));hidden=cards.length-max;
+   if(record)boardShown.set(block.dataset.block,max);
   }
   all.hidden=!hidden;all.textContent=hidden?`查看全部 · 另 ${formatCount(hidden)} 项`:'查看全部';all.title=hidden?`还有 ${hidden} 项未显示，查看全部`:'';
  }
 }
 function sourceLabel(a){if(a.syncMissing)return `${a.source==='github'?'GitHub':'Cloudflare'} 本次未返回`;if(a.source==='github')return `GitHub 仓库 · ${a.syncStatus||'状态未知'}`;if(a.source==='cloudflare')return `Cloudflare ${a.resourceKind||'Zone'} · ${a.syncStatus||'状态未知'}`;return a.source==='manual'?'手动录入':'演示资产';}
 function dateText(a){const status=assetDateStatus(a);if(status.level==='none')return a.date||'待补充';return `${status.date} · ${status.label}${billingCycles[a.cycle]?` · ${billingCycles[a.cycle].label}重复`:''}`;}
-function showDetail(id){const a=state.assets.find(a=>a.id===id);if(!a)return;lastFocus=document.activeElement;activeAsset=id;const link=safeManagementUrl(a.url),realLink=link&&new URL(link).hostname!=='example.com',lastSync=a.syncedAt&&!isNaN(Date.parse(a.syncedAt))?new Date(a.syncedAt).toLocaleString('zh-CN'):'';$('#detail-content').innerHTML=`${art(a)}<span class="eyebrow">${esc(cats[a.type].name)} / ASSET DETAILS</span><h2>${esc(a.name)}</h2><p class="detail-sub">${esc(assetProfiles[a.type]?[regionFlag(a.region),identityText(a)].filter(Boolean).join(' '):[a.provider,a.account].filter(Boolean).join(' · '))}</p>${a.purpose||!assetProfiles[a.type]?`<span class="detail-badge">${esc(a.purpose||'用途待补充')}</span>`:''}<div class="detail-actions">${realLink?`<button class="button primary" data-action="external" data-id="${esc(id)}">打开管理 ↗</button>`:''}<button class="button" data-action="edit-asset" data-id="${esc(id)}">编辑资料</button>${nativeStore?`<button class="button" data-action="icon-dialog" data-id="${esc(id)}">网站图标</button>`:''}</div><div class="detail-actions secondary-actions"><button class="button" data-action="${a.hiddenAt?'restore-asset':'hide-asset'}" data-id="${esc(id)}">${a.hiddenAt?'恢复显示':'隐藏'}</button><button class="button danger-quiet" data-action="delete-asset" data-id="${esc(id)}">删除记录</button></div><p class="form-note detail-note-inline">隐藏只在本机生效，可随时恢复；删除只清除 Assetboard 记录，不会取消订阅或删除线上资源。</p><div class="facts">${detailFacts(a,lastSync)}</div>${linkSection(a)}<details><summary>备注与来源</summary><p>${esc(a.notes||'暂无补充备注。')}</p>${a.source==='cloudflare'?'<p>同步自 Cloudflare 授权资源列表；列表元数据不能确定账单或到期日。编辑名称或账号后，下次同步会使用平台值。</p>':a.source==='github'?'<p>同步自 GitHub 仓库元数据；不读取代码、密钥或账单。编辑名称或账号后，下次同步会使用平台值。</p>':a.source==='manual'?'<p>此记录由你手动录入。</p>':'<p>此记录为原型演示数据，金额和日期不代表实际账户。</p>'}</details>`;$('#detail').hidden=false;$('#close-detail').focus();}
+// Manual display order from the detail panel: bring one card to the front of its block, or go back to recency order.
+function manualOrder(type){return !!(state.cardOrder?.[type]?.length||(type==='repository'&&state.featuredRepositoryIds?.length));}
+function orderActions(a){if(a.hiddenAt||!cats[a.type])return '';return `<div class="detail-actions order-actions"><button class="button" data-action="pin-front" data-id="${esc(a.id)}" title="放到「${esc(cats[a.type].name)}」显示区的第一位">放到前面</button>${manualOrder(a.type)?`<button class="button" data-action="auto-order" data-id="${esc(a.id)}" title="「${esc(cats[a.type].name)}」恢复按最近更新排列">恢复自动排序</button>`:''}</div>`;}
+function pinFront(id){const a=state.assets.find(x=>x.id===id);if(!a||a.hiddenAt)return;checkpoint();state.cardOrder||={};state.cardOrder[a.type]=bringToFront(state.cardOrder[a.type],id);if(a.type==='repository')state.featuredRepositoryIds=bringToFront(state.featuredRepositoryIds,id);save();render();if(activeAsset===id)showDetail(id);toast(`已把「${displayName(a)}」放到${cats[a.type].name}最前`,true);}
+function autoOrder(id){const a=state.assets.find(x=>x.id===id);if(!a||!manualOrder(a.type))return;checkpoint();if(state.cardOrder)delete state.cardOrder[a.type];if(a.type==='repository')state.featuredRepositoryIds=[];save();render();if(activeAsset===id)showDetail(id);toast(`${cats[a.type].name}已恢复按最近更新排列`,true);}
+function showDetail(id){const a=state.assets.find(a=>a.id===id);if(!a)return;lastFocus=document.activeElement;activeAsset=id;const link=safeManagementUrl(a.url),realLink=link&&new URL(link).hostname!=='example.com',lastSync=a.syncedAt&&!isNaN(Date.parse(a.syncedAt))?new Date(a.syncedAt).toLocaleString('zh-CN'):'';$('#detail-content').innerHTML=`${art(a)}<span class="eyebrow">${esc(cats[a.type].name)} / ASSET DETAILS</span><h2>${esc(a.name)}</h2><p class="detail-sub">${esc(assetProfiles[a.type]?[regionFlag(a.region),identityText(a)].filter(Boolean).join(' '):[a.provider,a.account].filter(Boolean).join(' · '))}</p>${a.purpose||!assetProfiles[a.type]?`<span class="detail-badge">${esc(a.purpose||'用途待补充')}</span>`:''}<div class="detail-actions">${realLink?`<button class="button primary" data-action="external" data-id="${esc(id)}">打开管理 ↗</button>`:''}<button class="button" data-action="edit-asset" data-id="${esc(id)}">编辑资料</button>${nativeStore?`<button class="button" data-action="icon-dialog" data-id="${esc(id)}">网站图标</button>`:''}</div>${orderActions(a)}<div class="detail-actions secondary-actions"><button class="button" data-action="${a.hiddenAt?'restore-asset':'hide-asset'}" data-id="${esc(id)}">${a.hiddenAt?'恢复显示':'隐藏'}</button><button class="button danger-quiet" data-action="delete-asset" data-id="${esc(id)}">删除记录</button></div><p class="form-note detail-note-inline">隐藏只在本机生效，可随时恢复；删除只清除 Assetboard 记录，不会取消订阅或删除线上资源。</p><div class="facts">${detailFacts(a,lastSync)}</div>${linkSection(a)}<details><summary>备注与来源</summary><p>${esc(a.notes||'暂无补充备注。')}</p>${a.source==='cloudflare'?'<p>同步自 Cloudflare 授权资源列表；列表元数据不能确定账单或到期日。编辑名称或账号后，下次同步会使用平台值。</p>':a.source==='github'?'<p>同步自 GitHub 仓库元数据；不读取代码、密钥或账单。编辑名称或账号后，下次同步会使用平台值。</p>':a.source==='manual'?'<p>此记录由你手动录入。</p>':'<p>此记录为原型演示数据，金额和日期不代表实际账户。</p>'}</details>`;$('#detail').hidden=false;$('#close-detail').focus();}
 // Masked values reveal on request; the full value never appears on the board.
 function secret(full,masked){return full&&masked&&masked!==full?`<span class="secret" data-full="${esc(full)}" data-masked="${esc(masked)}">${esc(masked)}</span><button class="text-button reveal" data-action="reveal" aria-pressed="false">显示</button>`:esc(full||'待补充');}
 function detailFacts(a,lastSync){
@@ -474,6 +491,8 @@ document.addEventListener('click',e=>{const button=e.target.closest('[data-actio
  else if(action==='candidate-dismiss'){if(id==='paste'){inboxDialog(false);return;}checkpoint();const count=resolveCandidate(id,'dismissed');if(!count){history.pop();return;}save();render();inboxDialog(false);toast('已忽略这组资料',true);}
  else if(action==='candidate-reopen'){const c=findCandidate(id);if(!c)return;checkpoint();for(const key of c.ids)delete state.evidenceDecisions?.[key];save();render();inboxDialog(false);toast('已恢复为待确认',true);}
  else if(action==='dismiss-weak'){const weak=candidates().filter(c=>c.pending&&c.weak);if(!weak.length)return;checkpoint();for(const c of weak)resolveCandidate(c.key,'dismissed');save();render();inboxDialog(false);toast(`已忽略 ${weak.length} 组资料`,true);}
+ else if(action==='pin-front')pinFront(id);
+ else if(action==='auto-order')autoOrder(id);
  else if(action==='repo-swap'){checkpoint();state.featuredRepositoryIds=swapRepositoryDisplay(state.assets,state.featuredRepositoryIds,id);save();render();}
  else if(action==='manual-import')manualImport();
  else if(action==='github-import')githubDialog();
@@ -501,7 +520,7 @@ document.addEventListener('click',e=>{const button=e.target.closest('[data-actio
  else if(action==='remove-block'){checkpoint();state.blocks=state.blocks.filter(b=>b.id!==id);showHiddenBlocks.delete(id);if(focusCategory===id)focusCategory=null;save();$('#modal').close();render();toast('区块已移除，资产仍被保留',true);}
  else if(action==='move-up'||action==='move-down'){moveBlock(id,action==='move-up'?-1:1);$('#modal').close();}
 });
-document.addEventListener('submit',async e=>{if(e.target.id!=='asset-form')return;e.preventDefault();const form=e.target,data=new FormData(form),name=String(data.get('name')).trim(),url=String(data.get('url')).trim(),file=form.elements.icon.files[0];if(!name)return;const leaked=['name','provider','account','purpose','reason','cost','notes'].find(key=>looksLikeCardNumber(data.get(key)));if(leaked){const input=form.elements[leaked];input.setCustomValidity('这里像是完整卡号。Assetboard 只保存卡号后 4 位，请删掉后再保存。');input.reportValidity();input.addEventListener('input',()=>input.setCustomValidity(''),{once:true});return;}if(url&&!safeManagementUrl(url)){form.elements.url.setCustomValidity('请输入不含账号密码的 http 或 https 链接');form.elements.url.reportValidity();return;}form.elements.url.setCustomValidity('');if(file&&(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>256*1024)){toast('图标需为 PNG、JPEG 或 WebP，且不超过 256 KB');return;}const submit=form.querySelector('[type="submit"]');submit.disabled=true;try{const iconData=file?await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);}):null;const id=form.dataset.id,chosen=String(data.get('type')||''),type=cats[chosen]?chosen:form.dataset.type,candidateKey=form.dataset.candidate,candidateItem=form.dataset.item===''||form.dataset.item===undefined?null:Number(form.dataset.item),profile=assetProfiles[type]||{},date=data.has('expiry')?cardExpiry(data.get('expiry'))||'':String(data.get('date')??''),dateKind=data.has('expiry')?'expire':dateKinds[data.get('dateKind')]?String(data.get('dateKind')):'expire',cycle=billingCycles[data.get('cycle')]?String(data.get('cycle')):'',extras=Object.fromEntries((profile.extra||[]).map(key=>[key,String(data.get(key)??'').trim()])),fields={name,provider:profile.fixedProvider||String(data.get('provider')??'').trim()||(assetProfiles[type]?'':'平台待补充'),account:String(data.get('account')).trim(),purpose:String(data.get('purpose')).trim(),reason:String(data.get('reason')||'').trim(),date,dateKind,cycle,cost:String(data.get('cost')).trim()||'未知',notes:String(data.get('notes')).trim(),url:url?safeManagementUrl(url):''},event=date?`${date} ${dateKinds[dateKind].future}`:'日期待补充';if(extras.region&&!regionName(extras.region))extras.region='';if(extras.last4&&!/^\d{4}$/.test(extras.last4))extras.last4='';if(extras.network&&!cardNetworks.includes(extras.network))extras.network='';if(extras.phone)extras.phone=extras.phone.slice(0,30);Object.assign(fields,extras);checkpoint();let assetId=id;if(id){const a=state.assets.find(a=>a.id===id);const synced=['cloudflare','github'].includes(a.source);Object.assign(a,fields);for(const key of ['region','last4','network','phone'])if(!(key in extras))delete a[key];if(file)a.iconData=iconData;else if(data.has('removeIcon'))delete a.iconData;if(!synced){a.source='manual';a.type=type;a.event=event;}delete a.warn;ensureBlock(state,a.type);}else{assetId='asset-'+crypto.randomUUID();state.assets.push({id:assetId,type,...fields,iconData,source:'manual',event,art:'generic'});ensureBlock(state,type);}const resolved=candidateKey?resolveCandidate(candidateKey,id?'linked':'created',assetId,candidateItem):0;assetFormSnapshot=null;save();render();if(id&&activeAsset===id)showDetail(id);const source=candidateKey&&findCandidate(candidateKey),items=source?.ai?.items||[],recorded=items.length>1?recordedItems(source):[],next=items.length>1?items.findIndex((_,index)=>!recorded.includes(index)):-1;if(next>=0){candidateReview(source,next);toast(`已记录，这份资料里还有 ${items.length-recorded.length} 项`,true);}else if(candidateKey&&nativeStore&&pendingCount()){inboxDialog(false);toast(resolved?'已记录，继续核对下一组':'已记录',true);}else{$('#modal').close();toast(id?'资料已更新':'资产已添加',true);}}catch{toast('读取图标失败，请重试');}finally{submit.disabled=false;}});
+document.addEventListener('submit',async e=>{if(e.target.id!=='asset-form')return;e.preventDefault();const form=e.target,data=new FormData(form),name=String(data.get('name')).trim(),url=String(data.get('url')).trim(),file=form.elements.icon.files[0];if(!name)return;const leaked=['name','provider','account','purpose','reason','cost','notes'].find(key=>looksLikeCardNumber(data.get(key)));if(leaked){const input=form.elements[leaked];input.setCustomValidity('这里像是完整卡号。Assetboard 只保存卡号后 4 位，请删掉后再保存。');input.reportValidity();input.addEventListener('input',()=>input.setCustomValidity(''),{once:true});return;}if(url&&!safeManagementUrl(url)){form.elements.url.setCustomValidity('请输入不含账号密码的 http 或 https 链接');form.elements.url.reportValidity();return;}form.elements.url.setCustomValidity('');if(file&&(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>256*1024)){toast('图标需为 PNG、JPEG 或 WebP，且不超过 256 KB');return;}const submit=form.querySelector('[type="submit"]');submit.disabled=true;try{const iconData=file?await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);}):null;const id=form.dataset.id,chosen=String(data.get('type')||''),type=cats[chosen]?chosen:form.dataset.type,candidateKey=form.dataset.candidate,candidateItem=form.dataset.item===''||form.dataset.item===undefined?null:Number(form.dataset.item),profile=assetProfiles[type]||{},date=data.has('expiry')?cardExpiry(data.get('expiry'))||'':String(data.get('date')??''),dateKind=data.has('expiry')?'expire':dateKinds[data.get('dateKind')]?String(data.get('dateKind')):'expire',cycle=billingCycles[data.get('cycle')]?String(data.get('cycle')):'',extras=Object.fromEntries((profile.extra||[]).map(key=>[key,String(data.get(key)??'').trim()])),fields={name,provider:profile.fixedProvider||String(data.get('provider')??'').trim()||(assetProfiles[type]?'':'平台待补充'),account:String(data.get('account')).trim(),purpose:String(data.get('purpose')).trim(),reason:String(data.get('reason')||'').trim(),date,dateKind,cycle,cost:String(data.get('cost')).trim()||'未知',notes:String(data.get('notes')).trim(),url:url?safeManagementUrl(url):''},event=date?`${date} ${dateKinds[dateKind].future}`:'日期待补充';if(extras.region&&!regionName(extras.region))extras.region='';if(extras.last4&&!/^\d{4}$/.test(extras.last4))extras.last4='';if(extras.network&&!cardNetworks.includes(extras.network))extras.network='';if(extras.phone)extras.phone=extras.phone.slice(0,30);Object.assign(fields,extras);checkpoint();let assetId=id;if(id){const a=state.assets.find(a=>a.id===id);const synced=['cloudflare','github'].includes(a.source);Object.assign(a,fields);for(const key of ['region','last4','network','phone'])if(!(key in extras))delete a[key];if(file)a.iconData=iconData;else if(data.has('removeIcon'))delete a.iconData;if(!synced){a.source='manual';a.type=type;a.event=event;a.updatedAt=new Date().toISOString();}delete a.warn;ensureBlock(state,a.type);}else{assetId='asset-'+crypto.randomUUID();state.assets.push({id:assetId,type,...fields,iconData,source:'manual',event,art:'generic',createdAt:new Date().toISOString()});if(state.cardOrder?.[type]?.length)state.cardOrder[type].unshift(assetId);ensureBlock(state,type);}const resolved=candidateKey?resolveCandidate(candidateKey,id?'linked':'created',assetId,candidateItem):0;assetFormSnapshot=null;save();render();if(id&&activeAsset===id)showDetail(id);const source=candidateKey&&findCandidate(candidateKey),items=source?.ai?.items||[],recorded=items.length>1?recordedItems(source):[],next=items.length>1?items.findIndex((_,index)=>!recorded.includes(index)):-1;if(next>=0){candidateReview(source,next);toast(`已记录，这份资料里还有 ${items.length-recorded.length} 项`,true);}else if(candidateKey&&nativeStore&&pendingCount()){inboxDialog(false);toast(resolved?'已记录，继续核对下一组':'已记录',true);}else{$('#modal').close();toast(id?'资料已更新':'资产已添加',true);}}catch{toast('读取图标失败，请重试');}finally{submit.disabled=false;}});
 $('#add-block').onclick=addBlock;$('#close-modal').onclick=()=>requestCloseModal();$('#close-detail').onclick=closeDetail;$('#modal').addEventListener('cancel',e=>{if(isAssetFormDirty()){e.preventDefault();requestCloseModal();}else assetFormSnapshot=null;});
 $('#search').oninput=e=>{query=e.target.value;focusCategory=null;render();};$('#clear-search').onclick=()=>{if(query){$('#search').value='';query='';render();}else addBlock();};
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();$('#search').focus();}if((e.metaKey||e.ctrlKey)&&!e.shiftKey&&!e.altKey&&e.key.toLowerCase()==='z'&&!$('#modal').open&&!e.target.closest?.('input,textarea,select,[contenteditable]')){e.preventDefault();undo();}if(e.key==='Escape'&&!$('#modal').open){if(!$('#detail').hidden)closeDetail();else if(focusCategory){focusCategory=null;render();}}});
@@ -514,25 +533,26 @@ function inside(r,x,y){return !!r&&x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom;
 function slideFrom(el,from,duration=MOTION_MS){if(!from)return;const to=el.getBoundingClientRect(),dx=from.left-to.left,dy=from.top-to.top;if(Math.abs(dx)>=1||Math.abs(dy)>=1)el.animate([{transform:`translate(${dx}px,${dy}px)`},{transform:'none'}],{duration,easing:settleEase});}
 function showTip(text,x=0,y=0,tone='',clear=null){if(!floatTip){floatTip=document.createElement('div');floatTip.setAttribute('aria-hidden','true');document.body.append(floatTip);}floatTip.hidden=!text;if(!text)return;floatTip.className=`float-tip ${tone}`;floatTip.textContent=text;const w=floatTip.offsetWidth,h=floatTip.offsetHeight;let left=x+14,top=y+20;if(clear){left=x-w/2;top=clear.bottom+8;if(top+h>innerHeight-8)top=clear.top-h-8;}floatTip.style.left=Math.max(8,Math.min(innerWidth-w-8,left))+'px';floatTip.style.top=Math.max(8,Math.min(innerHeight-h-8,top))+'px';}
 function showGuide(x){if(!snapGuide){snapGuide=document.createElement('div');snapGuide.className='snap-guide';document.body.append(snapGuide);}snapGuide.hidden=x===null;if(x===null)return;const r=$('#board').getBoundingClientRect(),top=Math.max(0,r.top);snapGuide.style.cssText=`left:${Math.round(x)}px;top:${top}px;height:${Math.max(0,Math.min(innerHeight,r.bottom)-top)}px`;}
+// Only the touched prefix becomes manual order (touchedPrefix); untouched cards keep following recency.
 function saveCardOrder(category,next){const existing=state.cardOrder?.[category]||[];checkpoint();state.cardOrder ||= {};state.cardOrder[category]=[...next,...existing.filter(id=>!next.includes(id))];save();}
 function commitAssetOrder(source,target,after=false){
  if(!source||!target||source===target||source.parentElement!==target.parentElement)return false;
  const category=source.closest('.block')?.dataset.block;if(!category)return false;
  const current=[...source.parentElement.children].filter(n=>n.dataset.asset).map(n=>n.dataset.asset),next=moveAsset(current,source.dataset.asset,target.dataset.asset,after);
  if(next.every((id,i)=>id===current[i]))return false;
- saveCardOrder(category,next);render();return true;
+ saveCardOrder(category,touchedPrefix(current,next));render();return true;
 }
 function moveBlock(id,step){const index=state.blocks.findIndex(b=>b.id===id),target=index+step;if(index<0||target<0||target>=state.blocks.length){toast(step<0?'已经是第一个区块':'已经是最后一个区块');return false;}checkpoint();[state.blocks[target],state.blocks[index]]=[state.blocks[index],state.blocks[target]];save();render();toast(step<0?'已向前移动':'已向后移动',true);return true;}
 function dragSource(target){
  if(query)return null;
- const card=target.closest('#board [data-asset]:not(.flip-card)');
- if(card)return {kind:'card',el:card,container:card.parentElement,block:card.closest('.block')};
+ const card=target.closest('#board [data-asset]:not(.flip-card),#board [data-spill]');
+ if(card)return {kind:'card',el:card,container:card.parentElement,block:card.closest('.block'),spill:!!card.dataset.spill};
  const head=!focusCategory&&target.closest('#board .block-head');
  return head?{kind:'block',el:head.closest('.block'),container:$('#board')}:null;
 }
 function releaseGesture(){const g=gesture;if(!g)return;clearTimeout(g.timer);cancelAnimationFrame(g.frame);removeEventListener('pointermove',dragMove);removeEventListener('pointerup',dragEnd);removeEventListener('pointercancel',dragEnd);gesture=null;}
 function slotOrder(g){const key=g.kind==='block'?'block':'asset';return [...g.container.children].filter(n=>n===g.slot||n!==g.el&&n.dataset[key]).map(n=>(n===g.slot?g.el:n).dataset[key]);}
-function measureItems(g){const key=g.kind==='block'?'block':'asset';g.items=[...g.container.children].filter(n=>n!==g.el&&n!==g.slot&&n.dataset[key]&&n.style.visibility!=='hidden').map(n=>({el:n,r:docRect(n)}));g.slotRect=docRect(g.slot);g.box=docRect(g.container);}
+function measureItems(g){const key=g.kind==='block'?'block':'asset';g.items=[...g.container.children].filter(n=>n!==g.el&&n!==g.slot&&n.dataset[key]&&n.style.visibility!=='hidden'&&n.style.display!=='none'&&(!g.sameZone||g.sameZone.has(n))).map(n=>({el:n,r:docRect(n)}));g.slotRect=docRect(g.slot);g.box=docRect(g.container);}
 function beginDrag(g){
  const el=g.el;if(!el.isConnected){releaseGesture();return;}
  clearTimeout(g.timer);g.active=true;cancelAnimationFrame(layoutFrame);clearLinks();
@@ -542,7 +562,8 @@ function beginDrag(g){
  el.classList.add('is-dragging');document.body.classList.add('drag-active');
  Object.assign(el.style,{position:'fixed',left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px',margin:'0',transformOrigin:`${g.dx}px ${g.dy}px`});
  const placed=el.getBoundingClientRect();if(Math.abs(placed.left-r.left)>.5||Math.abs(placed.top-r.top)>.5){el.style.left=2*r.left-placed.left+'px';el.style.top=2*r.top-placed.top+'px';}
- if(g.kind==='card'){g.asset=state.assets.find(a=>a.id===el.dataset.asset);updateOverflow();g.homeRect=docRect(g.block);g.others=focusCategory?[]:[...document.querySelectorAll('#board .block')].filter(n=>n!==g.block).map(n=>({el:n,r:docRect(n)}));}
+ if(g.kind==='card'){g.asset=state.assets.find(a=>a.id===idOf(el));updateOverflow();g.homeRect=docRect(g.block);g.others=focusCategory?[]:[...document.querySelectorAll('#board .block')].filter(n=>n!==g.block).map(n=>({el:n,r:docRect(n)}));}
+ if(g.kind==='card'){g.swapInfo=swapZones(g);if(g.swapInfo){g.swapTargets=g.swapInfo.targets.map(el=>({el,r:docRect(el)}));g.sameZone=g.swapInfo.sameZone;}}
  g.initial=slotOrder(g);measureItems(g);
  const bar=document.querySelector('.toolbar');g.top=bar&&getComputedStyle(bar).display!=='none'?Math.max(0,bar.getBoundingClientRect().bottom):0;
  try{$('#board').setPointerCapture(g.id);}catch{}
@@ -570,7 +591,8 @@ function moveSlot(g,mode,ref){
 function placeSlot(g){
  if(performance.now()<(g.lockUntil||0))return;
  const x=g.x+scrollX,y=g.y+scrollY;
- if(g.kind==='card'){const home=inside(g.homeRect,x,y),over=home?null:g.others.find(o=>inside(o.r,x,y))?.el||null;setCrossTarget(g,over);if(!home){moveSlot(g,'home');return;}}
+ if(g.kind==='card'){const home=inside(g.homeRect,x,y),over=home?null:g.others.find(o=>inside(o.r,x,y))?.el||null;setCrossTarget(g,over);if(!home){setSwapTarget(g,null);moveSlot(g,'home');return;}
+  if(g.swapTargets){const swap=g.swapTargets.find(o=>inside(o.r,x,y))?.el||null;setSwapTarget(g,swap);if(swap||g.spill){moveSlot(g,'home');return;}}}
  else if(x<g.box.left-48||x>g.box.right+48||y<g.box.top-48||y>g.box.bottom+48){moveSlot(g,'home');return;}
  if(inside(g.slotRect,x,y))return;
  let best=null,distance=Infinity;
@@ -579,7 +601,7 @@ function placeSlot(g){
  const vertical=best.r.width>g.box.width*.7,before=vertical?y<best.r.top+best.r.height/2:x<best.r.left+best.r.width/2;
  moveSlot(g,before?'before':'after',best.el);
 }
-function dragTip(g){showTip(g.cross?g.crossAllowed?`移到「${cats[g.cross.dataset.block].name}」`:'同步来的资产不能改类别':'',g.x,g.y,g.crossAllowed?'':'refused',g.el.getBoundingClientRect());}
+function dragTip(g){if(g.swap){showTip(`与「${displayName(state.assets.find(a=>a.id===idOf(g.swap))||{name:''})}」交换位置`,g.x,g.y,'',g.el.getBoundingClientRect());return;}showTip(g.cross?g.crossAllowed?`移到「${cats[g.cross.dataset.block].name}」`:'同步来的资产不能改类别':'',g.x,g.y,g.crossAllowed?'':'refused',g.el.getBoundingClientRect());}
 function autoScroll(g){
  if(gesture!==g||!g.active)return;
  const zone=60,v=g.y<g.top+zone?-(g.top+zone-g.y)/zone:g.y>innerHeight-zone?(g.y-innerHeight+zone)/zone:0;
@@ -594,7 +616,7 @@ function dragMove(e){
 }
 function dragEnd(e){const g=gesture;if(!g||e.pointerId!==g.id)return;if(!g.active){releaseGesture();return;}suppressClick=true;setTimeout(()=>suppressClick=false,0);const cancelled=e.type==='pointercancel';if(!cancelled&&g.el.isConnected){g.x=e.clientX;g.y=e.clientY;g.lockUntil=0;placeSlot(g);}dropDrag(g,cancelled);}
 function cleanupDrag(g){
- showTip('');document.body.classList.remove('drag-active');g.cross?.classList.remove('drop-into','drop-refused');
+ showTip('');document.body.classList.remove('drag-active');g.cross?.classList.remove('drop-into','drop-refused');g.swap?.classList.remove('swap-target');
  g.el.classList.remove('is-dragging','lifted','settling','refused');for(const p of ['position','left','top','width','height','margin','translate','transformOrigin'])g.el.style[p]='';
  if(g.slot.isConnected)g.slot.replaceWith(g.el);
  if(gesture===g)gesture=null;
@@ -605,17 +627,45 @@ function dropDrag(g,cancelled=false){
  g.active=false;showTip('');
  const cross=!cancelled&&g.cross&&g.crossAllowed?g.cross.dataset.block:null;
  if(cross){finishCross(g,cross);return;}
+ if(!cancelled&&g.swap){finishSwap(g);return;}
  if(cancelled||g.cross)moveSlot(g,'home');
  g.cross?.classList.remove('drop-into','drop-refused');
  const next=slotOrder(g),changed=next.some((id,i)=>id!==g.initial[i]);
  const done=()=>{
   if(gesture!==g)return;cleanupDrag(g);
   if(changed&&g.kind==='block'&&next.length===state.blocks.length){checkpoint();state.blocks=next.map(id=>state.blocks.find(b=>b.id===id));save();}
-  else if(changed&&g.kind==='card')saveCardOrder(g.block.dataset.block,next);
+  else if(changed&&g.kind==='card')saveCardOrder(g.block.dataset.block,touchedPrefix(g.initial,next));
   render();if(changed)toast(g.kind==='block'?'区块已移动':'顺序已调整',true);
  };
  if(reduceMotion()){done();return;}
  const to=g.slot.getBoundingClientRect();g.el.classList.add('settling');g.el.classList.remove('lifted','refused');g.el.style.translate=`${to.left-g.rect.left}px ${to.top-g.rect.top}px`;setTimeout(done,MOTION_MS);
+}
+// Swapping: a card from outside the display area (the repository list, or below the full view's divider) dropped on a card inside it trades places with it.
+function idOf(el){return el?.dataset.asset||el?.dataset.spill;}
+function onScreen(el){return el.style.display!=='none'&&el.style.visibility!=='hidden';}
+function swapZones(g){
+ const grid=g.block?.querySelector('.cards');if(!grid||query)return null;
+ const list=grid.querySelector('.compact-repositories-grid');
+ if(list){
+  const featured=[...grid.querySelectorAll(':scope > .asset-card')],tiles=[...list.children].filter(idOf),shown=featured.filter(onScreen),inFeatured=featured.includes(g.el);
+  return {targets:(inFeatured?tiles.filter(onScreen):shown).filter(n=>n!==g.el),order:[...shown,...featured.filter(n=>!onScreen(n)),...tiles.filter(n=>n.dataset.asset)].map(idOf),shown:shown.length,sameZone:null};
+ }
+ const divider=grid.querySelector(':scope > .limit-divider');if(!divider)return null;
+ const cards=[...grid.children].filter(n=>n.dataset.asset),below=n=>!!(divider.compareDocumentPosition(n)&Node.DOCUMENT_POSITION_FOLLOWING),mine=below(g.el);
+ return {targets:cards.filter(n=>n!==g.el&&below(n)!==mine),order:cards.map(idOf),shown:cards.filter(n=>!below(n)).length,sameZone:new Set(cards.filter(n=>below(n)===mine))};
+}
+function setSwapTarget(g,el){if(g.swap===el)return;g.swap?.classList.remove('swap-target');g.swap=el;el?.classList.add('swap-target');}
+function finishSwap(g){
+ const source=idOf(g.el),other=idOf(g.swap),category=g.block.dataset.block,{order,shown}=g.swapInfo;
+ cleanupDrag(g);
+ const next=swapInOrder(order,source,other);if(next.every((id,i)=>id===order[i])){render();return;}
+ checkpoint();state.cardOrder||={};const existing=state.cardOrder[category]||[],prefix=touchedPrefix(order,next);
+ state.cardOrder[category]=[...prefix,...existing.filter(id=>!prefix.includes(id))];
+ if(category==='repository')state.featuredRepositoryIds=next.slice(0,shown);
+ save();render();
+ if(!reduceMotion())for(const id of [source,other])document.querySelector(`#board [data-asset="${CSS.escape(id)}"]`)?.animate([{opacity:.35},{opacity:1}],{duration:MOTION_MS,easing:'ease-out'});
+ const name=id=>displayName(state.assets.find(a=>a.id===id)||{name:''});
+ toast(`已交换「${name(source)}」和「${name(other)}」的位置`,true);
 }
 function finishCross(g,type){
  const a=g.asset,ghost=g.el.getBoundingClientRect(),target=g.cross;

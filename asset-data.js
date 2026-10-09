@@ -20,9 +20,24 @@ function removeUntouchedDemo(board){
  return {board:{...board,assets,blocks},removed:board.assets.length-assets.length,removedBlocks:removeBlocks?legacyDefaultBlocks.length:0};
 }
 
+// Display order (2026-10-09): what shows first is the person's own order (cardOrder), then the most recently updated.
+// The board never guesses importance; urgency only colours dates, the agenda and block summaries.
+// Recency: updatedAt (platform or last local edit), else createdAt (added or first imported); records with neither keep their stored order after dated ones.
+function recencyTime(asset){return Date.parse(asset?.updatedAt)||Date.parse(asset?.createdAt)||0;}
+function recentFirst(assets){return assets.map((asset,index)=>({asset,index,time:recencyTime(asset)})).sort((left,right)=>(right.time-left.time)||(left.index-right.index)).map(item=>item.asset);}
+function arrangeAssets(assets,ids){
+ const rank=new Map((Array.isArray(ids)?ids:[]).map((id,index)=>[id,index]));
+ const ranked=assets.filter(asset=>rank.has(asset.id)).sort((left,right)=>rank.get(left.id)-rank.get(right.id));
+ return [...ranked,...recentFirst(assets.filter(asset=>!rank.has(asset.id)))];
+}
+// Manual orders only keep the part a person actually changed, so everything after it stays in recency order.
+function touchedPrefix(before,after){let last=-1;for(let i=0;i<after.length;i++)if(before[i]!==after[i])last=i;return after.slice(0,last+1);}
+function swapInOrder(ids,first,second){const next=[...ids],a=next.indexOf(first),b=next.indexOf(second);if(a<0||b<0||a===b)return next;[next[a],next[b]]=[next[b],next[a]];return next;}
+function bringToFront(ids,id){return [id,...(Array.isArray(ids)?ids:[]).filter(other=>other!==id)];}
+
 function repositoryGroups(assets, preferredIds, limit=6){
  const repositories=assets.filter(asset=>asset.type==='repository').sort((left,right)=>{
-  const difference=(Date.parse(right.updatedAt)||0)-(Date.parse(left.updatedAt)||0);
+  const difference=recencyTime(right)-recencyTime(left);
   return difference||left.name.localeCompare(right.name);
  });
  const byId=new Map(repositories.map(asset=>[asset.id,asset]));
@@ -164,7 +179,7 @@ function mergeCloudflare(board,result,syncedAt=new Date().toISOString()){
   }else{
    const collision=findNameCollision(next,'cloudflare',item.name,type,item.id);
    if(collision){collisions.push({assetId:collision.id,name:item.name,source:'Cloudflare',fields:{...fields,type,url:item.url||collision.url}});continue;}
-   next.assets.push({id,type,name:item.name,provider:'Cloudflare',account:item.account,purpose:kind==='zone'?'DNS Zone':kind==='r2'?'R2 Bucket':kind==='pages'?'Pages 项目':'Worker 脚本',event:item.status||'状态未知',date:'',cost:'未知',notes:'Cloudflare 资源列表同步；到期日和账单未知。',url:item.url,art:'generic',source:'cloudflare',resourceKind:kind,externalId:item.id,syncStatus:item.status,syncedAt});
+   next.assets.push({id,createdAt:syncedAt,type,name:item.name,provider:'Cloudflare',account:item.account,purpose:kind==='zone'?'DNS Zone':kind==='r2'?'R2 Bucket':kind==='pages'?'Pages 项目':'Worker 脚本',event:item.status||'状态未知',date:'',cost:'未知',notes:'Cloudflare 资源列表同步；到期日和账单未知。',url:item.url,art:'generic',source:'cloudflare',resourceKind:kind,externalId:item.id,syncStatus:item.status,syncedAt});
    added++;
   }
   ensureBlock(next,type);
@@ -190,7 +205,7 @@ function mergeGitHub(board,result,syncedAt=new Date().toISOString()){
   }else{
    const collision=findNameCollision(next,'github',repo.name,'repository',repo.id);
    if(collision){collisions.push({assetId:collision.id,name:repo.name,source:'GitHub',fields:{...fields,type:'repository',url:repo.url||collision.url,purpose:repo.description?.slice(0,100)||collision.purpose||'代码仓库'}});continue;}
-   next.assets.push({id,type:'repository',name:repo.name,provider:'GitHub',account:repo.owner,purpose:repo.description?.slice(0,100)||'代码仓库',event:status,date:'',cost:'未知',notes:'GitHub 仓库元数据同步。',url:repo.url,art:'generic',source:'github',externalId:repo.id,updatedAt:repo.updatedAt||'',syncStatus:status,syncedAt});
+   next.assets.push({id,createdAt:syncedAt,type:'repository',name:repo.name,provider:'GitHub',account:repo.owner,purpose:repo.description?.slice(0,100)||'代码仓库',event:status,date:'',cost:'未知',notes:'GitHub 仓库元数据同步。',url:repo.url,art:'generic',source:'github',externalId:repo.id,updatedAt:repo.updatedAt||'',syncStatus:status,syncedAt});
    added++;
   }
  }
@@ -541,4 +556,4 @@ function strongDateIds(assets,now=new Date(),limit=DISPLAY_LIMITS.strongDates){
  return new Set([...rows.filter(row=>row.status.level==='overdue'),...soon].map(row=>row.id));
 }
 
-if(typeof module!=='undefined')module.exports={DISPLAY_LIMITS,formatCount,rowLimit,wholeRows,strongDateIds,blockDensity,setBlockDensity,ensureBlock,iconHost,guessAssetType,regionList,regionName,regionFlag,phoneParts,regionFromPhone,maskPhone,maskEmail,cardExpiry,expiryText,looksLikeCardNumber,linkAssets,unlinkAssets,linkedAssets,removeLinksTo,assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset,dateKinds,billingCycles,dayNumber,localDay,isoDay,addMonths,nextOccurrence,assetDateStatus,upcomingEvents,syncKey,assetSyncKey,isBlacklisted,findByExternal,findNameCollision,mergeCloudflare,mergeGitHub,applyCollision,parseSender,registrableDomain,cleanMerchant,findAmounts,findDates,findDomains,evidenceFacts,inferCycle,formatCost,matchAsset,buildCandidates,evidencePayload,parseAiItems,applyAiItem};
+if(typeof module!=='undefined')module.exports={recencyTime,recentFirst,arrangeAssets,touchedPrefix,swapInOrder,bringToFront,DISPLAY_LIMITS,formatCount,rowLimit,wholeRows,strongDateIds,blockDensity,setBlockDensity,ensureBlock,iconHost,guessAssetType,regionList,regionName,regionFlag,phoneParts,regionFromPhone,maskPhone,maskEmail,cardExpiry,expiryText,looksLikeCardNumber,linkAssets,unlinkAssets,linkedAssets,removeLinksTo,assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset,dateKinds,billingCycles,dayNumber,localDay,isoDay,addMonths,nextOccurrence,assetDateStatus,upcomingEvents,syncKey,assetSyncKey,isBlacklisted,findByExternal,findNameCollision,mergeCloudflare,mergeGitHub,applyCollision,parseSender,registrableDomain,cleanMerchant,findAmounts,findDates,findDomains,evidenceFacts,inferCycle,formatCost,matchAsset,buildCandidates,evidencePayload,parseAiItems,applyAiItem};
