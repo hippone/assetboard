@@ -307,3 +307,15 @@ test('reads the card style of old and new blocks',()=>{
  addBlockFor(board,'bankcard');
  assert.deepEqual(board.blocks,[{id:'bankcard',width:50,height:null,density:'full',folded:false}]);
 });
+
+test('display limits cap counts, rows and amber dates without touching data',()=>{
+ const {formatCount,rowLimit,wholeRows,strongDateIds,DISPLAY_LIMITS}=require('../asset-data.js');
+ assert.equal(formatCount(7),'7');assert.equal(formatCount(99),'99');assert.equal(formatCount(100),'99+');assert.equal(formatCount('x'),'0');
+ assert.equal(rowLimit(5,4,3),5);assert.equal(rowLimit(13,4,3),12);assert.equal(rowLimit(3,0,0),1);
+ assert.equal(wholeRows(3,4,2),3);assert.equal(wholeRows(6,4,2),4);assert.equal(wholeRows(6,3,2),6);assert.equal(wholeRows(12,4,2),8);assert.equal(wholeRows(6,5,2),5);
+ const now=new Date(2026,9,9),day=n=>{const d=new Date(2026,9,9+n);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+ const assets=[-3,2,5,8,20,90].map((n,i)=>({id:'a'+i,type:'domain',name:'d'+i,date:day(n)})).concat({id:'h',type:'domain',name:'h',date:day(1),hiddenAt:'x'});
+ const ids=strongDateIds(assets,now);
+ assert.deepEqual([...ids].sort(),['a0','a1','a2','a3']);
+ assert.equal(DISPLAY_LIMITS.columns,4);
+});

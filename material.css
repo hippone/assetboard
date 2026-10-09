@@ -15,11 +15,11 @@ body{background:linear-gradient(120deg,#e0e6dd,#e7e9e7 52%,#dfe5e4);background-a
 .block-summary{font-size:10px;color:#9b8259;margin-left:auto;padding-right:4px}
 .icon-button{width:28px;height:28px;font-size:17px;color:#8b948a}.icon-button:hover{background:rgba(255,255,255,.45)}
 :root .cards{gap:4px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));grid-auto-rows:max-content}
-.asset-card{border:0;border-radius:0;background:none;box-shadow:none;transition:background .22s ease;overflow:hidden}
+.asset-card{border:0;border-radius:0;background:none;box-shadow:none;transition:background .2s ease;overflow:hidden}
 .asset-card:hover{transform:none;box-shadow:none;background:rgba(255,255,255,.30)}
 .card-open{border-radius:0;outline-offset:-3px}
 .art{background:transparent!important;margin:0;border-radius:0;height:150px;filter:saturate(.22);padding:10px 14px 0}
-.art svg{max-width:240px;opacity:.88;transition:transform .35s cubic-bezier(.2,.8,.2,1)}
+.art svg{max-width:240px;opacity:.88;transition:transform .2s cubic-bezier(.2,.8,.2,1)}
 .asset-card:hover .art svg{transform:translateY(-3px)}
 .card-copy{padding:10px 18px 3px}.card-name{font-size:12px;font-weight:500;letter-spacing:.05px}.card-provider{font-size:10px;color:#8c938a;margin-top:5px}.card-purpose{background:none;padding:0;margin-top:9px;color:#788373;font-size:10px;border-radius:0}
 .card-foot{padding:4px 14px 13px 18px;min-height:36px}.card-event{color:#7d8877;font-size:10px}.card-event.warn{color:#9b7f4d}.open-link{background:none;color:#8d9785;border-radius:5px}.open-link:hover{background:#ffffff60}
@@ -45,8 +45,8 @@ body{background:radial-gradient(ellipse at 15% 0%,#eef2ef 0%,transparent 55%),li
 :root .cards{padding:4px;gap:4px}
 
 /* Asset: clearer glass above the frost. Highlights never obscure text. */
-.asset-card{isolation:isolate;border:1px solid rgba(255,255,255,.74);background:linear-gradient(145deg,rgba(255,255,255,.66),rgba(250,254,251,.32));backdrop-filter:blur(12px) saturate(108%);-webkit-backdrop-filter:blur(12px) saturate(108%);box-shadow:inset 0 1px 0 rgba(255,255,255,.92),inset 0 -1px 0 rgba(107,127,113,.06),0 2px 4px rgba(50,73,58,.07);transition:background .25s ease,box-shadow .25s ease}
-.asset-card::before{content:'';position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;background:radial-gradient(ellipse at var(--glow-x,22%) var(--glow-y,0%),rgba(255,255,255,.72),transparent 65%);opacity:.45;transition:opacity .3s ease}
+.asset-card{isolation:isolate;border:1px solid rgba(255,255,255,.74);background:linear-gradient(145deg,rgba(255,255,255,.66),rgba(250,254,251,.32));backdrop-filter:blur(12px) saturate(108%);-webkit-backdrop-filter:blur(12px) saturate(108%);box-shadow:inset 0 1px 0 rgba(255,255,255,.92),inset 0 -1px 0 rgba(107,127,113,.06),0 2px 4px rgba(50,73,58,.07);transition:background .2s ease,box-shadow .2s ease}
+.asset-card::before{content:'';position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;background:radial-gradient(ellipse at var(--glow-x,22%) var(--glow-y,0%),rgba(255,255,255,.72),transparent 65%);opacity:.45;transition:opacity .2s ease}
 .asset-card:hover{transform:none;background:linear-gradient(145deg,rgba(255,255,255,.76),rgba(250,254,251,.43));box-shadow:inset 0 1px 0 #fff,inset 0 -1px 0 rgba(107,127,113,.06),0 2px 6px rgba(50,73,58,.10)}
 .asset-card:hover::before{opacity:.8}
 .art{filter:saturate(.35)}.art svg{opacity:.94}
@@ -85,7 +85,7 @@ dialog{background:rgba(221,234,226,.70)}
 .block.compact .card-copy{padding:0;min-width:0;flex:1}
 .block.compact .card-provider,.block.compact .card-purpose,.block.compact .card-foot{display:none}
 .block.compact .card-name{font-size:12px}
-.art img{width:112px;height:112px;max-width:70%;object-fit:contain;opacity:.94;transition:transform .3s ease}
+.art img{width:112px;height:112px;max-width:70%;object-fit:contain;opacity:.94;transition:transform .2s ease}
 .card-open .art{padding:24px 20px 12px}
 .asset-card:hover .art img{transform:translateY(-2px)}
 .block.compact .art img{width:36px;height:36px;max-width:none;transform:none}
@@ -182,7 +182,7 @@ button.block-empty:hover{background:rgba(255,255,255,.5);color:var(--ink)}
 .asset-card.flip-card{background:transparent;border:0;box-shadow:none;min-height:266px;perspective:1000px;overflow:visible;isolation:auto}
 .asset-card.flip-card:hover{background:transparent;box-shadow:none}
 .asset-card.flip-card::before,.asset-card.flip-card::after{display:none}
-.flip-inner{position:relative;width:100%;height:100%;min-height:266px;transform-style:preserve-3d;transform:rotateY(180deg);transition:transform .45s cubic-bezier(.22,1,.36,1)}
+.flip-inner{position:relative;width:100%;height:100%;min-height:266px;transform-style:preserve-3d;transform:rotateY(180deg);transition:transform .2s cubic-bezier(.22,1,.36,1)}
 .flip-face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:10px;border:1px solid rgba(255,255,255,.4);overflow:hidden}
 .flip-face.front{background:rgba(var(--tone-card),.55)}
 .flip-face.back{transform:rotateY(180deg);display:flex;flex-direction:column;justify-content:center;gap:10px;padding:22px 18px;background:linear-gradient(160deg,rgba(55,80,64,.92),rgba(40,58,48,.88));color:#f3f7f2;box-shadow:inset 0 1px 0 rgba(255,255,255,.18)}
@@ -338,12 +338,12 @@ body.drag-active,body.drag-active *{cursor:grabbing!important}
 .is-dragging.lifted{scale:1.035}
 .block.is-dragging.lifted{scale:1.012}
 .is-dragging.refused{opacity:.7}
-.is-dragging.settling{transition:translate .26s cubic-bezier(.3,1.2,.5,1),scale .22s ease,box-shadow .22s ease}
+.is-dragging.settling{transition:translate .2s cubic-bezier(.3,1.2,.5,1),scale .2s ease,box-shadow .2s ease}
 .drop-slot{flex:none;min-width:0;border:1.5px dashed var(--border-strong);border-radius:10px;background:var(--hover)}
 .block-slot{border-radius:14px}
 .block.drop-into{border-color:transparent;box-shadow:inset 0 0 0 2px rgb(var(--tone-primary));background:linear-gradient(rgba(var(--tone-primary),.07),rgba(var(--tone-primary),.07)),var(--surface-panel)}
 .block.drop-refused{box-shadow:inset 0 0 0 2px var(--danger-border)}
-.block.drop-flash{animation:drop-flash .9s ease}
+.block.drop-flash{animation:drop-flash .6s ease}
 @keyframes drop-flash{from{box-shadow:inset 0 0 0 2px rgb(var(--tone-primary))}to{box-shadow:inset 0 0 0 2px transparent}}
 .float-tip{position:fixed;z-index:90;pointer-events:none;padding:5px 9px;border-radius:7px;background:rgb(var(--tone-ink));color:rgb(var(--tone-card));font-size:11px;font-weight:600;white-space:nowrap;box-shadow:var(--shadow-hover)}
 .float-tip.refused{background:var(--danger);color:var(--on-danger)}
@@ -362,7 +362,7 @@ body.drag-active,body.drag-active *{cursor:grabbing!important}
 .resize-edge[data-edge=xy]:hover::after,.block.resizing>.resize-edge[data-edge=xy]::after{background:none;border-color:rgb(var(--tone-primary))}
 .block.resizing{border-color:rgba(var(--tone-primary),.5)}
 body.resize-x,body.resize-x *{cursor:ew-resize!important}body.resize-y,body.resize-y *{cursor:ns-resize!important}body.resize-xy,body.resize-xy *{cursor:nwse-resize!important}
-.block.settling-size{transition:width .26s cubic-bezier(.3,1.2,.5,1)}.block.settling-size .cards{transition:height .26s cubic-bezier(.3,1.2,.5,1)}
+.block.settling-size{transition:width .2s cubic-bezier(.3,1.2,.5,1)}.block.settling-size .cards{transition:height .2s cubic-bezier(.3,1.2,.5,1)}
 .block:has(.block-empty)>.resize-edge,body.drag-active .resize-edge{display:none}
 @media(hover:none){.resize-edge::after{opacity:.6}}
 @media(max-width:760px){.resize-edge{display:none}}
@@ -421,3 +421,7 @@ body.resize-x,body.resize-x *{cursor:ew-resize!important}body.resize-y,body.resi
 .block.compact .card-glance.warn{color:var(--warning)}
 .block.compact .card-glance.overdue{color:var(--danger)}
 .block.compact .card-glance:empty{display:none}
+
+/* Display limits (DESIGN-PRINCIPLES.md): at most 4 card columns however wide a block gets; demo-mode note. */
+@media(min-width:761px){:root .cards{grid-template-columns:repeat(auto-fit,minmax(max(180px,calc((100% - 12px)/4)),1fr))}:root .block.compact .cards{grid-template-columns:repeat(auto-fit,minmax(max(168px,calc((100% - 12px)/4)),1fr))}}
+.demo-badge{position:fixed;left:12px;bottom:12px;z-index:90;padding:5px 12px;border:1px solid var(--border);border-radius:999px;background:var(--surface-card);color:var(--muted);font-size:11px;box-shadow:var(--shadow-card);pointer-events:none}

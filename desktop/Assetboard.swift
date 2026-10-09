@@ -199,6 +199,10 @@ final class BoardStore {
     }
 }
 
+/// `--demo`: the fictional board from demo-data.js, for screenshots. Uses a throwaway temporary store instead of
+/// Application Support, never reads the Keychain and refuses imports, sync, AI and export.
+let demoMode = CommandLine.arguments.contains("--demo")
+
 final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavigationDelegate, NSWindowDelegate, NSToolbarDelegate, NSSearchFieldDelegate {
     var window: NSWindow!
     var webView: WKWebView!
@@ -225,16 +229,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
-            store = try BoardStore()
+            // `--demo --dark` / `--demo --light` pin the appearance for screenshots; otherwise the app follows the system.
+            if demoMode, CommandLine.arguments.contains("--dark") { NSApp.appearance = NSAppearance(named: .darkAqua) }
+            if demoMode, CommandLine.arguments.contains("--light") { NSApp.appearance = NSAppearance(named: .aqua) }
+            let temporary = FileManager.default.temporaryDirectory
+            if demoMode { // earlier demo runs that were killed never reached applicationWillTerminate
+                for old in (try? FileManager.default.contentsOfDirectory(at: temporary, includingPropertiesForKeys: nil)) ?? [] where old.lastPathComponent.hasPrefix("assetboard-demo-") { try? FileManager.default.removeItem(at: old) }
+            }
+            let demoRoot = temporary.appendingPathComponent("assetboard-demo-" + UUID().uuidString, isDirectory: true)
+            store = try demoMode ? BoardStore(root: demoRoot) : BoardStore()
             ai = AIRecognizer(directory: store.directory)
-            let saved = try store.load()
+            let saved: [String: Any]? = demoMode ? nil : try store.load()
             guard let root = Bundle.main.resourceURL?.appendingPathComponent("Board", isDirectory: true) else { return }
             localRoot = root
             let controller = WKUserContentController()
             let initial: [String: Any] = ["data": saved as Any? ?? NSNull(), "cloudflareConnected": false, "githubConnected": false,
                                           "cloudflareChecking": true, "githubChecking": true,
-                                          "gmailConfigured": FileManager.default.fileExists(atPath: store.directory.appendingPathComponent("gmail-client.json").path),
-                                          "ai": ai.loadSettings()?.summary ?? NSNull()]
+                                          "gmailConfigured": !demoMode && FileManager.default.fileExists(atPath: store.directory.appendingPathComponent("gmail-client.json").path),
+                                          "ai": demoMode ? NSNull() : ai.loadSettings()?.summary ?? NSNull(), "demo": demoMode]
             let json = String(data: try JSONSerialization.data(withJSONObject: initial), encoding: .utf8)!
             controller.addUserScript(WKUserScript(source: "window.__ASSETBOARD_NATIVE__ = \(json);", injectionTime: .atDocumentStart, forMainFrameOnly: true))
             controller.add(self, name: "assetboard")
@@ -245,7 +257,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             webView.navigationDelegate = self
             webView.setValue(false, forKey: "drawsBackground")
             window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1320, height: 900), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
-            window.title = "Assetboard"
+            window.title = demoMode ? "Assetboard（演示数据）" : "Assetboard"
             // No fixed appearance: the window, native glass and the page's prefers-color-scheme follow the system.
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
@@ -283,13 +295,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             webView.loadFileURL(root.appendingPathComponent("index.html"), allowingReadAccessTo: root)
             window.makeKeyAndOrderFront(nil)
             NSApplication.shared.activate(ignoringOtherApps: true)
-            DispatchQueue.global(qos: .utility).async {
+            if demoMode {
+                connectionStateJSON = "{\"cloudflareChecking\":false,\"githubChecking\":false,\"cloudflareConnected\":false,\"githubConnected\":false,\"aiKeySaved\":false}"
+            } else { DispatchQueue.global(qos: .utility).async {
                 let connections: [String: Any] = ["cloudflareConnected": self.cloudflare.token() != nil, "githubConnected": self.github.token() != nil,
                                                   "aiKeySaved": self.ai.key() != nil, "cloudflareChecking": false, "githubChecking": false]
                 guard let bytes = try? JSONSerialization.data(withJSONObject: connections),
                       let json = String(data: bytes, encoding: .utf8) else { return }
                 DispatchQueue.main.async { self.connectionStateJSON = json; self.publishConnectionState() }
-            }
+            } }
             DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
                 if self.connectionStateJSON == nil {
                     self.connectionStateJSON = "{\"cloudflareChecking\":false,\"githubChecking\":false,\"keychainUnavailable\":true}"
@@ -348,11 +362,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     @objc func addBlock() { webView.evaluateJavaScript("document.querySelector('#add-block').click()") }
     @objc func focusSearch() { window.makeFirstResponder(searchField) }
     @objc func openTheme() { webView.evaluateJavaScript("themeDialog()") }
-    @objc func openCloudflare() { webView.evaluateJavaScript("cloudflareDialog()") }
-    @objc func openGitHub() { webView.evaluateJavaScript("githubDialog()") }
-    @objc func openGmail() { webView.evaluateJavaScript("gmailDialog()") }
+    func demoBlocked() { webView.evaluateJavaScript("window.assetboardDemoBlocked?.()") }
+    @objc func openCloudflare() { if demoMode { demoBlocked(); return }; webView.evaluateJavaScript("cloudflareDialog()") }
+    @objc func openGitHub() { if demoMode { demoBlocked(); return }; webView.evaluateJavaScript("githubDialog()") }
+    @objc func openGmail() { if demoMode { demoBlocked(); return }; webView.evaluateJavaScript("gmailDialog()") }
     @objc func openInbox() { webView.evaluateJavaScript("inboxDialog()") }
-    @objc func openAISettings() { webView.evaluateJavaScript("aiDialog()") }
+    @objc func openAISettings() { if demoMode { demoBlocked(); return }; webView.evaluateJavaScript("aiDialog()") }
     func aiResult(_ result: [String: Any]) {
         DispatchQueue.main.async {
             guard let data = try? JSONSerialization.data(withJSONObject: result), let json = String(data: data, encoding: .utf8) else { return }
@@ -488,6 +503,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         }
     }
     @objc func importDocumentOCR() {
+        if demoMode { demoBlocked(); return }
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [UTType.png, .jpeg, .pdf] + [UTType(filenameExtension: "webp")].compactMap { $0 }
         panel.allowsMultipleSelection = false
@@ -582,6 +598,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             if let rgb = body["rgb"] as? [Double], rgb.count == 3, rgb.allSatisfy({ $0.isFinite && $0 >= 0 && $0 <= 255 }) {
                 window.backgroundColor = NSColor(calibratedRed: rgb[0]/255, green: rgb[1]/255, blue: rgb[2]/255, alpha: 0.88)
             }
+            return
+        }
+        // Demo mode answers saves as done without writing and refuses everything that would touch data, the Keychain or the network.
+        if demoMode, let action = body["action"] as? String, !["toolbarState", "openExternal"].contains(action) {
+            if action == "save", let sequence = body["sequence"] as? Int { webView.evaluateJavaScript("window.assetboardSaved?.(\(sequence), true)") }
+            else if action == "evidenceList" { webView.evaluateJavaScript("window.assetboardEvidenceList?.([], null)") }
+            else { demoBlocked() }
             return
         }
         if body["action"] as? String == "toolbarState" {
@@ -764,8 +787,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         NSApplication.shared.mainMenu = menu
     }
 
-    @objc func openDataFolder() { NSWorkspace.shared.open(store.directory) }
+    @objc func openDataFolder() { if demoMode { demoBlocked(); return }; NSWorkspace.shared.open(store.directory) }
     @objc func exportBoard() {
+        if demoMode { demoBlocked(); return }
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "Assetboard-backup.json"
         panel.beginSheetModal(for: window) { response in
@@ -783,6 +807,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         window?.makeKeyAndOrderFront(nil)
         return true
+    }
+    func applicationWillTerminate(_ notification: Notification) {
+        if demoMode, let directory = store?.directory, directory.path.hasPrefix(FileManager.default.temporaryDirectory.path) { try? FileManager.default.removeItem(at: directory) }
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { return false }
 }

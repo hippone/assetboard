@@ -526,4 +526,19 @@ function iconHost(asset){
  return iconHints.find(([pattern])=>pattern.test(text))?.[1]||'';
 }
 
-if(typeof module!=='undefined')module.exports={blockDensity,setBlockDensity,ensureBlock,iconHost,guessAssetType,regionList,regionName,regionFlag,phoneParts,regionFromPhone,maskPhone,maskEmail,cardExpiry,expiryText,looksLikeCardNumber,linkAssets,unlinkAssets,linkedAssets,removeLinksTo,assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset,dateKinds,billingCycles,dayNumber,localDay,isoDay,addMonths,nextOccurrence,assetDateStatus,upcomingEvents,syncKey,assetSyncKey,isBlacklisted,findByExternal,findNameCollision,mergeCloudflare,mergeGitHub,applyCollision,parseSender,registrableDomain,cleanMerchant,findAmounts,findDates,findDomains,evidenceFacts,inferCycle,formatCost,matchAsset,buildCandidates,evidencePayload,parseAiItems,applyAiItem};
+// Display limits: how much the board shows at once, so large collections never flood the one-screen board.
+// Data is never truncated; search and "查看全部" always show everything.
+const DISPLAY_LIMITS={count:99,columns:4,cardRows:3,compactRows:4,listRows:2,featuredRows:2,strongDates:3};
+function formatCount(value){const n=Math.max(0,Math.floor(Number(value)||0));return n>DISPLAY_LIMITS.count?DISPLAY_LIMITS.count+'+':String(n);}
+// How many items fit in `rows` rows of `columns`; everything when it already fits.
+function rowLimit(total,columns,rows){const max=Math.max(1,columns|0)*Math.max(1,rows|0);return total>max?max:total;}
+// Featured cards fill whole rows only (no lone card on a last row), at most `maxRows` rows; the rest move to the list.
+function wholeRows(total,columns,maxRows){const cols=Math.max(1,columns|0);if(total<=cols)return total;return cols*Math.max(1,Math.min(maxRows,Math.floor(total/cols)));}
+// Overdue dates always keep their colour; of the "soon" ones only the most urgent few do, so a block never turns all amber.
+function strongDateIds(assets,now=new Date(),limit=DISPLAY_LIMITS.strongDates){
+ const rows=assets.filter(asset=>!asset.hiddenAt).map(asset=>({id:asset.id,status:assetDateStatus(asset,now)}));
+ const soon=rows.filter(row=>row.status.level==='soon').sort((left,right)=>left.status.days-right.status.days).slice(0,limit);
+ return new Set([...rows.filter(row=>row.status.level==='overdue'),...soon].map(row=>row.id));
+}
+
+if(typeof module!=='undefined')module.exports={DISPLAY_LIMITS,formatCount,rowLimit,wholeRows,strongDateIds,blockDensity,setBlockDensity,ensureBlock,iconHost,guessAssetType,regionList,regionName,regionFlag,phoneParts,regionFromPhone,maskPhone,maskEmail,cardExpiry,expiryText,looksLikeCardNumber,linkAssets,unlinkAssets,linkedAssets,removeLinksTo,assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset,dateKinds,billingCycles,dayNumber,localDay,isoDay,addMonths,nextOccurrence,assetDateStatus,upcomingEvents,syncKey,assetSyncKey,isBlacklisted,findByExternal,findNameCollision,mergeCloudflare,mergeGitHub,applyCollision,parseSender,registrableDomain,cleanMerchant,findAmounts,findDates,findDomains,evidenceFacts,inferCycle,formatCost,matchAsset,buildCandidates,evidencePayload,parseAiItems,applyAiItem};

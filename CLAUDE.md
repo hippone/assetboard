@@ -22,6 +22,7 @@ python3 -m unittest tests.test_gmail_local.GmailImportTests.test_extracts_plain_
 
 # macOS app → dist/Assetboard.app (ad-hoc signed). Also runs every Swift self-test.
 ./desktop/build.sh
+dist/Assetboard.app/Contents/MacOS/Assetboard --demo   # fictional demo board, temp store, no Keychain, never saves (add --dark/--light to pin appearance; browser: ?demo)
 dist/Assetboard.app/Contents/MacOS/Assetboard --test-github   # one self-test: --test-store | --test-cloudflare | --test-cloudflare-inventory | --test-github | --test-ocr | --test-webview | --test-ai
 
 # Developer ID build + ZIP (notarization is manual and not scripted)
@@ -36,7 +37,7 @@ SIGNING_IDENTITY='Developer ID Application: Name (TEAMID)' ./desktop/package.sh
 ## Architecture
 
 ### One web UI, two hosts
-- `index.html` loads classic scripts in this order: `theme.js` → `asset-data.js` → `app.js`. They share top-level globals (`state`, `save`, `render`, `checkpoint`, `modal`, `themePalette`, `themeDialog`, `cloudflareDialog`, …). The Playwright tests and the Swift host call these globals by name, so keep them global.
+- `index.html` loads classic scripts in this order: `theme.js` → `asset-data.js` → `demo-data.js` → `app.js`. They share top-level globals (`state`, `save`, `render`, `checkpoint`, `modal`, `themePalette`, `themeDialog`, `cloudflareDialog`, …). The Playwright tests and the Swift host call these globals by name, so keep them global.
 - `asset-data.js` holds pure functions. It works as a browser global and also exports via `module.exports` so Node tests can `require` it. Put new unit-testable logic there. Its top-level `const`s share the global scope with `app.js`, so redeclaring one of its names in `app.js` is a SyntaxError that stops the whole app. Avoid regex lookbehind there; macOS 12's WebKit may not support it.
 - `desktop/build.sh` has an **explicit copy list** of web files into `Contents/Resources/Board/`. A new front-end file must be added to that list as well as `index.html`. The same applies to the `swiftc` source list for new Swift files.
 - Native detection: Swift injects `window.__ASSETBOARD_NATIVE__ = {data, cloudflareConnected, …}` at document start, and `app.js` reads it as `nativeStore`. In native mode the app adds `.native-app` to `<html>`, and `.native-only` elements (platform imports) exist only in the Mac app.
@@ -65,6 +66,8 @@ SIGNING_IDENTITY='Developer ID Application: Name (TEAMID)' ./desktop/package.sh
   - `board.json` and `board.previous.json` are readable mirrors. If a mirror write fails, the app only logs it and still reports the save as successful.
   - A legacy `board.json` is migrated into SQLite on first load. If an existing file can't be read, the app stops instead of overwriting it.
   - Tokens are stored in the Keychain. Gmail's OAuth client and refresh token are stored as 0600 JSON files in the same directory.
+- Display limits live in `DISPLAY_LIMITS` (`asset-data.js`) and are applied after layout by `limitRows()` (called from `updateOverflow`) to `.block.limited` (auto-height, not folded, no search/full view). Hidden items use `display:none` + `inert`; the header `查看全部` button opens the rest. Never truncate data for display.
+- Demo mode: `demo-data.js` defines `window.assetboardDemoBoard()`; `app.js` uses it when `nativeStore.demo` or `?demo`, and `save()` becomes a no-op. The Swift side (`demoMode`) uses a throwaway temp `BoardStore`, skips Keychain reads and refuses every bridge action except `toolbarState`/`openExternal`.
 - `removeUntouchedDemo` (in `asset-data.js`) strips v0.1.0 demo records by exact content fingerprint on load, so user-edited records survive.
 
 ### Platform imports (Mac only, read-only)
@@ -89,4 +92,4 @@ SIGNING_IDENTITY='Developer ID Application: Name (TEAMID)' ./desktop/package.sh
 
 - Match the existing dense style: `app.js`, `theme.js`, and the CSS use compact one-line functions and rules. Swift and Python use normal formatting.
 - Docs record what was actually verified, with dates, and state their limits explicitly (e.g. notarization applies only to the v0.1.0 package, and Gmail has not been verified end-to-end). Keep new claims in README/PROTOTYPE scoped the same way.
-- Design authority: `ASSETBOARD-BOARD-DESIGN.md` is the current board direction, and the other `ASSETBOARD-*.md` files are earlier research. `UI-COLOR-RESEARCH.md` supersedes `THEME-DESIGN.md`. `PROTOTYPE.md` and `LAYOUT-VALIDATION.md` log verification results.
+- Design authority: `DESIGN-PRINCIPLES.md` (2026-10-09, user-confirmed) sets the goals, hard rules (one accent colour, display limits, motion ≤ 0.2s via `MOTION_MS`, screenshots only in demo mode) and trade-off order; check every visual change against it. `ASSETBOARD-BOARD-DESIGN.md` is the current board direction, and the other `ASSETBOARD-*.md` files are earlier research. `UI-COLOR-RESEARCH.md` supersedes `THEME-DESIGN.md`. `PROTOTYPE.md` and `LAYOUT-VALIDATION.md` log verification results.

@@ -29,6 +29,11 @@ const linkOrder={bankcard:['appleid','google','ai','subscription'],phone:['apple
 const seed={blocks:[],assets:[]};
 const key='assetboard-prototype-v1';
 const nativeStore=window.__ASSETBOARD_NATIVE__;
+// Movement and size animations stay at or under 0.2s (DESIGN-PRINCIPLES.md); CSS transitions use the same value.
+const MOTION_MS=200;
+// Demo mode (`--demo` in the Mac app, `?demo` in the browser) shows the fictional board from demo-data.js and never saves.
+const demoMode=!!(nativeStore?.demo||(!nativeStore&&new URLSearchParams(location.search).has('demo')))&&typeof window.assetboardDemoBoard==='function';
+window.assetboardDemoBlocked=()=>{if($('#modal')?.open)$('#modal').close();toast('演示模式不连接外部服务，也不读写本机数据');};
 window.assetboardConnectionState=connections=>{
  if(!nativeStore)return;
  Object.assign(nativeStore,connections);
@@ -39,10 +44,10 @@ window.assetboardConnectionState=connections=>{
 };
 let state=structuredClone(seed),query='',focusCategory=null,history=[],activeAsset=null,lastFocus=null,toastTimer,showHiddenBlocks=new Set(),assetFormSnapshot=null;
 let migratedLegacyData=false;
-try{const saved=nativeStore?nativeStore.data:JSON.parse(localStorage.getItem(key));if(saved&&Array.isArray(saved.blocks)&&Array.isArray(saved.assets)&&saved.blocks.every(b=>cats[b.id])){const migration=removeUntouchedDemo(saved);state=migration.board;migratedLegacyData=!!(migration.removed||migration.removedBlocks);}}catch{} if(!Array.isArray(state.deletedExternalIds))state.deletedExternalIds=[];
+try{const saved=demoMode?window.assetboardDemoBoard():nativeStore?nativeStore.data:JSON.parse(localStorage.getItem(key));if(saved&&Array.isArray(saved.blocks)&&Array.isArray(saved.assets)&&saved.blocks.every(b=>cats[b.id])){const migration=removeUntouchedDemo(saved);state=migration.board;migratedLegacyData=!!(migration.removed||migration.removedBlocks);}}catch{} if(!Array.isArray(state.deletedExternalIds))state.deletedExternalIds=[];
 let saveSequence=0;
 window.assetboardSaved=(sequence,success)=>{if(sequence!==saveSequence)return;if(!success)toast('本机文件保存失败，请保留窗口后重试');};
-function save(){try{if(nativeStore)window.webkit.messageHandlers.assetboard.postMessage({action:'save',sequence:++saveSequence,data:state});else localStorage.setItem(key,JSON.stringify(state));}catch{toast('未能保存，请保留此窗口');}}
+function save(){if(demoMode)return;try{if(nativeStore)window.webkit.messageHandlers.assetboard.postMessage({action:'save',sequence:++saveSequence,data:state});else localStorage.setItem(key,JSON.stringify(state));}catch{toast('未能保存，请保留此窗口');}}
 function checkpoint(){history.push(JSON.stringify(state));if(history.length>25)history.shift();}
 function toast(message,undoable=false){clearTimeout(toastTimer);const offer=undoable&&history.length;$('#toast').innerHTML=`<span>${esc(message)}</span>${offer?'<button class="toast-undo" data-action="undo">撤销</button>':''}`;$('#toast').classList.add('show');toastTimer=setTimeout(()=>$('#toast').classList.remove('show'),offer?6000:3000);}
 function undo(){if(!history.length){toast('没有可撤销的修改');return;}state=JSON.parse(history.pop());save();if(activeAsset&&!state.assets.some(a=>a.id===activeAsset))closeDetail();else if(activeAsset)showDetail(activeAsset);render();toast('已撤销上一次修改');}
@@ -86,7 +91,9 @@ function matches(a){return !query||searchText(a).includes(query.toLowerCase());}
 function safeManagementUrl(value){try{const url=new URL(value);return ['https:','http:'].includes(url.protocol)&&url.hostname&&!url.username&&!url.password?url.href:null;}catch{return null;}}
 function displayName(a){return a.source==='github'&&a.name.includes('/')?a.name.slice(a.name.indexOf('/')+1):a.name;}
 function eventInfo(a){if(a.syncMissing)return {text:'本次未返回',cls:'warn'};const status=assetDateStatus(a);if(status.level==='none')return {text:assetProfiles[a.type]?'':a.event||'日期待补充',cls:''};if(a.type==='bankcard'&&status.level==='upcoming')return {text:`有效期 ${expiryText(a.date)}`,cls:''};return {text:status.label,cls:status.level==='overdue'?'warn overdue':status.level==='soon'?'warn':''};}
-function card(a,canDemote=false){const link=safeManagementUrl(a.url),event=eventInfo(a);return `<article class="asset-card" data-asset="${esc(a.id)}"><button class="card-open" data-action="detail" data-id="${esc(a.id)}" aria-label="查看 ${esc(a.name)} 详情" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight">${art(a)}${cardMark(a)}<div class="card-copy"><span class="card-name" title="${esc(a.name)}">${esc(displayName(a))}</span><span class="card-glance ${event.cls}">${esc(glance(a,event))}</span>${cardLines(a)}</div></button><div class="card-foot">${event.text?`<span class="card-event ${event.cls}"><i class="dot"></i>${esc(event.text)}</span>`:''}${canDemote?`<button class="repo-swap" data-action="repo-swap" data-id="${esc(a.id)}" aria-label="将 ${esc(a.name)} 移到下方列表">移到列表</button>`:''}<button class="card-hide" data-action="hide-asset" data-id="${esc(a.id)}" aria-label="隐藏 ${esc(a.name)}">隐藏</button>${link&&new URL(link).hostname!=='example.com'?`<button class="open-link" data-action="external" data-id="${esc(a.id)}" aria-label="打开 ${esc(a.name)} 管理链接">↗</button>`:''}</div></article>`;}
+function card(a,canDemote=false,strong=true){const link=safeManagementUrl(a.url),event=mutedEvent(eventInfo(a),strong);return `<article class="asset-card" data-asset="${esc(a.id)}"><button class="card-open" data-action="detail" data-id="${esc(a.id)}" aria-label="查看 ${esc(a.name)} 详情" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight">${art(a)}${cardMark(a)}<div class="card-copy"><span class="card-name" title="${esc(a.name)}">${esc(displayName(a))}</span><span class="card-glance ${event.cls}">${esc(glance(a,event))}</span>${cardLines(a)}</div></button><div class="card-foot">${event.text?`<span class="card-event ${event.cls}"><i class="dot"></i>${esc(event.text)}</span>`:''}${canDemote?`<button class="repo-swap" data-action="repo-swap" data-id="${esc(a.id)}" aria-label="将 ${esc(a.name)} 移到下方列表">移到列表</button>`:''}<button class="card-hide" data-action="hide-asset" data-id="${esc(a.id)}" aria-label="隐藏 ${esc(a.name)}">隐藏</button>${link&&new URL(link).hostname!=='example.com'?`<button class="open-link" data-action="external" data-id="${esc(a.id)}" aria-label="打开 ${esc(a.name)} 管理链接">↗</button>`:''}</div></article>`;}
+// Only the most urgent few "soon" dates in a block stay amber (DISPLAY_LIMITS.strongDates); overdue always stays red.
+function mutedEvent(event,strong){return strong||event.cls!=='warn'?event:{...event,cls:''};}
 // Priority types lead with region and a masked identifier; empty fields are left out instead of showing placeholders.
 function cardLines(a){
  if(!assetProfiles[a.type])return `<span class="card-provider">${esc([a.provider,a.account].filter(Boolean).join(' · '))}</span>${a.purpose===cats[a.type].name?'':`<span class="card-purpose">${esc(a.purpose||'用途待补充')}</span>`}${linkChips(a)}`;
@@ -101,7 +108,7 @@ function linkLabel(a){const flag=regionFlag(a.region),digits=String(a.phone||'')
 function linkChips(a){const links=linkedAssets(state.assets,a).filter(x=>!isHidden(x));if(!links.length)return '';return `<span class="link-chips">${links.slice(0,3).map(x=>`<span class="link-chip">${assetMark(x)}${esc(linkLabel(x))}</span>`).join('')}${links.length>3?`<span class="link-chip">+${links.length-3}</span>`:''}</span>`;}
 function identityText(a){return {bankcard:[a.network,a.last4&&`•••• ${a.last4}`],phone:[maskPhone(a.phone)],appleid:[maskEmail(a.account)],google:[maskEmail(a.account)],ai:[a.provider]}[a.type]?.filter(Boolean).join(' ')||a.provider||'';}
 function flippedCard(a){return `<article class="asset-card flip-card" data-asset="${esc(a.id)}"><div class="flip-inner"><div class="flip-face front">${art(a)}<div class="card-copy"><span class="card-name">${esc(displayName(a))}</span></div></div><div class="flip-face back"><span class="flip-label">已隐藏</span><strong title="${esc(a.name)}">${esc(displayName(a))}</strong><span class="flip-note">仅在本机隐藏，可随时恢复；不表示退订或删除线上资源。</span><div class="flip-actions"><button class="button" data-action="restore-asset" data-id="${esc(a.id)}">恢复</button><button class="button" data-action="delete-asset" data-id="${esc(a.id)}">删除记录</button></div></div></div></article>`;}
-function compactRepository(a){return `<div class="compact-repo" data-asset="${esc(a.id)}"><button class="compact-repo-open" data-action="detail" data-id="${esc(a.id)}" aria-label="查看 ${esc(a.name)} 详情" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight" title="${esc(a.name)}">${icon('repository')}<span>${esc(displayName(a))}</span></button><button class="repo-swap" data-action="repo-swap" data-id="${esc(a.id)}" aria-label="将 ${esc(a.name)} 显示为卡片">显示卡片</button></div>`;}
+function compactRepository(a,spill=false){return `<div class="compact-repo${spill?' spill':''}" ${spill?`data-spill="${esc(a.id)}" style="display:none"`:`data-asset="${esc(a.id)}"`}><button class="compact-repo-open" data-action="detail" data-id="${esc(a.id)}" aria-label="查看 ${esc(a.name)} 详情" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight" title="${esc(a.name)}">${icon('repository')}<span>${esc(displayName(a))}</span></button><button class="repo-swap" data-action="repo-swap" data-id="${esc(a.id)}" aria-label="将 ${esc(a.name)} 显示为卡片">显示卡片</button></div>`;}
 function renderBlock(b){
  const typed=state.assets.filter(a=>a.type===b.id&&matches(a));
  const hiddenCount=state.assets.filter(a=>a.type===b.id&&isHidden(a)).length;
@@ -118,14 +125,15 @@ function renderBlock(b){
  const repositoryLayout=b.id==='repository'&&!query&&!focusCategory&&!folded&&!compact&&!viewingHidden&&assets.length>6;
  const rawGroups=repositoryLayout?repositoryGroups(assets,state.featuredRepositoryIds):null;
  const groups=rawGroups?{featured:orderAssets(rawGroups.featured,state.cardOrder?.repository),compact:orderAssets(rawGroups.compact,state.cardOrder?.repository)}:null;
+ const strong=strongDateIds(visible),limited=!folded&&!fixed&&!viewingHidden&&!query&&!focusCategory;
  const searchHiddenHtml=(!viewingHidden&&query&&hiddenAssets.length)?hiddenAssets.map(flippedCard).join(''):'';
- const cardsHtml=viewingHidden?assets.map(flippedCard).join(''):groups?`${groups.featured.map(a=>card(a,true)).join('')}<div class="compact-repositories"><div class="compact-repositories-title">其余 ${groups.compact.length} 个仓库</div><div class="compact-repositories-grid">${groups.compact.map(compactRepository).join('')}</div></div>${searchHiddenHtml}`:(assets.map(a=>card(a)).join('')+searchHiddenHtml);
+ const cardsHtml=viewingHidden?assets.map(flippedCard).join(''):groups?`${groups.featured.map(a=>card(a,true,strong.has(a.id))).join('')}<div class="compact-repositories"><div class="compact-repositories-title" data-count="${groups.compact.length}">其余 ${formatCount(groups.compact.length)} 个仓库</div><div class="compact-repositories-grid">${limited?groups.featured.map(a=>compactRepository(a,true)).join(''):''}${groups.compact.map(a=>compactRepository(a)).join('')}</div></div>${searchHiddenHtml}`:(assets.map(a=>card(a,false,strong.has(a.id))).join('')+searchHiddenHtml);
  const emptyHtml=viewingHidden?'<div class="block-empty">这个区块没有已隐藏的资产</div>':`<button type="button" class="block-empty" data-action="add-asset" data-id="${b.id}">添加你的第一项资产</button>`;
- const hiddenToggle=hiddenCount?`<button class="text-button hidden-toggle ${viewingHidden?'active':''}" data-action="toggle-hidden" data-id="${b.id}" aria-pressed="${viewingHidden}" title="${viewingHidden?'返回显示未隐藏资产':'查看本区块已隐藏资产'}">${viewingHidden?'返回':`已隐藏 (${hiddenCount})`}</button>`:'';
- return `<section class="block ${b.id} ${folded?'folded':''} ${compact?'compact':''} ${fixed?'fixed':''} ${viewingHidden?'showing-hidden':''}" data-block="${b.id}" style="--width:${b.width}">
+ const hiddenToggle=hiddenCount?`<button class="text-button hidden-toggle ${viewingHidden?'active':''}" data-action="toggle-hidden" data-id="${b.id}" aria-pressed="${viewingHidden}" title="${viewingHidden?'返回显示未隐藏资产':'查看本区块已隐藏资产'}">${viewingHidden?'返回':`已隐藏 (${formatCount(hiddenCount)})`}</button>`:'';
+ return `<section class="block ${b.id} ${folded?'folded':''} ${compact?'compact':''} ${fixed?'fixed':''} ${limited?'limited':''} ${viewingHidden?'showing-hidden':''}" data-block="${b.id}" style="--width:${b.width}">
  <header class="block-head">
- <button class="block-title" data-action="collapse" data-id="${b.id}" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight" aria-expanded="${!folded}" aria-controls="cards-${b.id}" title="${folded?'展开':'收起'}（按住 ⌥ 点按：全部）"><span>${cats[b.id].name}</span><span class="asset-count">${viewingHidden?hiddenCount:visible.length}</span><span class="chevron">${folded?'⌄':'⌃'}</span></button>
- ${folded&&visible.length?`<span class="fold-peek" aria-hidden="true">${visible.slice(0,5).map(peekMark).join('')}${visible.length>5?`<span class="peek-more">+${visible.length-5}</span>`:''}</span>`:''}
+ <button class="block-title" data-action="collapse" data-id="${b.id}" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight" aria-expanded="${!folded}" aria-controls="cards-${b.id}" title="${folded?'展开':'收起'}（按住 ⌥ 点按：全部）"><span>${cats[b.id].name}</span><span class="asset-count" title="${viewingHidden?hiddenCount:visible.length} 项">${formatCount(viewingHidden?hiddenCount:visible.length)}</span><span class="chevron">${folded?'⌄':'⌃'}</span></button>
+ ${folded&&visible.length?`<span class="fold-peek" aria-hidden="true">${visible.slice(0,5).map(peekMark).join('')}${visible.length>5?`<span class="peek-more">+${formatCount(visible.length-5)}</span>`:''}</span>`:''}
  ${summary&&!viewingHidden?`<span class="block-summary ${overdue?'overdue':''}">${summary}</span>`:''}
  <div class="block-actions">${hiddenToggle}<button class="text-button" data-action="all" data-id="${b.id}" aria-label="查看全部${cats[b.id].name}" hidden>查看全部</button><button class="icon-button" data-action="add-asset" data-id="${b.id}" aria-label="添加${cats[b.id].name}资产">＋</button><button class="icon-button" data-action="settings" data-id="${b.id}" aria-label="${cats[b.id].name}区块设置">⋯</button></div></header>
  <div class="cards" id="cards-${b.id}" ${fixed?`style="height:${b.height}px"`:''}>${cardsHtml||emptyHtml}</div>
@@ -154,8 +162,8 @@ function render(){
   if(!animateLayout||matchMedia('(prefers-reduced-motion: reduce)').matches)return;
   const blocks=[...document.querySelectorAll('.block')].map(el=>({el,to:el.getBoundingClientRect()})),cards=[...document.querySelectorAll('#board [data-asset]')].map(el=>{const block=el.closest('.block');return {el,to:el.getBoundingClientRect(),block:block?.dataset.block,origin:block?.getBoundingClientRect()};});
   // Positions slide; sizes change in place so text is never stretched. Cards slide only within their block and only when their size is unchanged.
-  for(const {el,to} of blocks){const from=previous.get(el.dataset.block);if(from&&to.width)slideFrom(el,from,240);}
-  for(const {el,to,block,origin} of cards){const was=previousCards.get(el.dataset.asset);if(!was||was.block!==block||!was.origin||Math.abs(was.rect.width-to.width)>2||Math.abs(was.rect.height-to.height)>2)continue;const dx=(was.rect.left-was.origin.left)-(to.left-origin.left),dy=(was.rect.top-was.origin.top)-(to.top-origin.top);if(Math.abs(dx)>=1||Math.abs(dy)>=1)el.animate([{transform:`translate(${dx}px,${dy}px)`},{transform:'none'}],{duration:240,easing:settleEase});}
+  for(const {el,to} of blocks){const from=previous.get(el.dataset.block);if(from&&to.width)slideFrom(el,from,MOTION_MS);}
+  for(const {el,to,block,origin} of cards){const was=previousCards.get(el.dataset.asset);if(!was||was.block!==block||!was.origin||Math.abs(was.rect.width-to.width)>2||Math.abs(was.rect.height-to.height)>2)continue;const dx=(was.rect.left-was.origin.left)-(to.left-origin.left),dy=(was.rect.top-was.origin.top)-(to.top-origin.top);if(Math.abs(dx)>=1||Math.abs(dy)>=1)el.animate([{transform:`translate(${dx}px,${dy}px)`},{transform:'none'}],{duration:MOTION_MS,easing:settleEase});}
  });
 }
 // Folding animates the changed blocks' height in layout, so neighbours follow without a separate slide; the clicked header stays where it was.
@@ -166,28 +174,50 @@ function foldRender(ids,anchorId,before=new Map([...document.querySelectorAll('#
  for(const id of ids){
   const el=document.querySelector(`#board .block[data-block="${CSS.escape(id)}"]`),from=before.get(id);if(!el||!from)continue;
   const to=el.getBoundingClientRect().height;if(Math.abs(to-from.height)<1)continue;
-  el.animate([{height:from.height+'px'},{height:to+'px'}],{duration:260,easing:settleEase});
-  el.querySelector(el.classList.contains('folded')?'.fold-peek':'.cards')?.animate([{opacity:0},{opacity:1}],{duration:200,delay:60,easing:'ease-out',fill:'backwards'});
+  el.animate([{height:from.height+'px'},{height:to+'px'}],{duration:MOTION_MS,easing:settleEase});
+  el.querySelector(el.classList.contains('folded')?'.fold-peek':'.cards')?.animate([{opacity:0},{opacity:1}],{duration:160,delay:40,easing:'ease-out',fill:'backwards'});
  }
  if(anchor===undefined)return;
- const until=performance.now()+320,hold=()=>{const top=header()?.getBoundingClientRect().top;if(top===undefined)return;if(Math.abs(top-anchor)>.5)scrollBy(0,top-anchor);if(performance.now()<until)requestAnimationFrame(hold);};
+ const until=performance.now()+MOTION_MS+60,hold=()=>{const top=header()?.getBoundingClientRect().top;if(top===undefined)return;if(Math.abs(top-anchor)>.5)scrollBy(0,top-anchor);if(performance.now()<until)requestAnimationFrame(hold);};
  requestAnimationFrame(hold);
 }
-function syncToolbar(){const pending=pendingCount();$('#inbox-button').textContent=pending?`待确认 ${pending}`:'待确认';if(nativeStore)window.webkit.messageHandlers.assetboard.postMessage({action:'toolbarState',query,pending});}
+function syncToolbar(){const pending=pendingCount();$('#inbox-button').textContent=pending?`待确认 ${formatCount(pending)}`:'待确认';if(nativeStore)window.webkit.messageHandlers.assetboard.postMessage({action:'toolbarState',query,pending});}
 function agendaItem({asset,status}){return `<button class="agenda-item ${status.level}" data-action="detail" data-id="${esc(asset.id)}"><strong>${esc(displayName(asset))}</strong><span>${esc(status.label)}${asset.cost&&asset.cost!=='未知'?' · '+esc(asset.cost):''}</span>${asset.reason?`<small>${esc(asset.reason)}</small>`:''}</button>`;}
 function renderAgenda(){
  const bar=$('#agenda'),events=upcomingEvents(state.assets),dated=state.assets.some(a=>!isHidden(a)&&dayNumber(a.date)!==null);
  bar.hidden=!!query||!!focusCategory||!state.assets.length;
- const body=events.length?events.slice(0,3).map(agendaItem).join('')+(events.length>3?`<button class="text-button" data-action="agenda-all">全部 ${events.length} 项</button>`:''):dated?'<span class="agenda-empty">60 天内没有到期或扣款</span><button class="text-button" data-action="agenda-all">查看全部日期</button>':'<button class="text-button agenda-empty" data-action="inbox">还没有记录到期或扣款日期 · 粘贴一段续费通知试试</button>';
+ const body=events.length?events.slice(0,3).map(agendaItem).join('')+(events.length>3?`<button class="text-button" data-action="agenda-all">全部 ${formatCount(events.length)} 项</button>`:''):dated?'<span class="agenda-empty">60 天内没有到期或扣款</span><button class="text-button" data-action="agenda-all">查看全部日期</button>':'<button class="text-button agenda-empty" data-action="inbox">还没有记录到期或扣款日期 · 粘贴一段续费通知试试</button>';
  bar.innerHTML=`<span class="agenda-label">接下来</span><div class="agenda-items">${body}</div>`;
  syncToolbar();
 }
 function agendaAll(){const events=upcomingEvents(state.assets,new Date(),Infinity);modal('全部日期',events.length?`<div class="agenda-list">${events.map(agendaItem).join('')}</div><p class="form-note">按日期排序，已隐藏的资产不在此列。设为每月或每年重复的日期会自动顺延到下一次。</p>`:'<p class="form-note">还没有资产记录日期。在资产资料中填写“下一日期”，或从待确认资料中补充。</p>');}
 function updateOverflow(){
+ limitRows();
  const grids=[...document.querySelectorAll('.block.fixed')].map(block=>{const grid=block.querySelector('.cards'),cards=[...grid.querySelectorAll('.asset-card:not(.is-dragging)')],style=getComputedStyle(grid),bottom=parseFloat(style.paddingBottom)||0;return {block,grid,cards,bottom,minHeight:(cards[0]?.offsetHeight||100)+(parseFloat(style.paddingTop)||0)+bottom};});
  for(const {grid,minHeight} of grids){const value=minHeight+'px';if(grid.style.minHeight!==value)grid.style.minHeight=value;}
  const visibility=grids.map(item=>{const limit=item.grid.offsetTop+item.grid.clientHeight-item.bottom+1;return {...item,hidden:item.cards.map(card=>card.offsetTop+card.offsetHeight>limit)};});
  for(const {block,cards,hidden} of visibility){cards.forEach((card,i)=>{const value=hidden[i]?'hidden':'';if(card.style.visibility!==value)card.style.visibility=value;if(card.inert!==hidden[i])card.inert=hidden[i];});const all=block.querySelector('[data-action="all"]');all.hidden=!hidden.some(Boolean);all.title='还有资产未显示，查看全部';}
+}
+// Auto-height blocks show at most DISPLAY_LIMITS rows; the header's 查看全部 opens the rest. Fixed-height blocks are clipped by height below.
+function gridColumns(grid){return Math.max(1,getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length);}
+function showItem(el,show){const value=show?'':'none';if(el.style.display!==value)el.style.display=value;if(el.inert===show)el.inert=!show;}
+function limitRows(){
+ for(const block of document.querySelectorAll('#board .block.limited')){
+  const grid=block.querySelector('.cards'),all=block.querySelector('[data-action="all"]');if(!grid||!all)continue;
+  const cards=[...grid.querySelectorAll(':scope > .asset-card:not(.is-dragging)')];cards.forEach(el=>showItem(el,true));
+  const cols=gridColumns(grid),list=grid.querySelector('.compact-repositories-grid');let hidden=0;
+  if(list){
+   const keep=wholeRows(cards.length,cols,DISPLAY_LIMITS.featuredRows);
+   cards.forEach((el,i)=>{showItem(el,i<keep);const spill=list.querySelector(`[data-spill="${CSS.escape(el.dataset.asset)}"]`);if(spill)showItem(spill,i>=keep);});
+   const tiles=[...list.children].filter(el=>el.dataset.asset||el.style.display!=='none'),title=grid.querySelector('.compact-repositories-title');
+   if(title){title.textContent=`其余 ${formatCount(tiles.length)} 个仓库`;title.dataset.count=tiles.length;}
+   tiles.forEach(el=>showItem(el,true));const max=rowLimit(tiles.length,gridColumns(list),DISPLAY_LIMITS.listRows);tiles.forEach((el,i)=>showItem(el,i<max));hidden=tiles.length-max;
+  }else{
+   const max=rowLimit(cards.length,cols,block.classList.contains('compact')?DISPLAY_LIMITS.compactRows:DISPLAY_LIMITS.cardRows);
+   cards.forEach((el,i)=>showItem(el,i<max));hidden=cards.length-max;
+  }
+  all.hidden=!hidden;all.textContent=hidden?`查看全部 · 另 ${formatCount(hidden)} 项`:'查看全部';all.title=hidden?`还有 ${hidden} 项未显示，查看全部`:'';
+ }
 }
 function sourceLabel(a){if(a.syncMissing)return `${a.source==='github'?'GitHub':'Cloudflare'} 本次未返回`;if(a.source==='github')return `GitHub 仓库 · ${a.syncStatus||'状态未知'}`;if(a.source==='cloudflare')return `Cloudflare ${a.resourceKind||'Zone'} · ${a.syncStatus||'状态未知'}`;return a.source==='manual'?'手动录入':'演示资产';}
 function dateText(a){const status=assetDateStatus(a);if(status.level==='none')return a.date||'待补充';return `${status.date} · ${status.label}${billingCycles[a.cycle]?` · ${billingCycles[a.cycle].label}重复`:''}`;}
@@ -481,7 +511,7 @@ const settleEase='cubic-bezier(.22,1,.36,1)';
 function reduceMotion(){return matchMedia('(prefers-reduced-motion: reduce)').matches;}
 function docRect(el){const r=el.getBoundingClientRect();return {left:r.left+scrollX,top:r.top+scrollY,right:r.right+scrollX,bottom:r.bottom+scrollY,width:r.width,height:r.height};}
 function inside(r,x,y){return !!r&&x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom;}
-function slideFrom(el,from,duration=220){if(!from)return;const to=el.getBoundingClientRect(),dx=from.left-to.left,dy=from.top-to.top;if(Math.abs(dx)>=1||Math.abs(dy)>=1)el.animate([{transform:`translate(${dx}px,${dy}px)`},{transform:'none'}],{duration,easing:settleEase});}
+function slideFrom(el,from,duration=MOTION_MS){if(!from)return;const to=el.getBoundingClientRect(),dx=from.left-to.left,dy=from.top-to.top;if(Math.abs(dx)>=1||Math.abs(dy)>=1)el.animate([{transform:`translate(${dx}px,${dy}px)`},{transform:'none'}],{duration,easing:settleEase});}
 function showTip(text,x=0,y=0,tone='',clear=null){if(!floatTip){floatTip=document.createElement('div');floatTip.setAttribute('aria-hidden','true');document.body.append(floatTip);}floatTip.hidden=!text;if(!text)return;floatTip.className=`float-tip ${tone}`;floatTip.textContent=text;const w=floatTip.offsetWidth,h=floatTip.offsetHeight;let left=x+14,top=y+20;if(clear){left=x-w/2;top=clear.bottom+8;if(top+h>innerHeight-8)top=clear.top-h-8;}floatTip.style.left=Math.max(8,Math.min(innerWidth-w-8,left))+'px';floatTip.style.top=Math.max(8,Math.min(innerHeight-h-8,top))+'px';}
 function showGuide(x){if(!snapGuide){snapGuide=document.createElement('div');snapGuide.className='snap-guide';document.body.append(snapGuide);}snapGuide.hidden=x===null;if(x===null)return;const r=$('#board').getBoundingClientRect(),top=Math.max(0,r.top);snapGuide.style.cssText=`left:${Math.round(x)}px;top:${top}px;height:${Math.max(0,Math.min(innerHeight,r.bottom)-top)}px`;}
 function saveCardOrder(category,next){const existing=state.cardOrder?.[category]||[];checkpoint();state.cardOrder ||= {};state.cardOrder[category]=[...next,...existing.filter(id=>!next.includes(id))];save();}
@@ -585,7 +615,7 @@ function dropDrag(g,cancelled=false){
   render();if(changed)toast(g.kind==='block'?'区块已移动':'顺序已调整',true);
  };
  if(reduceMotion()){done();return;}
- const to=g.slot.getBoundingClientRect();g.el.classList.add('settling');g.el.classList.remove('lifted','refused');g.el.style.translate=`${to.left-g.rect.left}px ${to.top-g.rect.top}px`;setTimeout(done,260);
+ const to=g.slot.getBoundingClientRect();g.el.classList.add('settling');g.el.classList.remove('lifted','refused');g.el.style.translate=`${to.left-g.rect.left}px ${to.top-g.rect.top}px`;setTimeout(done,MOTION_MS);
 }
 function finishCross(g,type){
  const a=g.asset,ghost=g.el.getBoundingClientRect(),target=g.cross;
@@ -596,8 +626,8 @@ function finishCross(g,type){
  save();render();
  const moved=document.querySelector(`#board [data-asset="${CSS.escape(a.id)}"]`);
  if(moved&&!reduceMotion()){
-  if(moved.style.visibility==='hidden'){const block=moved.closest('.block');block.classList.add('drop-flash');setTimeout(()=>block.classList.remove('drop-flash'),900);}
-  else{const to=moved.getBoundingClientRect();moved.animate([{transform:`translate(${ghost.left+ghost.width/2-to.left-to.width/2}px,${ghost.top+ghost.height/2-to.top-to.height/2}px)`,opacity:.5},{transform:'none',opacity:1}],{duration:320,easing:settleEase});}
+  if(moved.style.visibility==='hidden'){const block=moved.closest('.block');block.classList.add('drop-flash');setTimeout(()=>block.classList.remove('drop-flash'),600);}
+  else{const to=moved.getBoundingClientRect();moved.animate([{transform:`translate(${ghost.left+ghost.width/2-to.left-to.width/2}px,${ghost.top+ghost.height/2-to.top-to.height/2}px)`,opacity:.5},{transform:'none',opacity:1}],{duration:MOTION_MS,easing:settleEase});}
  }
  toast(`已将「${displayName(a)}」移到「${cats[type].name}」`,true);
 }
@@ -669,7 +699,7 @@ function startResize(e,edge){
   if(styleChanged){block.classList.remove('resizing');block.style.width='';foldRender([b.id],b.id,before);toast(b.folded?'区块已收起 · 点标题可展开':blockDensity(b)==='compact'?'已切换为紧凑卡片':'已展开为完整卡片',true);return;}
   const finish=()=>{block.classList.remove('resizing','settling-size');render();if(changed)toast('区块大小已调整',true);};
   if(reduceMotion()){finish();return;}
-  block.classList.add('settling-size');block.style.width=px(b.width)+'px';grid.style.height=(b.height??m.natural)+'px';setTimeout(finish,260);
+  block.classList.add('settling-size');block.style.width=px(b.width)+'px';grid.style.height=(b.height??m.natural)+'px';setTimeout(finish,MOTION_MS);
  };
  edge.addEventListener('pointermove',move);edge.addEventListener('pointerup',end);edge.addEventListener('pointercancel',end);
 }
@@ -713,5 +743,6 @@ $('#board').addEventListener('focusout',e=>{if(!e.relatedTarget?.closest?.('#boa
 addEventListener('scroll',clearLinks,{passive:true});
 let viewportFrame=0;
 window.addEventListener('resize',()=>{if(gesture?.active)dropDrag(gesture,true);if(viewportFrame)return;viewportFrame=requestAnimationFrame(()=>{viewportFrame=0;updateOverflow();});});render();
-if(nativeStore){document.documentElement.classList.add('native-app');requestEvidence();document.querySelectorAll('.form-note').forEach(el=>{el.textContent=el.textContent.replaceAll('当前浏览器','此 Mac').replaceAll('此浏览器','此 Mac');});if(!nativeStore.data||migratedLegacyData)save();}
+if(nativeStore){document.documentElement.classList.add('native-app');if(!demoMode)requestEvidence();document.querySelectorAll('.form-note').forEach(el=>{el.textContent=el.textContent.replaceAll('当前浏览器','此 Mac').replaceAll('此浏览器','此 Mac');});if(!nativeStore.data||migratedLegacyData)save();}
 else if(migratedLegacyData)save();
+if(demoMode){document.documentElement.classList.add('demo-mode');const badge=document.createElement('div');badge.className='demo-badge';badge.setAttribute('role','note');badge.textContent='演示模式 · 全部为虚构数据 · 不会保存';document.body.append(badge);}
