@@ -568,3 +568,4 @@ body.drag-active .quick-action,.block.compact .quick-action{visibility:hidden}
 .block-head .block-title{flex-shrink:0}
 .block-title>span:not(.tile):not(.asset-count):not(.chevron){white-space:nowrap}
 .block-head .block-summary{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.block-actions .text-button{white-space:nowrap}
