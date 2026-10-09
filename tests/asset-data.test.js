@@ -346,3 +346,22 @@ test('repositories feature the most recently updated, falling back to import tim
  const assets=[{id:'a',type:'repository',name:'a',createdAt:'2026-10-01T00:00:00Z'},...Array.from({length:6},(_,i)=>({id:'r'+i,type:'repository',name:'r'+i,updatedAt:`2026-09-0${i+1}T00:00:00Z`}))];
  assert.deepEqual(repositoryGroups(assets,[]).featured.map(a=>a.id),['a','r5','r4','r3','r2','r1']);
 });
+
+test('category quick actions are open/copy only, local folders only in the app',()=>{
+ const {quickActions,validActionField,sshCommand,cloneUrl,QUICK_LIMIT}=require('../asset-data.js');
+ assert.equal(QUICK_LIMIT,2);
+ assert.deepEqual(quickActions({type:'server',host:'203.0.113.10',sshUser:'deploy',sshPort:'2222'},{link:'https://console.example.org'}).map(q=>q.id),['copy-ssh','open','copy-host']);
+ assert.equal(sshCommand({host:'203.0.113.10',sshUser:'deploy',sshPort:'22'}),'ssh deploy@203.0.113.10');
+ assert.equal(sshCommand({host:'bad host'}),'');
+ assert.equal(cloneUrl('https://github.com/demo-org/site'),'https://github.com/demo-org/site.git');
+ assert.equal(cloneUrl('https://github.com/demo-org/site/tree/main'),'');
+ assert.equal(cloneUrl('http://github.com/demo-org/site'),'');
+ const repo={type:'repository',localPath:'~/code/site'};
+ assert.ok(!quickActions(repo,{link:''}).some(q=>q.kind==='local'),'browser never offers local folders');
+ assert.equal(quickActions(repo,{native:true})[0].value,'~/code/site');
+ assert.deepEqual(quickActions({type:'domain',name:'example.test'},{}).map(q=>q.id),['copy-name']);
+ assert.deepEqual(quickActions({type:'domain',name:'example.test',hiddenAt:'2026-01-01'},{link:'https://x.test'}),[]);
+ assert.deepEqual(quickActions({type:'bankcard',name:'card',last4:'1234'},{}),[]);
+ for(const [key,value] of [['localPath','relative'],['localPath','/a/../b'],['sshPort','70000'],['sshUser','root;rm'],['host','a b']])assert.equal(validActionField(key,value),false,key+'='+value);
+ for(const [key,value] of [['localPath','/Users/me/code'],['localPath',''],['sshPort','22'],['host','example.org'],['host','2001:db8::1']])assert.equal(validActionField(key,value),true,key+'='+value);
+});

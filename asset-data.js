@@ -35,6 +35,30 @@ function touchedPrefix(before,after){let last=-1;for(let i=0;i<after.length;i++)
 function swapInOrder(ids,first,second){const next=[...ids],a=next.indexOf(first),b=next.indexOf(second);if(a<0||b<0||a===b)return next;[next[a],next[b]]=[next[b],next[a]];return next;}
 function bringToFront(ids,id){return [id,...(Array.isArray(ids)?ids:[]).filter(other=>other!==id)];}
 
+// Category quick actions (DESIGN-PRINCIPLES §5): read-only, local actions only — open a link, copy a value, open an existing local folder.
+const ACTION_FIELDS={server:[['host','主机或 IP','例如 203.0.113.10'],['sshUser','SSH 用户','例如 deploy'],['sshPort','SSH 端口','22']],repository:[['localPath','本机目录','例如 ~/code/my-project']]};
+const QUICK_LIMIT=2;
+function validActionField(key,value){
+ const v=String(value??'').trim();if(!v)return true;
+ if(key==='host')return /^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$|^\[?[0-9A-Fa-f:]{2,39}\]?$/.test(v);
+ if(key==='sshUser')return /^[A-Za-z_][A-Za-z0-9_.-]{0,31}$/.test(v);
+ if(key==='sshPort')return /^\d{1,5}$/.test(v)&&+v>=1&&+v<=65535;
+ if(key==='localPath')return v.length<=1000&&/^(\/|~\/)/.test(v)&&!v.includes('\0')&&!v.split('/').includes('..');
+ return false;
+}
+function sshCommand(asset){const host=String(asset.host||'').trim();if(!host||!validActionField('host',host))return '';const user=validActionField('sshUser',asset.sshUser)?String(asset.sshUser||'').trim():'',port=validActionField('sshPort',asset.sshPort)?String(asset.sshPort||'').trim():'';return `ssh ${port&&port!=='22'?`-p ${port} `:''}${user?user+'@':''}${host.replace(/^\[|\]$/g,'')}`;}
+function cloneUrl(link){try{const url=new URL(link);const parts=url.pathname.split('/').filter(Boolean);if(url.protocol!=='https:'||!['github.com','gitlab.com','codeberg.org'].includes(url.hostname)||parts.length!==2)return '';return `https://${url.hostname}/${parts[0]}/${parts[1].replace(/\.git$/,'')}.git`;}catch{return '';}}
+// link is the asset's safe, real management URL (or ''); native tells whether local folders can be opened.
+function quickActions(asset,{link='',native=false}={}){
+ if(!asset||asset.hiddenAt)return [];
+ const open=label=>link?{id:'open',kind:'open',label,value:link}:null,copy=(id,label,value,done)=>value?{id,kind:'copy',label,value,done}:null;
+ const local=native&&asset.localPath&&validActionField('localPath',asset.localPath)?{id:'editor',kind:'local',label:'用本机编辑器打开',value:String(asset.localPath).trim()}:null;
+ const list=asset.type==='domain'?[open('打开管理页'),copy('copy-name','复制域名',String(asset.name||'').trim(),'域名')]
+  :asset.type==='server'?[copy('copy-ssh','复制 SSH 命令',sshCommand(asset),'SSH 命令'),open('打开控制台'),copy('copy-host','复制主机',validActionField('host',asset.host)?String(asset.host||'').trim():'','主机地址')]
+  :asset.type==='repository'?[open('在浏览器打开'),copy('copy-clone','复制克隆地址',cloneUrl(link),'克隆地址'),local]
+  :[open('打开管理页')];
+ return list.filter(Boolean);
+}
 function repositoryGroups(assets, preferredIds, limit=6){
  const repositories=assets.filter(asset=>asset.type==='repository').sort((left,right)=>{
   const difference=recencyTime(right)-recencyTime(left);
@@ -556,4 +580,4 @@ function strongDateIds(assets,now=new Date(),limit=DISPLAY_LIMITS.strongDates){
  return new Set([...rows.filter(row=>row.status.level==='overdue'),...soon].map(row=>row.id));
 }
 
-if(typeof module!=='undefined')module.exports={recencyTime,recentFirst,arrangeAssets,touchedPrefix,swapInOrder,bringToFront,DISPLAY_LIMITS,formatCount,rowLimit,wholeRows,strongDateIds,blockDensity,setBlockDensity,ensureBlock,iconHost,guessAssetType,regionList,regionName,regionFlag,phoneParts,regionFromPhone,maskPhone,maskEmail,cardExpiry,expiryText,looksLikeCardNumber,linkAssets,unlinkAssets,linkedAssets,removeLinksTo,assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset,dateKinds,billingCycles,dayNumber,localDay,isoDay,addMonths,nextOccurrence,assetDateStatus,upcomingEvents,syncKey,assetSyncKey,isBlacklisted,findByExternal,findNameCollision,mergeCloudflare,mergeGitHub,applyCollision,parseSender,registrableDomain,cleanMerchant,findAmounts,findDates,findDomains,evidenceFacts,inferCycle,formatCost,matchAsset,buildCandidates,evidencePayload,parseAiItems,applyAiItem};
+if(typeof module!=='undefined')module.exports={ACTION_FIELDS,QUICK_LIMIT,validActionField,sshCommand,cloneUrl,quickActions,recencyTime,recentFirst,arrangeAssets,touchedPrefix,swapInOrder,bringToFront,DISPLAY_LIMITS,formatCount,rowLimit,wholeRows,strongDateIds,blockDensity,setBlockDensity,ensureBlock,iconHost,guessAssetType,regionList,regionName,regionFlag,phoneParts,regionFromPhone,maskPhone,maskEmail,cardExpiry,expiryText,looksLikeCardNumber,linkAssets,unlinkAssets,linkedAssets,removeLinksTo,assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset,dateKinds,billingCycles,dayNumber,localDay,isoDay,addMonths,nextOccurrence,assetDateStatus,upcomingEvents,syncKey,assetSyncKey,isBlacklisted,findByExternal,findNameCollision,mergeCloudflare,mergeGitHub,applyCollision,parseSender,registrableDomain,cleanMerchant,findAmounts,findDates,findDomains,evidenceFacts,inferCycle,formatCost,matchAsset,buildCandidates,evidencePayload,parseAiItems,applyAiItem};

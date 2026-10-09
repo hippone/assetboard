@@ -361,6 +361,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     }
     @objc func addBlock() { webView.evaluateJavaScript("document.querySelector('#add-block').click()") }
     @objc func focusSearch() { window.makeFirstResponder(searchField) }
+    @objc func showKeyboardHelp() { webView.evaluateJavaScript("toggleKeysHelp(true)") }
     @objc func openTheme() { webView.evaluateJavaScript("themeDialog()") }
     func demoBlocked() { webView.evaluateJavaScript("window.assetboardDemoBlocked?.()") }
     @objc func openCloudflare() { if demoMode { demoBlocked(); return }; webView.evaluateJavaScript("cloudflareDialog()") }
@@ -601,7 +602,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             return
         }
         // Demo mode answers saves as done without writing and refuses everything that would touch data, the Keychain or the network.
-        if demoMode, let action = body["action"] as? String, !["toolbarState", "openExternal"].contains(action) {
+        if demoMode, let action = body["action"] as? String, !["toolbarState", "openExternal", "copyText", "focusSearch"].contains(action) {
             if action == "save", let sequence = body["sequence"] as? Int { webView.evaluateJavaScript("window.assetboardSaved?.(\(sequence), true)") }
             else if action == "evidenceList" { webView.evaluateJavaScript("window.assetboardEvidenceList?.([], null)") }
             else { demoBlocked() }
@@ -611,6 +612,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             let pending = body["pending"] as? Int ?? 0
             inboxButton?.title = pending > 0 ? "待确认 \(pending)" : "待确认"
             searchField.stringValue = body["query"] as? String ?? ""
+            return
+        }
+        if body["action"] as? String == "focusSearch" { focusSearch(); return }
+        if body["action"] as? String == "copyText" {
+            if let text = body["text"] as? String, !text.isEmpty, text.count <= 4096 {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+            }
+            return
+        }
+        if body["action"] as? String == "openLocalDirectory" {
+            let opened = (body["path"] as? String).flatMap(LocalDirectory.validated).map(LocalDirectory.open) ?? false
+            webView.evaluateJavaScript("window.assetboardLocalResult?.(\(opened))")
             return
         }
         if body["action"] as? String == "openExternal" {
@@ -779,9 +793,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         let searchItem = NSMenuItem(title: "搜索资产", action: #selector(focusSearch), keyEquivalent: "k")
         searchItem.target = self
         editMenu.addItem(searchItem)
-        for (title, action, key) in [("撤销", "undo:", "z"), ("剪切", "cut:", "x"), ("复制", "copy:", "c"), ("粘贴", "paste:", "v"), ("全选", "selectAll:", "a")] {
+        for (title, action, key) in [("撤销", "undo:", "z"), ("重做", "redo:", "Z"), ("剪切", "cut:", "x"), ("复制", "copy:", "c"), ("粘贴", "paste:", "v"), ("全选", "selectAll:", "a")] {
             editMenu.addItem(withTitle: title, action: Selector(action), keyEquivalent: key)
         }
+        editMenu.addItem(.separator())
+        let keysItem = NSMenuItem(title: "键盘快捷键", action: #selector(showKeyboardHelp), keyEquivalent: "")
+        keysItem.target = self
+        editMenu.addItem(keysItem)
         editItem.submenu = editMenu
         menu.addItem(editItem)
         NSApplication.shared.mainMenu = menu
@@ -843,6 +861,43 @@ final class MockIconProtocol: URLProtocol {
 }
 
 // Host validation, icon link ranking, fallbacks and PNG normalisation, with HTTP stubbed.
+// "Open in local editor": only an existing local folder, never a file, URL or path with "..".
+enum LocalDirectory {
+    static let editors = ["com.todesktop.230313mzl4w4u92", "com.microsoft.VSCode", "dev.zed.Zed"]
+    static func validated(_ raw: String) -> URL? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 1000, !trimmed.contains("\0"),
+              trimmed.hasPrefix("/") || trimmed.hasPrefix("~/"),
+              !trimmed.split(separator: "/").contains("..") else { return nil }
+        let url = URL(fileURLWithPath: (trimmed as NSString).expandingTildeInPath).standardizedFileURL.resolvingSymlinksInPath()
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue,
+              !url.pathExtension.lowercased().hasSuffix("app") else { return nil }
+        return url
+    }
+    static func open(_ url: URL) -> Bool {
+        if let editor = editors.lazy.compactMap({ NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }).first {
+            NSWorkspace.shared.open([url], withApplicationAt: editor, configuration: NSWorkspace.OpenConfiguration())
+            return true
+        }
+        return NSWorkspace.shared.open(url)
+    }
+}
+
+func testLocalDirectory() {
+    let temp = FileManager.default.temporaryDirectory.appendingPathComponent("assetboard-local-" + UUID().uuidString)
+    try! FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: temp) }
+    let file = temp.appendingPathComponent("note.txt")
+    try! Data("x".utf8).write(to: file)
+    precondition(LocalDirectory.validated(temp.path)?.path == temp.resolvingSymlinksInPath().path, "Existing folder must be accepted")
+    precondition(LocalDirectory.validated("~/")?.path == FileManager.default.homeDirectoryForCurrentUser.resolvingSymlinksInPath().path, "Home shorthand must expand")
+    for refused in [file.path, temp.path + "/missing", "relative/path", "https://example.com", temp.path + "/../" + temp.lastPathComponent, "", "/Applications/Safari.app"] {
+        precondition(LocalDirectory.validated(refused) == nil, "Path must be refused: \(refused)")
+    }
+    print("PASS: local folder validation")
+}
+
 func testIcons() {
     precondition(IconFetcher.host(from: " Wise.com ") == "wise.com")
     precondition(IconFetcher.host(from: "https://www.hsbc.com.hk/zh-hk/") == "www.hsbc.com.hk")
@@ -1270,6 +1325,8 @@ if CommandLine.arguments.contains("--make-icon"), let target = CommandLine.argum
     testCloudflareInventory()
 } else if CommandLine.arguments.contains("--test-ai") {
     testAI()
+} else if CommandLine.arguments.contains("--test-local") {
+    testLocalDirectory()
 } else if CommandLine.arguments.contains("--test-icons") {
     testIcons()
 } else if CommandLine.arguments.contains("--test-webview") {

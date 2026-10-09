@@ -432,3 +432,37 @@ body.resize-x,body.resize-x *{cursor:ew-resize!important}body.resize-y,body.resi
 .swap-target{outline:2px solid rgb(var(--tone-primary));outline-offset:2px;transition:outline-color .15s ease}
 .order-actions{margin-top:-4px}
 
+
+/* Keyboard (2026-10-09): focus rings, category quick actions, keyboard swap mark and the shortcut overlay. */
+button:focus-visible,a:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{outline:2px solid rgb(var(--tone-primary));outline-offset:2px}
+#board :is(.card-open,.compact-repo-open):focus-visible{outline:none}
+#board .asset-card:has(> .card-open:focus-visible),#board .compact-repo:has(> .compact-repo-open:focus-visible){outline:2px solid rgb(var(--tone-primary));outline-offset:2px}
+#board .flip-actions .button:focus-visible{outline-color:#fff;outline-offset:1px}
+#board .block-title:focus-visible{outline-offset:1px;border-radius:6px}
+.card-foot{justify-content:flex-end}.card-foot .card-event{margin-right:auto}
+.quick-action{flex:none;display:inline-grid;place-items:center;width:24px;height:24px;padding:0;border:0;border-radius:6px;background:none;color:var(--muted);cursor:pointer}
+.quick-action:hover{background:var(--hover);color:var(--ink)}
+.quick-action svg,.quick-row .button svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.quick-row .button{display:inline-flex;align-items:center;gap:6px}
+@media(hover:hover){.asset-card .quick-action{opacity:0;transition:opacity .15s}.asset-card:hover .quick-action,.asset-card:focus-within .quick-action{opacity:1}}
+body.drag-active .quick-action,.block.compact .quick-action{visibility:hidden}
+#board .swap-mark{outline:2px dashed rgb(var(--tone-primary));outline-offset:2px}
+.keys-help{position:fixed;inset:0;z-index:80;display:grid;place-items:center;padding:24px;background:var(--backdrop,rgba(0,0,0,.2));animation:keys-fade .15s ease-out}
+.keys-help[hidden]{display:none}
+.keys-card{width:min(600px,100%);max-height:calc(100vh - 48px);overflow:auto;padding:18px 22px 16px;border-radius:14px;background:var(--surface-card);border:1px solid var(--border);box-shadow:var(--shadow-pop);color:var(--ink);animation:keys-rise .18s cubic-bezier(.22,1,.36,1)}
+.keys-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.keys-head h2{margin:0;font-size:15px;font-weight:600}
+.keys-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 28px}
+.keys-grid h3{margin:0 0 6px;font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.4px}
+.keys-grid ul{margin:0;padding:0;list-style:none}
+.keys-grid li{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:4px 0;font-size:12px;border-top:1px solid var(--border)}
+.keys-grid li:first-child{border-top:0}
+.keys{display:inline-flex;gap:3px;flex:none}
+.keys kbd{min-width:20px;padding:2px 6px;border-radius:5px;border:1px solid var(--border);background:var(--hover);color:var(--ink);font:500 11px/1.3 -apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;text-align:center}
+.keys-foot{margin:12px 0 0;font-size:11px;color:var(--muted)}
+@media(max-width:560px){.keys-grid{grid-template-columns:1fr}}
+@keyframes keys-fade{from{opacity:0}}
+@keyframes keys-rise{from{opacity:0;transform:translateY(4px) scale(.99)}}
+@media(prefers-reduced-motion:reduce){.keys-help,.keys-card{animation:none}}
+.keys-head .close{position:static;flex:none}
+.keys-card:focus{outline:none}
