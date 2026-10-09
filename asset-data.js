@@ -677,4 +677,317 @@ function strongDateIds(assets,now=new Date(),limit=DISPLAY_LIMITS.strongDates){
  return new Set([...rows.filter(row=>row.status.level==='overdue'),...soon].map(row=>row.id));
 }
 
-if(typeof module!=='undefined')module.exports={ACTION_FIELDS,QUICK_LIMIT,validActionField,sshCommand,cloneUrl,quickActions,recencyTime,recentFirst,arrangeAssets,touchedPrefix,swapInOrder,bringToFront,DISPLAY_LIMITS,formatCount,rowLimit,wholeRows,strongDateIds,blockDensity,setBlockDensity,ensureBlock,iconHost,iconVendor,iconVendors,vendorForHost,iconPlan,guessAssetType,regionList,regionName,regionFlag,phoneParts,regionFromPhone,maskPhone,maskEmail,cardExpiry,expiryText,looksLikeCardNumber,linkAssets,unlinkAssets,linkedAssets,removeLinksTo,assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset,dateKinds,billingCycles,dayNumber,localDay,isoDay,addMonths,nextOccurrence,assetDateStatus,upcomingEvents,syncKey,assetSyncKey,isBlacklisted,findByExternal,findNameCollision,mergeCloudflare,mergeGitHub,applyCollision,parseSender,registrableDomain,cleanMerchant,findAmounts,findDates,findDomains,evidenceFacts,inferCycle,formatCost,matchAsset,buildCandidates,evidencePayload,parseAiItems,applyAiItem};
+
+// Batch import (2026-10-09): CSV/table paste, JSON backup restore. Pure; the UI decides when to preview.
+const IMPORT_ROW_LIMIT=100;
+const IMPORT_SECRET_HEADERS=/^(?:password|passwd|pwd|pass|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|auth|authorization|cvv|cvc|pin|ssn|信用卡|密码|令牌|密钥)$/i;
+const IMPORT_HEADER_ALIASES={
+ name:['name','domain','domain name','hostname','host name','asset','title','名称','域名','主机','资产','项目'],
+ type:['type','category','kind','类别','类型','分类'],
+ provider:['provider','registrar','vendor','platform','平台','注册商','厂商','服务商'],
+ account:['account','owner','login','账号','账户','登录','归属'],
+ date:['date','expiry','expires','expires at','expiration','expiration date','next date','renewal','due','到期','到期日','过期','下次','续费','扣款'],
+ dateKind:['date kind','date type','日期类型'],
+ cycle:['cycle','billing cycle','period','周期','计费周期'],
+ cost:['cost','price','amount','fee','费用','价格','金额'],
+ url:['url','link','management url','dashboard','网址','链接','管理链接'],
+ notes:['notes','note','remark','comment','备注','说明'],
+ purpose:['purpose','description','用途','描述']
+};
+const IMPORT_TYPE_ALIASES={
+ domain:['domain','domains','域名'],
+ server:['server','vps','droplet','instance','服务器','云主机'],
+ subscription:['subscription','subscriptions','tool','tools','订阅','工具'],
+ database:['database','db','数据库'],
+ license:['license','licence','授权','许可证'],
+ repository:['repository','repo','repositories','仓库','代码仓库'],
+ deployment:['deployment','pages','worker','workers','部署','部署服务'],
+ storage:['storage','bucket','r2','对象存储','存储'],
+ ai:['ai','ai subscription','ai 订阅'],
+ bankcard:['bankcard','card','银行卡'],
+ phone:['phone','mobile','手机','手机号'],
+ appleid:['appleid','apple id','apple'],
+ google:['google','gmail','google 账号']
+};
+const VENDOR_CSV_PRESETS=[
+ {id:'namecheap',label:'Namecheap',match:h=>h.includes('domain name')&&(h.includes('expires')||h.includes('expired date')),map:{name:'domain name',date:'expires',provider:()=>'Namecheap',type:()=>'domain'}},
+ {id:'godaddy',label:'GoDaddy',match:h=>h.includes('domain name')&&(h.includes('expiration date')||h.includes('expires')),map:{name:'domain name',date:h=>h.find(x=>x.includes('expiration')||x==='expires')||'expiration date',provider:()=>'GoDaddy',type:()=>'domain'}},
+ {id:'porkbun',label:'Porkbun',match:h=>h.includes('domain')&&h.includes('expire date'),map:{name:'domain',date:'expire date',provider:()=>'Porkbun',type:()=>'domain'}},
+ {id:'aliyun',label:'阿里云',match:h=>(h.includes('域名')||h.includes('实例名称'))&&(h.includes('到期')||h.includes('到期日期')),map:{name:h=>h.find(x=>x.includes('域名')||x.includes('实例')||x==='名称')||'域名',date:h=>h.find(x=>x.includes('到期'))||'到期日期',provider:()=>'阿里云'}},
+ {id:'tencent',label:'腾讯云',match:h=>h.includes('域名')&&h.includes('到期时间'),map:{name:'域名',date:'到期时间',provider:()=>'腾讯云',type:()=>'domain'}},
+ {id:'vultr',label:'Vultr',match:h=>h.includes('label')&&(h.includes('main ip')||h.includes('ip address')),map:{name:'label',provider:()=>'Vultr',type:()=>'server',notes:h=>h.find(x=>x.includes('ip'))||'main ip'}},
+ {id:'digitalocean',label:'DigitalOcean',match:h=>h.includes('name')&&h.includes('ip address')&&h.includes('region'),map:{name:'name',provider:()=>'DigitalOcean',type:()=>'server',account:'region'}},
+ {id:'hetzner',label:'Hetzner',match:h=>h.includes('name')&&(h.includes('server')||h.includes('ipv4')),map:{name:'name',provider:()=>'Hetzner',type:()=>'server'}}
+];
+
+function normalizeImportHeader(value){return String(value||'').trim().toLowerCase().replace(/[\s_-]+/g,' ').replace(/[^\w\u4e00-\u9fa5 ]+/g,'');}
+function importHeaderField(header){
+ const key=normalizeImportHeader(header);
+ if(IMPORT_SECRET_HEADERS.test(key.replace(/\s/g,'')))return 'secret';
+ for(const [field,aliases] of Object.entries(IMPORT_HEADER_ALIASES))if(aliases.includes(key))return field;
+ return null;
+}
+function importTypeFromText(value){
+ const key=normalizeImportHeader(value);
+ for(const [type,aliases] of Object.entries(IMPORT_TYPE_ALIASES))if(aliases.includes(key))return type;
+ return null;
+}
+function splitDelimitedLine(line,delimiter){
+ const cells=[];let current='',inQuotes=false;
+ for(let i=0;i<line.length;i++){
+  const ch=line[i];
+  if(ch==='"'){if(inQuotes&&line[i+1]==='"'){current+='"';i++;}else inQuotes=!inQuotes;continue;}
+  if(ch===delimiter&&!inQuotes){cells.push(current);current='';continue;}
+  current+=ch;
+ }
+ cells.push(current);
+ return cells.map(cell=>cell.trim());
+}
+function detectDelimiter(sample){
+ const lines=sample.split(/\r?\n/).filter(line=>line.trim()).slice(0,5);
+ if(!lines.length)return ',';
+ const scores={'\t':0,',':0,';':0};
+ for(const line of lines)for(const d of Object.keys(scores))scores[d]+=Math.max(0,splitDelimitedLine(line,d).length-1);
+ return Object.entries(scores).sort((a,b)=>b[1]-a[1])[0][0];
+}
+function parseDelimitedText(text,{limit=IMPORT_ROW_LIMIT}={}){
+ const raw=String(text||'').replace(/^\uFEFF/,'').trim();
+ if(!raw)return {ok:false,error:'没有可解析的表格内容',headers:[],rows:[],droppedSecrets:[],truncated:null};
+ const delimiter=detectDelimiter(raw);
+ const lines=raw.split(/\r?\n/).filter(line=>line.trim());
+ if(lines.length<2)return {ok:false,error:'表格至少需要表头和一行数据',headers:[],rows:[],droppedSecrets:[],delimiter};
+ const headers=splitDelimitedLine(lines[0],delimiter);
+ const droppedSecrets=[];
+ const fields=headers.map(header=>{
+  const field=importHeaderField(header);
+  if(field==='secret'){droppedSecrets.push(header);return null;}
+  return field;
+ });
+ if(!fields.includes('name')){
+  // Vendor presets may still map a name column by raw header.
+  const normalized=headers.map(normalizeImportHeader);
+  const preset=VENDOR_CSV_PRESETS.find(item=>item.match(normalized));
+  if(!preset)return {ok:false,error:'未识别到名称列。请包含「名称」或「域名」表头。',headers,rows:[],droppedSecrets,delimiter};
+ }
+ const dataLines=lines.slice(1);
+ const truncated=dataLines.length>limit;
+ const rows=dataLines.slice(0,limit).map((line,index)=>{
+  const cells=splitDelimitedLine(line,delimiter);
+  const row={_line:index+2};
+  headers.forEach((header,i)=>{if(fields[i]&&fields[i]!=='secret')row[fields[i]]=cells[i]??'';row['raw:'+normalizeImportHeader(header)]=cells[i]??'';});
+  return row;
+ });
+ const normalized=headers.map(normalizeImportHeader);
+ const preset=VENDOR_CSV_PRESETS.find(item=>item.match(normalized))||null;
+ return {ok:true,headers,rows,droppedSecrets,delimiter,truncated,preset,totalRows:dataLines.length};
+}
+function resolvePresetValue(spec,headers,row){
+ if(typeof spec==='function'){
+  const key=spec(headers.map(normalizeImportHeader));
+  return typeof key==='string'?row['raw:'+normalizeImportHeader(key)]??row[key]??'':key;
+ }
+ if(typeof spec==='string')return row['raw:'+normalizeImportHeader(spec)]??row[importHeaderField(spec)]??'';
+ return '';
+}
+function parseImportDate(value){
+ const text=String(value||'').trim();
+ if(!text)return '';
+ for(const [pattern,read] of datePatterns){
+  pattern.lastIndex=0;
+  const match=pattern.exec(text);
+  if(match){
+   const [y,m,d]=read(match);
+   if(y>=2000&&y<=2100&&m>=1&&m<=12&&d>=1&&d<=31)return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  }
+ }
+ return '';
+}
+function csvSyncKey(type,name){return syncKey('csv',`${type}:${String(name||'').trim().toLowerCase()}`);}
+function rowsToImportItems(parsed,{types=Object.keys(IMPORT_TYPE_ALIASES)}={}){
+ if(!parsed?.ok)return {items:[],unreadable:[{reason:parsed?.error||'无法解析'}]};
+ const items=[],unreadable=[];
+ const headers=parsed.headers.map(normalizeImportHeader);
+ for(const row of parsed.rows){
+  let name=String(row.name||'').trim();
+  let type=importTypeFromText(row.type)||'';
+  let provider=String(row.provider||'').trim();
+  let account=String(row.account||'').trim();
+  let date=parseImportDate(row.date);
+  let dateKind=dateKinds[row.dateKind]?row.dateKind:'expire';
+  let cycle=billingCycles[row.cycle]?row.cycle:'';
+  let cost=String(row.cost||'').trim();
+  let url=String(row.url||'').trim();
+  let notes=String(row.notes||'').trim();
+  let purpose=String(row.purpose||'').trim();
+  if(parsed.preset){
+   const map=parsed.preset.map;
+   if(map.name)name=String(resolvePresetValue(map.name,parsed.headers,row)||name).trim();
+   if(map.type)type=importTypeFromText(resolvePresetValue(map.type,parsed.headers,row))||(typeof map.type==='function'?map.type():type);
+   if(map.provider)provider=String(resolvePresetValue(map.provider,parsed.headers,row)||provider).trim();
+   if(map.account)account=String(resolvePresetValue(map.account,parsed.headers,row)||account).trim();
+   if(map.date)date=parseImportDate(resolvePresetValue(map.date,parsed.headers,row))||date;
+   if(map.notes){const extra=String(resolvePresetValue(map.notes,parsed.headers,row)||'').trim();if(extra)notes=notes?`${notes} · ${extra}`:extra;}
+   if(map.cost)cost=String(resolvePresetValue(map.cost,parsed.headers,row)||cost).trim();
+   if(map.url)url=String(resolvePresetValue(map.url,parsed.headers,row)||url).trim();
+  }
+  if(!type)type=guessAssetType(`${name} ${provider} ${notes} ${purpose}`,/\./.test(name)?[name.toLowerCase()]:[]);
+  if(!types.includes(type))type='subscription';
+  if(!name){unreadable.push({line:row._line,reason:'缺少名称',raw:row});continue;}
+  if(url){try{const parsedUrl=new URL(url);if(!/^https?:$/.test(parsedUrl.protocol)||parsedUrl.username||parsedUrl.password)url='';}catch{url='';}}
+  const externalId=`${type}:${name.toLowerCase()}`;
+  items.push({name:name.slice(0,100),type,provider:provider.slice(0,80),account:account.slice(0,100),date,dateKind,cycle,cost:cost.slice(0,80),url:url.slice(0,2000),notes:notes.slice(0,2000),purpose:purpose.slice(0,100),source:'csv',externalId,vendorPreset:parsed.preset?.id||null});
+ }
+ return {items,unreadable,truncated:parsed.preset,droppedSecrets:parsed.droppedSecrets||[],truncated:parsed.truncated,totalRows:parsed.totalRows};
+}
+function classifyImportPayload({text='',filename='',mime=''}={}){
+ const name=String(filename||'').toLowerCase(),type=String(mime||'').toLowerCase(),body=String(text||'');
+ if(/\.(png|jpe?g|webp)$/i.test(name)||/^image\//.test(type))return {kind:'image',filename};
+ if(/\.pdf$/i.test(name)||type==='application/pdf')return {kind:'pdf',filename};
+ if(/\.csv$/i.test(name)||type==='text/csv'||type==='text/tab-separated-values')return {kind:'csv',filename,text:body};
+ if(/\.tsv$/i.test(name))return {kind:'csv',filename,text:body};
+ if(/\.json$/i.test(name)||type==='application/json')return {kind:'json',filename,text:body};
+ const trimmed=body.trim();
+ if(!trimmed)return {kind:'empty'};
+ if(/^[\[{]/.test(trimmed)){
+  try{const value=JSON.parse(trimmed);if(value&&typeof value==='object'&&(Array.isArray(value.assets)||Array.isArray(value.blocks)))return {kind:'json',filename,text:trimmed};}catch{}
+ }
+ if((trimmed.includes('\n')&&(/,|\t|;/.test(trimmed.split(/\n/,1)[0])))||(trimmed.includes('\t')&&trimmed.includes('\n'))){
+  const parsed=parseDelimitedText(trimmed);
+  if(parsed.ok)return {kind:'csv',filename,text:trimmed,parsed};
+ }
+ return {kind:'paste',text:trimmed};
+}
+function findCsvMatch(board,item){
+ const key=csvSyncKey(item.type,item.name);
+ const byKey=board.assets.find(asset=>assetSyncKey(asset)===key||(asset.source==='csv'&&asset.externalId===item.externalId));
+ if(byKey)return byKey;
+ return board.assets.find(asset=>asset.type===item.type&&asset.name===item.name&&asset.source!=='demo');
+}
+function planImport(board,items,{sameName='skip'}={}){
+ const added=[],updated=[],collisions=[],skippedDeleted=[],hidden=[],skippedSame=[];
+ if(!Array.isArray(board.deletedExternalIds))board={...board,deletedExternalIds:[]};
+ for(const item of items||[]){
+  const key=csvSyncKey(item.type,item.name);
+  if(isBlacklisted(board,key)||isBlacklisted(board,`csv:${item.externalId}`)){skippedDeleted.push({item,key});continue;}
+  const existing=findCsvMatch(board,item);
+  if(existing){
+   if(sameName==='skip'){skippedSame.push({item,assetId:existing.id,name:existing.name,hidden:!!existing.hiddenAt});continue;}
+   const target={item,assetId:existing.id,name:existing.name,hidden:!!existing.hiddenAt};
+   if(existing.hiddenAt)hidden.push(target);else updated.push(target);
+   continue;
+  }
+  const collision=findNameCollision(board,'csv',item.name,item.type,item.externalId);
+  if(collision){
+   if(sameName==='skip'){skippedSame.push({item,assetId:collision.id,name:collision.name,hidden:!!collision.hiddenAt});continue;}
+   collisions.push({item,assetId:collision.id,name:collision.name,hidden:!!collision.hiddenAt});
+   continue;
+  }
+  added.push({item});
+ }
+ const conflicts=collisions.length+skippedDeleted.length+hidden.length>0;
+ return {added,updated,collisions,skippedDeleted,hidden,skippedSame,conflicts,sameName};
+}
+function importItemFields(item,syncedAt){
+ return {
+  name:item.name,type:item.type,provider:item.provider||'',account:item.account||'',purpose:item.purpose||'',
+  date:item.date||'',dateKind:item.dateKind||'expire',cycle:item.cycle||'',cost:item.cost||'未知',
+  notes:item.notes||'',url:item.url||'',source:'csv',externalId:item.externalId,syncedAt,
+  event:item.date?`${item.date} ${dateKinds[item.dateKind||'expire'].future}`:'日期待补充',art:'generic'
+ };
+}
+function applyImport(board,plan,{restoreKeys=[],applySame=[],applyCollisions=[],now=new Date().toISOString()}={}){
+ const next=structuredClone(board);
+ if(!Array.isArray(next.deletedExternalIds))next.deletedExternalIds=[];
+ const restore=new Set(restoreKeys);
+ if(restore.size)next.deletedExternalIds=next.deletedExternalIds.filter(key=>!restore.has(key));
+ const writeNew=entry=>{
+  const fields=importItemFields(entry.item,now);
+  const id='csv-'+cryptoRandomId();
+  next.assets.push({id,createdAt:now,...fields});
+  ensureBlock(next,fields.type);
+  if(next.cardOrder?.[fields.type]?.length)next.cardOrder[fields.type].unshift(id);
+ };
+ const writeUpdate=(assetId,item)=>{
+  const asset=next.assets.find(a=>a.id===assetId);if(!asset)return;
+  const fields=importItemFields(item,now);
+  Object.assign(asset,{name:fields.name,provider:fields.provider,account:fields.account,purpose:fields.purpose||asset.purpose,date:fields.date||asset.date,dateKind:fields.dateKind,cycle:fields.cycle||asset.cycle,cost:fields.cost==='未知'?asset.cost:fields.cost,notes:fields.notes||asset.notes,url:fields.url||asset.url,source:'csv',externalId:fields.externalId,syncedAt:now,updatedAt:now,event:fields.event});
+  // Keep hiddenAt untouched.
+  ensureBlock(next,asset.type);
+ };
+ for(const entry of plan.added||[])writeNew(entry);
+ for(const entry of plan.updated||[])writeUpdate(entry.assetId,entry.item);
+ for(const entry of plan.hidden||[])writeUpdate(entry.assetId,entry.item);
+ for(const key of applySame){const entry=(plan.skippedSame||[]).find(row=>row.assetId===key||row.item.externalId===key);if(entry)writeUpdate(entry.assetId,entry.item);}
+ for(const key of applyCollisions){const entry=(plan.collisions||[]).find(row=>row.assetId===key);if(entry)writeUpdate(entry.assetId,entry.item);}
+ for(const entry of plan.skippedDeleted||[]){
+  if(!restore.has(entry.key))continue;
+  writeNew(entry);
+ }
+ return next;
+}
+function cryptoRandomId(){
+ if(typeof crypto!=='undefined'&&crypto.randomUUID)return crypto.randomUUID();
+ return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&0x3|0x8)).toString(16);});
+}
+function parseBoardBackup(text){
+ let value;
+ try{value=typeof text==='string'?JSON.parse(text):text;}catch{return {ok:false,error:'不是有效的 JSON'};}
+ if(!value||typeof value!=='object'||Array.isArray(value))return {ok:false,error:'备份需要是对象'};
+ if(!Array.isArray(value.assets)||!Array.isArray(value.blocks))return {ok:false,error:'备份缺少 assets 或 blocks'};
+ if(value.blocks.some(block=>!block||typeof block.id!=='string'))return {ok:false,error:'区块格式无效'};
+ if(value.assets.some(asset=>!asset||typeof asset.id!=='string'||typeof asset.name!=='string'||typeof asset.type!=='string'))return {ok:false,error:'资产格式无效'};
+ return {ok:true,board:{blocks:value.blocks,assets:value.assets,deletedExternalIds:Array.isArray(value.deletedExternalIds)?value.deletedExternalIds:[],evidenceDecisions:value.evidenceDecisions&&typeof value.evidenceDecisions==='object'?value.evidenceDecisions:{},cardOrder:value.cardOrder&&typeof value.cardOrder==='object'?value.cardOrder:{},featuredRepositoryIds:Array.isArray(value.featuredRepositoryIds)?value.featuredRepositoryIds:[],theme:value.theme}};
+}
+function planBoardBackup(current,backup,{mode='merge'}={}){
+ if(!backup?.ok)return {ok:false,error:backup?.error||'无效备份',conflicts:true};
+ if(mode==='replace')return {ok:true,mode:'replace',added:backup.board.assets.map(asset=>({item:asset})),updated:[],collisions:[],skippedDeleted:[],hidden:[],skippedSame:[],conflicts:true,board:backup.board};
+ const added=[],updated=[],skippedDeleted=[];
+ const currentIds=new Set(current.assets.map(a=>a.id));
+ const deleted=new Set(current.deletedExternalIds||[]);
+ for(const asset of backup.board.assets){
+  if(deleted.has(asset.id)||(assetSyncKey(asset)&&deleted.has(assetSyncKey(asset)))){skippedDeleted.push({item:asset,key:assetSyncKey(asset)||asset.id});continue;}
+  if(currentIds.has(asset.id))updated.push({item:asset,assetId:asset.id,name:asset.name,hidden:!!current.assets.find(a=>a.id===asset.id)?.hiddenAt});
+  else added.push({item:asset});
+ }
+ const hidden=updated.filter(row=>row.hidden);
+ const plainUpdated=updated.filter(row=>!row.hidden);
+ return {ok:true,mode:'merge',added,updated:plainUpdated,collisions:[],skippedDeleted,hidden,skippedSame:[],conflicts:skippedDeleted.length+hidden.length>0,board:backup.board};
+}
+function applyBoardBackup(current,plan,{restoreKeys=[]}={}){
+ if(plan.mode==='replace'){
+  const next=structuredClone(plan.board);
+  if(!Array.isArray(next.deletedExternalIds))next.deletedExternalIds=[];
+  return next;
+ }
+ const next=structuredClone(current);
+ if(!Array.isArray(next.deletedExternalIds))next.deletedExternalIds=[];
+ const restore=new Set(restoreKeys);
+ if(restore.size)next.deletedExternalIds=next.deletedExternalIds.filter(key=>!restore.has(key));
+ const byId=new Map(next.assets.map(asset=>[asset.id,asset]));
+ for(const entry of [...plan.updated,...plan.hidden]){
+  const local=byId.get(entry.assetId);if(!local)continue;
+  const incoming=entry.item;
+  Object.assign(local,{...incoming,hiddenAt:local.hiddenAt,iconData:local.iconData||incoming.iconData,siteIcon:local.siteIcon||incoming.siteIcon,siteIconHost:local.siteIconHost||incoming.siteIconHost,notes:incoming.notes||local.notes});
+  ensureBlock(next,local.type);
+ }
+ for(const entry of plan.added){
+  if(byId.has(entry.item.id))continue;
+  next.assets.push(structuredClone(entry.item));
+  ensureBlock(next,entry.item.type);
+ }
+ for(const entry of plan.skippedDeleted){
+  if(!restore.has(entry.key))continue;
+  if(byId.has(entry.item.id))continue;
+  next.assets.push(structuredClone(entry.item));
+  ensureBlock(next,entry.item.type);
+ }
+ if(plan.board.evidenceDecisions)next.evidenceDecisions={...(next.evidenceDecisions||{}),...plan.board.evidenceDecisions};
+ if(plan.board.cardOrder)next.cardOrder={...(next.cardOrder||{}),...plan.board.cardOrder};
+ for(const key of plan.board.deletedExternalIds||[])if(!restore.has(key)&&!next.deletedExternalIds.includes(key))next.deletedExternalIds.push(key);
+ return next;
+}
+function demoImportSampleCsv(){
+ return ['名称,类别,平台,到期日,费用,备注','sample-studio.com,域名,示例注册商,2026-10-21,$10.98 / 年,演示用域名','demo-box-tokyo,服务器,Example VPS,2026-11-04,$6.00 / 月,演示用服务器','Example Notes Pro,订阅与工具,Example Notes,2026-11-06,$8.00 / 月,演示用订阅'].join('\n');
+}
+
+if(typeof module!=='undefined')module.exports={ACTION_FIELDS,QUICK_LIMIT,validActionField,sshCommand,cloneUrl,quickActions,recencyTime,recentFirst,arrangeAssets,touchedPrefix,swapInOrder,bringToFront,DISPLAY_LIMITS,formatCount,rowLimit,wholeRows,strongDateIds,blockDensity,setBlockDensity,ensureBlock,iconHost,iconVendor,iconVendors,vendorForHost,iconPlan,guessAssetType,regionList,regionName,regionFlag,phoneParts,regionFromPhone,maskPhone,maskEmail,cardExpiry,expiryText,looksLikeCardNumber,linkAssets,unlinkAssets,linkedAssets,removeLinksTo,assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset,dateKinds,billingCycles,dayNumber,localDay,isoDay,addMonths,nextOccurrence,assetDateStatus,upcomingEvents,syncKey,assetSyncKey,isBlacklisted,findByExternal,findNameCollision,mergeCloudflare,mergeGitHub,applyCollision,parseSender,registrableDomain,cleanMerchant,findAmounts,findDates,findDomains,evidenceFacts,inferCycle,formatCost,matchAsset,buildCandidates,evidencePayload,parseAiItems,applyAiItem,IMPORT_ROW_LIMIT,parseDelimitedText,importHeaderField,rowsToImportItems,classifyImportPayload,planImport,applyImport,parseBoardBackup,planBoardBackup,applyBoardBackup,demoImportSampleCsv,csvSyncKey,VENDOR_CSV_PRESETS};

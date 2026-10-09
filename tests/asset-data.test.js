@@ -404,3 +404,73 @@ test('category quick actions are open/copy only, local folders only in the app',
  for(const [key,value] of [['localPath','relative'],['localPath','/a/../b'],['sshPort','70000'],['sshUser','root;rm'],['host','a b']])assert.equal(validActionField(key,value),false,key+'='+value);
  for(const [key,value] of [['localPath','/Users/me/code'],['localPath',''],['sshPort','22'],['host','example.org'],['host','2001:db8::1']])assert.equal(validActionField(key,value),true,key+'='+value);
 });
+
+const {
+  IMPORT_ROW_LIMIT,parseDelimitedText,rowsToImportItems,classifyImportPayload,planImport,applyImport,
+  parseBoardBackup,planBoardBackup,applyBoardBackup,demoImportSampleCsv,csvSyncKey,isBlacklisted
+}=require('../asset-data.js');
+
+test('parses CSV with header aliases and drops secret columns',()=>{
+ const parsed=parseDelimitedText('Domain Name,Registrar,Expires,Password\nexample.com,Namecheap,2027-03-01,s3cret\n');
+ assert.equal(parsed.ok,true);
+ assert.deepEqual(parsed.droppedSecrets,['Password']);
+ assert.equal(parsed.preset?.id,'namecheap');
+ const {items,unreadable}=rowsToImportItems(parsed);
+ assert.equal(unreadable.length,0);
+ assert.equal(items.length,1);
+ assert.equal(items[0].name,'example.com');
+ assert.equal(items[0].type,'domain');
+ assert.equal(items[0].provider,'Namecheap');
+ assert.equal(items[0].date,'2027-03-01');
+ assert.ok(!JSON.stringify(items).includes('s3cret'));
+});
+
+test('classifies pasted table, json backup, image and plain text',()=>{
+ assert.equal(classifyImportPayload({text:demoImportSampleCsv()}).kind,'csv');
+ assert.equal(classifyImportPayload({text:JSON.stringify({blocks:[],assets:[]}),filename:'backup.json'}).kind,'json');
+ assert.equal(classifyImportPayload({filename:'receipt.png',mime:'image/png'}).kind,'image');
+ assert.equal(classifyImportPayload({text:'Your plan renews on October 6, 2026 for $15.00/month'}).kind,'paste');
+});
+
+test('planImport skips same-name by default, respects blacklist, and applyImport restores',()=>{
+ const board={blocks:[{id:'domain',width:50}],assets:[{id:'a1',type:'domain',name:'example.com',source:'manual'}],deletedExternalIds:[csvSyncKey('domain','gone.com')]};
+ const items=rowsToImportItems(parseDelimitedText('名称,类别\nexample.com,域名\nfresh.dev,域名\ngone.com,域名\n')).items;
+ const plan=planImport(board,items,{sameName:'skip'});
+ assert.equal(plan.added.length,1);
+ assert.equal(plan.added[0].item.name,'fresh.dev');
+ assert.equal(plan.skippedSame.length,1);
+ assert.equal(plan.skippedDeleted.length,1);
+ assert.equal(plan.conflicts,true);
+ const next=applyImport(board,plan,{restoreKeys:[plan.skippedDeleted[0].key]});
+ assert.equal(next.assets.some(a=>a.name==='fresh.dev'),true);
+ assert.equal(next.assets.some(a=>a.name==='gone.com'&&a.source==='csv'),true);
+ assert.equal(isBlacklisted(next,plan.skippedDeleted[0].key),false);
+ assert.equal(next.assets.filter(a=>a.name==='example.com').length,1);
+});
+
+test('enforces the 100-row import limit',()=>{
+ const lines=['名称,类别',...Array.from({length:IMPORT_ROW_LIMIT+5},(_,i)=>`site-${i}.com,域名`)];
+ const parsed=parseDelimitedText(lines.join('\n'));
+ assert.equal(parsed.ok,true);
+ assert.equal(parsed.truncated,true);
+ assert.equal(parsed.rows.length,IMPORT_ROW_LIMIT);
+ assert.equal(parsed.totalRows,IMPORT_ROW_LIMIT+5);
+});
+
+test('merges a JSON backup by id and can replace',()=>{
+ const current={blocks:[{id:'domain',width:50}],assets:[{id:'keep',type:'domain',name:'old.com',source:'manual',notes:'local'}],deletedExternalIds:[]};
+ const backup=parseBoardBackup(JSON.stringify({blocks:[{id:'domain',width:50},{id:'server',width:50}],assets:[{id:'keep',type:'domain',name:'new.com',source:'manual',notes:'from backup'},{id:'extra',type:'server',name:'box',source:'manual'}]}));
+ const mergePlan=planBoardBackup(current,backup,{mode:'merge'});
+ assert.equal(mergePlan.added.length,1);
+ assert.equal(mergePlan.updated.length,1);
+ assert.equal(mergePlan.conflicts,false);
+ const merged=applyBoardBackup(current,mergePlan);
+ assert.equal(merged.assets.find(a=>a.id==='keep').name,'new.com');
+ assert.equal(merged.assets.find(a=>a.id==='keep').notes,'from backup');
+ assert.ok(merged.assets.some(a=>a.id==='extra'));
+ const replacePlan=planBoardBackup(current,backup,{mode:'replace'});
+ assert.equal(replacePlan.conflicts,true);
+ const replaced=applyBoardBackup(current,replacePlan);
+ assert.equal(replaced.assets.length,2);
+ assert.ok(replaced.blocks.some(b=>b.id==='server'));
+});
