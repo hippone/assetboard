@@ -160,12 +160,14 @@ function syncKey(source,externalId,kind){
  const id=String(externalId);
  if(source==='cloudflare')return `cloudflare:${kind||'zone'}:${id}`;
  if(source==='github')return `github:${id}`;
+ if(source==='ssh')return `ssh:${id}`;
+ if(source==='csv')return `csv:${id}`;
  return `${source}:${id}`;
 }
 
 function assetSyncKey(asset){
  if(!asset)return null;
- return syncKey(asset.source,asset.externalId,asset.resourceKind)||(asset.source==='cloudflare'||asset.source==='github'?asset.id:null);
+ return syncKey(asset.source,asset.externalId,asset.resourceKind)||(['cloudflare','github','ssh'].includes(asset.source)?asset.id:null);
 }
 
 function isBlacklisted(board,key){return !!key&&Array.isArray(board.deletedExternalIds)&&board.deletedExternalIds.includes(key);}
@@ -191,19 +193,26 @@ function mergeCloudflare(board,result,syncedAt=new Date().toISOString()){
  let added=0;
  if(!Array.isArray(next.deletedExternalIds))next.deletedExternalIds=[];
  for(const item of resources){
-  const kind=item.kind||'zone',type=kind==='zone'?'domain':kind==='r2'?'storage':'deployment',id=`cloudflare-${kind}-${item.id}`;
+  const kind=item.kind||'zone',type=kind==='zone'||kind==='registrar'?'domain':kind==='r2'?'storage':'deployment',id=`cloudflare-${kind==='registrar'?'zone':kind}-${item.id}`;
+  // Registrar rows enrich a zone by domain name when possible; otherwise create a domain asset.
   seen.add(id);
-  if(isBlacklisted(next,syncKey('cloudflare',item.id,kind))||isBlacklisted(next,id))continue;
-  const fields={name:item.name,account:item.account,syncStatus:item.status,syncedAt,resourceKind:kind,externalId:item.id,source:'cloudflare',provider:'Cloudflare'};
-  const existing=next.assets.find(asset=>asset.id===id)||findByExternal(next,'cloudflare',item.id,kind);
+  if(isBlacklisted(next,syncKey('cloudflare',item.id,kind==='registrar'?'zone':kind))||isBlacklisted(next,id))continue;
+  const expiry=item.expiresAt?String(item.expiresAt).slice(0,10):'';
+  const fields={name:item.name,account:item.account,syncStatus:item.status,syncedAt,resourceKind:kind==='registrar'?'zone':kind,externalId:item.id,source:'cloudflare',provider:'Cloudflare'};
+  if(expiry){fields.date=expiry;fields.dateKind='expire';if(item.autoRenew===true||item.autoRenew==='1'||item.autoRenew===1)fields.cycle='yearly';}
+  const existing=next.assets.find(asset=>asset.id===id)||findByExternal(next,'cloudflare',item.id,kind==='registrar'?'zone':kind)
+   ||(kind==='registrar'?next.assets.find(asset=>asset.source==='cloudflare'&&asset.type==='domain'&&asset.name===item.name):null);
   if(existing){
-   applySyncedFields(existing,fields);
-   existing.event=item.status||existing.event||'状态未知';
+   applySyncedFields(existing,{...fields,externalId:existing.externalId||fields.externalId,resourceKind:existing.resourceKind||fields.resourceKind});
+   if(expiry){existing.date=expiry;existing.dateKind='expire';if(item.autoRenew===true||item.autoRenew==='1'||item.autoRenew===1)existing.cycle='yearly';existing.event=`${expiry} ${dateKinds.expire.future}`;}
+   else existing.event=item.status||existing.event||'状态未知';
+   if(item.account)existing.account=item.account;
    seen.add(existing.id);
   }else{
    const collision=findNameCollision(next,'cloudflare',item.name,type,item.id);
-   if(collision){collisions.push({assetId:collision.id,name:item.name,source:'Cloudflare',fields:{...fields,type,url:item.url||collision.url}});continue;}
-   next.assets.push({id,createdAt:syncedAt,type,name:item.name,provider:'Cloudflare',account:item.account,purpose:kind==='zone'?'DNS Zone':kind==='r2'?'R2 Bucket':kind==='pages'?'Pages 项目':'Worker 脚本',event:item.status||'状态未知',date:'',cost:'未知',notes:'Cloudflare 资源列表同步；到期日和账单未知。',url:item.url,art:'generic',source:'cloudflare',resourceKind:kind,externalId:item.id,syncStatus:item.status,syncedAt});
+   if(collision){collisions.push({assetId:collision.id,name:item.name,source:'Cloudflare',fields:{...fields,type,url:item.url||collision.url,date:expiry||collision.date,dateKind:expiry?'expire':collision.dateKind}});continue;}
+   const purpose=kind==='zone'||kind==='registrar'?'DNS Zone':kind==='r2'?'R2 Bucket':kind==='pages'?'Pages 项目':'Worker 脚本';
+   next.assets.push({id,createdAt:syncedAt,type,name:item.name,provider:'Cloudflare',account:item.account,purpose,event:expiry?`${expiry} ${dateKinds.expire.future}`:(item.status||'状态未知'),date:expiry,dateKind:expiry?'expire':'expire',cycle:item.autoRenew?'yearly':'',cost:'未知',notes:expiry?'Cloudflare Registrar 同步（含到期日）。':'Cloudflare 资源列表同步；到期日和账单未知。',url:item.url,art:'generic',source:'cloudflare',resourceKind:kind==='registrar'?'zone':kind,externalId:item.id,syncStatus:item.status,syncedAt});
    added++;
   }
   ensureBlock(next,type);
@@ -839,10 +848,120 @@ function rowsToImportItems(parsed,{types=Object.keys(IMPORT_TYPE_ALIASES)}={}){
  }
  return {items,unreadable,truncated:parsed.preset,droppedSecrets:parsed.droppedSecrets||[],truncated:parsed.truncated,totalRows:parsed.totalRows};
 }
+
+// Cloudflare user-token template URL (permission keys verified against Cloudflare template docs 2026).
+// Registrar is requested separately when possible; missing Registrar permission only skips expiry enrichment.
+const CLOUDFLARE_TOKEN_PERMISSIONS=[{key:'zone',type:'read'},{key:'account_settings',type:'read'},{key:'page',type:'read'},{key:'workers_scripts',type:'read'},{key:'workers_r2',type:'read'}];
+function cloudflareTokenTemplateUrl({name='Assetboard',includeRegistrar=true}={}){
+ const perms=[...CLOUDFLARE_TOKEN_PERMISSIONS];
+ // Undocumented-ish key used by the dashboard for Registrar Domains Read; if Cloudflare ignores it, the form still prefills the rest.
+ if(includeRegistrar)perms.push({key:'registrar',type:'read'});
+ const encoded=encodeURIComponent(JSON.stringify(perms));
+ return `https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=${encoded}&accountId=*&zoneId=all&name=${encodeURIComponent(name)}`;
+}
+function githubTokenTemplateUrl(){
+ return 'https://github.com/settings/tokens?type=beta';
+}
+
+// ~/.ssh/config → server candidates. Only Host / HostName / User / Port; never reads key files.
+function parseSshConfig(text){
+ const lines=String(text||'').split(/\r?\n/),hosts=[],glob=/[*?]/;
+ let current=null;
+ const flush=()=>{if(current&&current.name&&!glob.test(current.name)&&current.name.toLowerCase()!=='host')hosts.push(current);current=null;};
+ for(const raw of lines){
+  const line=raw.replace(/(^|\s)#.*$/,'').trim();if(!line)continue;
+  const match=/^(Host|HostName|User|Port|Include)\s+(.+)$/i.exec(line);if(!match)continue;
+  const key=match[1].toLowerCase(),value=match[2].trim();
+  if(key==='include')continue; // skip includes for safety/simplicity
+  if(key==='host'){flush();const name=value.split(/\s+/)[0];if(name&&!glob.test(name))current={name,host:'',sshUser:'',sshPort:'22'};continue;}
+  if(!current)continue;
+  if(key==='hostname')current.host=value;
+  else if(key==='user')current.sshUser=value;
+  else if(key==='port')current.sshPort=/^\d{1,5}$/.test(value)?value:'22';
+ }
+ flush();
+ return hosts.filter(h=>h.host||h.name).map(h=>{
+  const host=h.host||h.name,externalId=h.name.toLowerCase();
+  return {name:h.name,type:'server',provider:'SSH',account:h.sshUser||'',host,sshUser:h.sshUser||'',sshPort:h.sshPort||'22',purpose:'本机 SSH 配置',event:'来自 ~/.ssh/config',date:'',cost:'未知',notes:`从 ~/.ssh/config 的 Host「${h.name}」读取；不读取私钥。`,url:'',source:'ssh',externalId,art:'generic'};
+ });
+}
+function mergeSshConfig(board,hosts,syncedAt=new Date().toISOString()){
+ const next=structuredClone(board),seen=new Set(),collisions=[];let added=0;
+ if(!Array.isArray(next.deletedExternalIds))next.deletedExternalIds=[];
+ for(const item of hosts||[]){
+  const id='ssh-host-'+item.externalId;seen.add(id);
+  if(isBlacklisted(next,syncKey('ssh',item.externalId))||isBlacklisted(next,id))continue;
+  const fields={name:item.name,account:item.account,host:item.host,sshUser:item.sshUser,sshPort:item.sshPort,syncedAt,externalId:item.externalId,source:'ssh',provider:'SSH',event:item.event||'来自 ~/.ssh/config'};
+  const existing=next.assets.find(a=>a.id===id)||findByExternal(next,'ssh',item.externalId);
+  if(existing){applySyncedFields(existing,fields);seen.add(existing.id);}
+  else{
+   const collision=findNameCollision(next,'ssh',item.name,'server',item.externalId);
+   if(collision){collisions.push({assetId:collision.id,name:item.name,source:'SSH',fields:{...fields,type:'server'}});continue;}
+   next.assets.push({id,createdAt:syncedAt,type:'server',...fields,purpose:item.purpose,date:'',cost:'未知',notes:item.notes,url:'',art:'generic'});
+   added++;
+  }
+  ensureBlock(next,'server');
+ }
+ for(const asset of next.assets)if(asset.source==='ssh'&&!seen.has(asset.id))asset.syncMissing=true;
+ return {board:next,added,read:(hosts||[]).length,collisions};
+}
+
+// Minimal .eml parser (headers + best-effort body). Quoted-printable/base64 text bodies only; HTML stripped lightly.
+function decodeQuotedPrintable(input){
+ return String(input||'').replace(/=\r?\n/g,'').replace(/=([0-9A-Fa-f]{2})/g,(_,hex)=>String.fromCharCode(parseInt(hex,16)));
+}
+function decodeBase64Text(input){
+ try{
+  if(typeof atob==='function')return decodeURIComponent(escape(atob(String(input||'').replace(/\s+/g,''))));
+  return Buffer.from(String(input||'').replace(/\s+/g,''),'base64').toString('utf8');
+ }catch{return '';}
+}
+function stripHtml(html){return String(html||'').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<[^>]+>/g,' ').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/\s+/g,' ').trim();}
+function parseEml(raw){
+ const text=String(raw||'').replace(/^\uFEFF/,'');
+ if(!/^(?:From:|To:|Subject:|Date:|MIME-Version:)/im.test(text.slice(0,2000))&&!text.includes('\n\n'))return {ok:false,error:'不是有效的邮件文件'};
+ const headerEnd=text.search(/\r?\n\r?\n/);
+ const head=headerEnd>=0?text.slice(0,headerEnd):text.slice(0,8000);
+ const bodyRaw=headerEnd>=0?text.slice(headerEnd).replace(/^\r?\n\r?\n/,''):'';
+ const header=(name)=>{const re=new RegExp('^'+name+':\\s*(.*(?:\\r?\\n[ \\t].*)*)','im');const m=re.exec(head);return m?m[1].replace(/\r?\n[ \\t]+/g,' ').trim():'';};
+ const subject=header('Subject'),from=header('From'),date=header('Date');
+ let body=bodyRaw;
+ const cte=header('Content-Transfer-Encoding').toLowerCase();
+ const ctype=header('Content-Type').toLowerCase();
+ // Multipart: take the first text/plain or text/html part heuristically
+ if(/multipart\//i.test(ctype)){
+  const boundary=(/boundary="?([^";\s]+)"?/i.exec(header('Content-Type'))||[])[1];
+  if(boundary){
+   const parts=bodyRaw.split('--'+boundary).slice(1,-1);
+   let plain='',html='';
+   for(const part of parts){
+    const pe=part.search(/\r?\n\r?\n/);if(pe<0)continue;
+    const ph=part.slice(0,pe),pb=part.slice(pe).replace(/^\r?\n\r?\n/,'');
+    const pt=/Content-Type:\s*([^\s;]+)/i.exec(ph)?.[1]?.toLowerCase()||'';
+    const enc=(/Content-Transfer-Encoding:\s*(\S+)/i.exec(ph)?.[1]||'').toLowerCase();
+    let decoded=pb;
+    if(enc==='base64')decoded=decodeBase64Text(pb);
+    else if(enc==='quoted-printable')decoded=decodeQuotedPrintable(pb);
+    if(pt==='text/plain'&&!plain)plain=decoded;
+    if(pt==='text/html'&&!html)html=decoded;
+   }
+   body=plain||stripHtml(html)||bodyRaw.slice(0,6000);
+  }
+ }else{
+  if(cte==='base64')body=decodeBase64Text(bodyRaw);
+  else if(cte==='quoted-printable')body=decodeQuotedPrintable(bodyRaw);
+  if(/text\/html/i.test(ctype))body=stripHtml(body);
+ }
+ body=String(body||'').replace(/\r\n/g,'\n').trim().slice(0,6000);
+ if(!subject&&!body)return {ok:false,error:'邮件没有可读的标题或正文'};
+ return {ok:true,from,subject:subject||'(无标题)',date,body,source:from,title:subject||from||'邮件'};
+}
+
 function classifyImportPayload({text='',filename='',mime=''}={}){
  const name=String(filename||'').toLowerCase(),type=String(mime||'').toLowerCase(),body=String(text||'');
  if(/\.(png|jpe?g|webp)$/i.test(name)||/^image\//.test(type))return {kind:'image',filename};
  if(/\.pdf$/i.test(name)||type==='application/pdf')return {kind:'pdf',filename};
+ if(/\.eml$/i.test(name)||type==='message/rfc822')return {kind:'eml',filename,text:body};
  if(/\.csv$/i.test(name)||type==='text/csv'||type==='text/tab-separated-values')return {kind:'csv',filename,text:body};
  if(/\.tsv$/i.test(name))return {kind:'csv',filename,text:body};
  if(/\.json$/i.test(name)||type==='application/json')return {kind:'json',filename,text:body};
@@ -990,4 +1109,4 @@ function demoImportSampleCsv(){
  return ['名称,类别,平台,到期日,费用,备注','sample-studio.com,域名,示例注册商,2026-10-21,$10.98 / 年,演示用域名','demo-box-tokyo,服务器,Example VPS,2026-11-04,$6.00 / 月,演示用服务器','Example Notes Pro,订阅与工具,Example Notes,2026-11-06,$8.00 / 月,演示用订阅'].join('\n');
 }
 
-if(typeof module!=='undefined')module.exports={ACTION_FIELDS,QUICK_LIMIT,validActionField,sshCommand,cloneUrl,quickActions,recencyTime,recentFirst,arrangeAssets,touchedPrefix,swapInOrder,bringToFront,DISPLAY_LIMITS,formatCount,rowLimit,wholeRows,strongDateIds,blockDensity,setBlockDensity,ensureBlock,iconHost,iconVendor,iconVendors,vendorForHost,iconPlan,guessAssetType,regionList,regionName,regionFlag,phoneParts,regionFromPhone,maskPhone,maskEmail,cardExpiry,expiryText,looksLikeCardNumber,linkAssets,unlinkAssets,linkedAssets,removeLinksTo,assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset,dateKinds,billingCycles,dayNumber,localDay,isoDay,addMonths,nextOccurrence,assetDateStatus,upcomingEvents,syncKey,assetSyncKey,isBlacklisted,findByExternal,findNameCollision,mergeCloudflare,mergeGitHub,applyCollision,parseSender,registrableDomain,cleanMerchant,findAmounts,findDates,findDomains,evidenceFacts,inferCycle,formatCost,matchAsset,buildCandidates,evidencePayload,parseAiItems,applyAiItem,IMPORT_ROW_LIMIT,parseDelimitedText,importHeaderField,rowsToImportItems,classifyImportPayload,planImport,applyImport,parseBoardBackup,planBoardBackup,applyBoardBackup,demoImportSampleCsv,csvSyncKey,VENDOR_CSV_PRESETS};
+if(typeof module!=='undefined')module.exports={ACTION_FIELDS,QUICK_LIMIT,validActionField,sshCommand,cloneUrl,quickActions,recencyTime,recentFirst,arrangeAssets,touchedPrefix,swapInOrder,bringToFront,DISPLAY_LIMITS,formatCount,rowLimit,wholeRows,strongDateIds,blockDensity,setBlockDensity,ensureBlock,iconHost,iconVendor,iconVendors,vendorForHost,iconPlan,guessAssetType,regionList,regionName,regionFlag,phoneParts,regionFromPhone,maskPhone,maskEmail,cardExpiry,expiryText,looksLikeCardNumber,linkAssets,unlinkAssets,linkedAssets,removeLinksTo,assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset,dateKinds,billingCycles,dayNumber,localDay,isoDay,addMonths,nextOccurrence,assetDateStatus,upcomingEvents,syncKey,assetSyncKey,isBlacklisted,findByExternal,findNameCollision,mergeCloudflare,mergeGitHub,applyCollision,parseSender,registrableDomain,cleanMerchant,findAmounts,findDates,findDomains,evidenceFacts,inferCycle,formatCost,matchAsset,buildCandidates,evidencePayload,parseAiItems,applyAiItem,IMPORT_ROW_LIMIT,parseDelimitedText,importHeaderField,rowsToImportItems,classifyImportPayload,planImport,applyImport,parseBoardBackup,planBoardBackup,applyBoardBackup,demoImportSampleCsv,csvSyncKey,VENDOR_CSV_PRESETS,cloudflareTokenTemplateUrl,githubTokenTemplateUrl,CLOUDFLARE_TOKEN_PERMISSIONS,parseSshConfig,mergeSshConfig,parseEml};

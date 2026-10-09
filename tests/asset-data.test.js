@@ -407,7 +407,8 @@ test('category quick actions are open/copy only, local folders only in the app',
 
 const {
   IMPORT_ROW_LIMIT,parseDelimitedText,rowsToImportItems,classifyImportPayload,planImport,applyImport,
-  parseBoardBackup,planBoardBackup,applyBoardBackup,demoImportSampleCsv,csvSyncKey,isBlacklisted
+  parseBoardBackup,planBoardBackup,applyBoardBackup,demoImportSampleCsv,csvSyncKey,isBlacklisted,
+  parseSshConfig,mergeSshConfig,parseEml,cloudflareTokenTemplateUrl
 }=require('../asset-data.js');
 
 test('parses CSV with header aliases and drops secret columns',()=>{
@@ -473,4 +474,44 @@ test('merges a JSON backup by id and can replace',()=>{
  const replaced=applyBoardBackup(current,replacePlan);
  assert.equal(replaced.assets.length,2);
  assert.ok(replaced.blocks.some(b=>b.id==='server'));
+});
+
+
+test('parses ssh config hosts and skips globs',()=>{
+ const hosts=parseSshConfig(`Host github.com\n  HostName github.com\nHost box-tokyo\n  HostName 203.0.113.10\n  User deploy\n  Port 2222\nHost *.internal\n  User skip\n`);
+ assert.equal(hosts.length,2);
+ assert.equal(hosts.find(h=>h.name==='box-tokyo').host,'203.0.113.10');
+ assert.equal(hosts.find(h=>h.name==='box-tokyo').sshPort,'2222');
+ const board={blocks:[],assets:[],deletedExternalIds:[]};
+ const merge=mergeSshConfig(board,hosts);
+ assert.equal(merge.added,2);
+ assert.ok(merge.board.assets.every(a=>a.source==='ssh'&&a.type==='server'));
+});
+
+test('parses a simple eml into subject and body',()=>{
+ const raw=['From: billing@example-vps.test','To: me@example.com','Subject: Your invoice for October','MIME-Version: 1.0','Content-Type: text/plain; charset=utf-8','','Amount due: $6.00','Next billing date: 2026-11-04'].join('\r\n');
+ const parsed=parseEml(raw);
+ assert.equal(parsed.ok,true);
+ assert.equal(parsed.subject,'Your invoice for October');
+ assert.match(parsed.body,/Amount due/);
+ assert.equal(classifyImportPayload({filename:'note.eml',text:raw}).kind,'eml');
+});
+
+test('cloudflare token template URL prefills read permissions',()=>{
+ const url=cloudflareTokenTemplateUrl({name:'Assetboard'});
+ assert.match(url,/dash\.cloudflare\.com\/profile\/api-tokens/);
+ assert.match(url,/permissionGroupKeys=/);
+ const decoded=decodeURIComponent(url.split('permissionGroupKeys=')[1].split('&')[0]);
+ const keys=JSON.parse(decoded).map(p=>p.key);
+ for(const need of ['zone','account_settings','page','workers_scripts','workers_r2'])assert.ok(keys.includes(need),need);
+});
+
+test('mergeCloudflare applies registrar expiry onto matching domain',()=>{
+ const board={blocks:[],assets:[],deletedExternalIds:[]};
+ const first=mergeCloudflare(board,{resources:[{kind:'zone',id:'abc',name:'studio.com',account:'Personal',status:'active',url:'https://dash.cloudflare.com/'}],queriedKinds:['zone']});
+ const second=mergeCloudflare(first.board,{resources:[{kind:'registrar',id:'acct:studio.com',name:'studio.com',account:'Personal',status:'active',expiresAt:'2027-05-18T00:00:00Z',autoRenew:'1',url:'https://dash.cloudflare.com/'}],queriedKinds:['registrar']});
+ const asset=second.board.assets.find(a=>a.name==='studio.com');
+ assert.equal(asset.date,'2027-05-18');
+ assert.equal(asset.cycle,'yearly');
+ assert.equal(asset.account,'Personal');
 });

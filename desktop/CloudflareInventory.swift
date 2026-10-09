@@ -83,10 +83,66 @@ struct CloudflareInventory {
                 if complete { queried.append(kind) }
             }
         }
+        // Domain expiry via Registrar registrations (legacy /registrar/domains retired 2026-09-27).
+        if !accounts.isEmpty {
+            var registrarRows: [[String: String]] = []
+            var registrarComplete = true
+            for account in accounts {
+                guard let id = account["id"] as? String,
+                      id.range(of: "^[0-9a-fA-F]{32}$", options: .regularExpression) != nil else {
+                    registrarComplete = false
+                    continue
+                }
+                let name = account["name"] as? String ?? ""
+                do {
+                    registrarRows.append(contentsOf: try registrarRegistrations(accountId: id, accountName: name, token: token))
+                } catch {
+                    registrarComplete = false
+                    warnings.append("\(name) · Registrar：\(error.localizedDescription)")
+                }
+            }
+            resources.append(contentsOf: registrarRows)
+            if registrarComplete && !registrarRows.isEmpty { queried.append("registrar") }
+        }
+
         guard !queried.isEmpty || !resources.isEmpty || !accounts.isEmpty else {
             throw failure(warnings.joined(separator: "；").isEmpty ? "令牌没有可读取的资源" : warnings.joined(separator: "；"))
         }
         return ["resources": resources, "queriedKinds": queried, "warnings": warnings]
+    }
+
+    private func registrarRegistrations(accountId: String, accountName: String, token: String) throws -> [[String: String]] {
+        var cursor: String?
+        var rows: [[String: String]] = []
+        for _ in 0..<100 {
+            var query = [URLQueryItem(name: "per_page", value: "50")]
+            if let cursor, !cursor.isEmpty { query.append(URLQueryItem(name: "cursor", value: cursor)) }
+            let response = try envelope("/accounts/\(accountId)/registrar/registrations", query: query, token: token)
+            guard let values = response["result"] as? [[String: Any]] else { throw failure("Registrar 列表无效") }
+            for item in values {
+                let domain = (item["domain_name"] as? String) ?? (item["name"] as? String) ?? ""
+                guard !domain.isEmpty else { continue }
+                let expires = item["expires_at"] as? String ?? ""
+                let auto = item["auto_renew"] as? Bool
+                let status = item["status"] as? String ?? "Registrar"
+                var row: [String: String] = [
+                    "kind": "registrar",
+                    "id": accountId + ":" + domain,
+                    "name": domain,
+                    "account": accountName,
+                    "status": status,
+                    "url": "https://dash.cloudflare.com/\(accountId)/registrar"
+                ]
+                if !expires.isEmpty { row["expiresAt"] = expires }
+                if let auto { row["autoRenew"] = auto ? "1" : "0" }
+                rows.append(row)
+            }
+            let next = (response["result_info"] as? [String: Any])?["cursor"] as? String
+            if next == nil || next?.isEmpty == true { return rows }
+            guard next != cursor else { throw failure("Registrar 分页游标重复") }
+            cursor = next
+        }
+        throw failure("Registrar 分页超过上限")
     }
 
     private func accountResources(kind: String, id: String, name: String, token: String) throws -> [[String: String]] {

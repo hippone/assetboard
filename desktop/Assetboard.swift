@@ -509,23 +509,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         if demoMode { demoBlocked(); return }
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [UTType.png, .jpeg, .pdf] + [UTType(filenameExtension: "webp")].compactMap { $0 }
-        panel.allowsMultipleSelection = false
+        panel.allowsMultipleSelection = true
         panel.message = "选择截图或 PDF；文字只在此 Mac 识别和保存。"
         panel.beginSheetModal(for: window) { response in
-            guard response == .OK, let url = panel.url else { return }
+            guard response == .OK else { return }
+            let urls = panel.urls.prefix(10)
+            guard !urls.isEmpty else { return }
             DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    let text = try OCRImporter.recognize(at: url)
-                    let digest = SHA256.hash(data: try Data(contentsOf: url)).map { String(format: "%02x", $0) }.joined()
-                    DispatchQueue.main.async {
-                        do {
-                            try self.store.database.saveEvidence(id: "ocr-" + digest, kind: "ocr", source: url.lastPathComponent, title: url.lastPathComponent, body: text, payload: ["file": url.path])
-                            self.ocrResult(["ok": true, "id": "ocr-" + digest, "title": url.lastPathComponent])
-                        } catch { self.ocrResult(["ok": false, "error": error.localizedDescription]) }
+                var last: [String: Any]?
+                for url in urls {
+                    do {
+                        let text = try OCRImporter.recognize(at: url)
+                        let digest = SHA256.hash(data: try Data(contentsOf: url)).map { String(format: "%02x", $0) }.joined()
+                        DispatchQueue.main.async {
+                            do {
+                                try self.store.database.saveEvidence(id: "ocr-" + digest, kind: "ocr", source: url.lastPathComponent, title: url.lastPathComponent, body: text, payload: ["file": url.path])
+                                self.ocrResult(["ok": true, "id": "ocr-" + digest, "title": url.lastPathComponent])
+                            } catch { self.ocrResult(["ok": false, "error": error.localizedDescription]) }
+                        }
+                        last = ["ok": true]
+                    } catch {
+                        DispatchQueue.main.async { self.ocrResult(["ok": false, "error": error.localizedDescription]) }
                     }
-                } catch {
-                    DispatchQueue.main.async { self.ocrResult(["ok": false, "error": error.localizedDescription]) }
                 }
+                _ = last
             }
         }
     }
@@ -591,36 +598,109 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         }
     }
 
-    func syncGitHubWithLocalCLI() {
+    func syncGitHubWithLocalCLI(users: [String]? = nil) {
         DispatchQueue.global(qos: .userInitiated).async {
-            let paths = ["/opt/homebrew/bin/gh", "/usr/local/bin/gh"]
-            guard let path = paths.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
-                self.githubResult(["ok": false, "error": "未找到本机 GitHub CLI。请安装 gh 并登录，或使用 GitHub 令牌。"])
+            guard let path = LocalCLI.ghPath() else {
+                self.githubResult([
+                    "ok": false,
+                    "error": "未找到本机 GitHub CLI。",
+                    "nextSteps": [
+                        "安装：brew install gh && gh auth login",
+                        "或使用预填的细粒度令牌页面创建只读令牌后粘贴。"
+                    ],
+                    "tokenUrl": "https://github.com/settings/tokens?type=beta"
+                ])
                 return
             }
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: path)
-            process.arguments = ["auth", "token"]
-            process.standardError = FileHandle.nullDevice
-            let output = Pipe()
-            process.standardOutput = output
-            do { try process.run() } catch {
-                self.githubResult(["ok": false, "error": "无法读取本机 gh 登录。请检查 gh auth status。"])
-                return
-            }
-            let data = output.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            guard process.terminationStatus == 0,
-                  let token = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !token.isEmpty else {
-                self.githubResult(["ok": false, "error": "本机 gh 尚未登录 GitHub，或无法读取其令牌。"])
-                return
-            }
-            self.github.listRepositories(token: token) { repositories, error in
-                if let error { self.githubResult(["ok": false, "error": error]); return }
-                self.githubResult(["ok": true, "repositories": repositories ?? [], "connected": false])
+            do {
+                let accounts = try LocalCLI.ghAccounts(path: path)
+                let selected: [String]
+                if let users, !users.isEmpty {
+                    selected = users.filter { accounts.contains($0) }
+                    if selected.isEmpty {
+                        self.githubResult(["ok": false, "error": "所选账号未在本机 gh 登录。已登录：\(accounts.joined(separator: ", "))"])
+                        return
+                    }
+                } else {
+                    selected = accounts.isEmpty ? [""] : accounts
+                }
+                var all: [[String: Any]] = []
+                var warnings: [String] = []
+                let group = DispatchGroup()
+                let lock = NSLock()
+                for user in selected {
+                    group.enter()
+                    do {
+                        let token = try LocalCLI.ghToken(path: path, user: user.isEmpty ? nil : user)
+                        self.github.listRepositories(token: token) { repositories, error in
+                            defer { group.leave() }
+                            if let error {
+                                lock.lock(); warnings.append("\(user.isEmpty ? "当前账号" : user)：\(error)"); lock.unlock()
+                                return
+                            }
+                            lock.lock(); all.append(contentsOf: repositories ?? []); lock.unlock()
+                        }
+                    } catch {
+                        warnings.append(error.localizedDescription)
+                        group.leave()
+                    }
+                }
+                group.wait()
+                // Dedupe by repo id
+                var seen = Set<String>()
+                var unique: [[String: Any]] = []
+                for repo in all {
+                    let id = String(describing: repo["id"] ?? "")
+                    if id.isEmpty || seen.contains(id) { continue }
+                    seen.insert(id)
+                    unique.append(repo)
+                }
+                if unique.isEmpty {
+                    self.githubResult([
+                        "ok": false,
+                        "error": warnings.joined(separator: "；").isEmpty ? "本机 gh 没有可读的仓库。" : warnings.joined(separator: "；"),
+                        "nextSteps": ["运行 gh auth login 登录需要的账号", "或粘贴 GitHub 细粒度只读令牌"],
+                        "tokenUrl": "https://github.com/settings/tokens?type=beta"
+                    ])
+                    return
+                }
+                self.githubResult(["ok": true, "repositories": unique, "connected": false, "accounts": selected.filter { !$0.isEmpty }, "warnings": warnings])
+            } catch {
+                self.githubResult([
+                    "ok": false,
+                    "error": error.localizedDescription,
+                    "nextSteps": ["brew install gh && gh auth login", "或使用令牌同步"],
+                    "tokenUrl": "https://github.com/settings/tokens?type=beta"
+                ])
             }
         }
+    }
+
+    func importSshConfig() {
+        if demoMode { demoBlocked(); return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let text = try LocalCLI.readSshConfigText()
+                self.sshResult(["ok": true, "text": text])
+            } catch {
+                self.sshResult(["ok": false, "error": error.localizedDescription, "nextSteps": ["在 ~/.ssh/config 中添加 Host 条目", "或手动录入服务器资产"]])
+            }
+        }
+    }
+
+    func sshResult(_ result: [String: Any]) {
+        DispatchQueue.main.async {
+            guard let data = try? JSONSerialization.data(withJSONObject: result),
+                  let json = String(data: data, encoding: .utf8) else { return }
+            self.webView.evaluateJavaScript("window.assetboardSshResult?.(\(json))")
+        }
+    }
+
+    func publishLocalCliDetect() {
+        let info = LocalCLI.detect()
+        guard let data = try? JSONSerialization.data(withJSONObject: info),
+              let json = String(data: data, encoding: .utf8) else { return }
+        webView.evaluateJavaScript("window.assetboardLocalCliDetect?.(\(json))")
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -702,7 +782,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             return
         }
         if body["action"] as? String == "githubSyncLocal" {
-            syncGitHubWithLocalCLI()
+            let users = body["users"] as? [String]
+            syncGitHubWithLocalCLI(users: users)
+            return
+        }
+        if body["action"] as? String == "localCliDetect" {
+            publishLocalCliDetect()
+            return
+        }
+        if body["action"] as? String == "sshConfigImport" {
+            importSshConfig()
             return
         }
         if body["action"] as? String == "aiSave" {
