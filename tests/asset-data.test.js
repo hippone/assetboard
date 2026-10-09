@@ -294,6 +294,45 @@ test('suggests the website to fetch an icon from',()=>{
  assert.equal(iconHost({type:'phone',provider:'某运营商'}),'');
 });
 
+const {iconVendor,iconVendors,vendorForHost,iconPlan}=require('../asset-data.js');
+
+test('maps providers, sync sources and management links to vendor homepages',()=>{
+ const host=asset=>iconVendor(asset)?.host||'';
+ const cases=[['Cloudflare','cloudflare.com'],['Namecheap','namecheap.com'],['GoDaddy','godaddy.com'],['Porkbun','porkbun.com'],['Gandi','gandi.net'],['Dynadot','dynadot.com'],['Google Domains','squarespace.com'],['Squarespace','squarespace.com'],['阿里云','aliyun.com'],['万网','aliyun.com'],['Alibaba Cloud','aliyun.com'],['腾讯云','cloud.tencent.com'],['DNSPod','dnspod.cn'],['西部数码','west.cn'],['新网','xinnet.com'],
+  ['华为云','huaweicloud.com'],['百度智能云','cloud.baidu.com'],['AWS Lightsail','aws.amazon.com'],['Google Cloud','cloud.google.com'],['Azure','azure.microsoft.com'],['DigitalOcean','digitalocean.com'],['Vultr','vultr.com'],['Linode','linode.com'],['Akamai','linode.com'],['Hetzner','hetzner.com'],['OVHcloud','ovhcloud.com'],['Scaleway','scaleway.com'],['Fly.io','fly.io'],['Render','render.com'],['Railway','railway.com'],['Vercel','vercel.com'],['Netlify','netlify.com'],['搬瓦工','bandwagonhost.com'],['RackNerd','racknerd.com'],
+  ['GitHub','github.com'],['GitLab','gitlab.com'],['Gitee','gitee.com'],['Bitbucket','bitbucket.org'],['Cloudflare Pages','cloudflare.com'],['Cloudflare R2','cloudflare.com'],['Supabase','supabase.com'],['Backblaze B2','backblaze.com'],['Apple','apple.com'],['iCloud+','apple.com'],['Google One','google.com'],['Microsoft 365','microsoft.com'],['Adobe','adobe.com'],['JetBrains','jetbrains.com']];
+ for(const [provider,expected] of cases)assert.equal(host({type:'server',name:'my-box',provider}),expected,provider);
+ assert.equal(host({type:'deployment',name:'my-site',source:'cloudflare'}),'cloudflare.com');
+ assert.equal(host({type:'repository',name:'me/notion-clone',source:'github'}),'github.com');
+ assert.equal(host({type:'domain',name:'example.org',url:'https://dash.cloudflare.com/abc/example.org'}),'cloudflare.com');
+ assert.equal(host({type:'server',name:'box',provider:'渲染农场'}),'');
+ for(const v of iconVendors){assert.match(v.host,/^[a-z0-9.-]+\.[a-z]{2,}$/,v.host);assert.ok(v.label);}
+ assert.equal(new Set(iconVendors.map(v=>v.host)).size,iconVendors.length,'One entry per vendor host');
+ assert.equal(vendorForHost('www.vultr.com')?.host,'vultr.com');
+ assert.equal(vendorForHost('my-vultr.com'),null,'A look-alike host is not the vendor');
+});
+
+test('never derives an icon host from the person own domain, repository or server names',()=>{
+ for(const type of ['domain','server','database','repository','deployment','storage']){
+  assert.equal(iconHost({type,name:'notion-figma-github.dev',url:'https://notion-figma-github.dev'}),'',type);
+  assert.equal(iconVendor({type,name:'cloudflare-notes.com'}),null,type);
+ }
+ assert.equal(iconHost({type:'subscription',name:'Figma Professional'}),'figma.com','Service-named types may use their name');
+ assert.equal(iconHost({type:'domain',name:'example.org',provider:'Porkbun',url:'https://example.org'}),'porkbun.com');
+});
+
+test('plans one request per vendor and skips custom, existing and hidden icons',()=>{
+ const png='data:image/png;base64,AAAA';
+ const assets=[{id:'a',type:'domain',name:'one.dev',provider:'Cloudflare'},{id:'b',type:'deployment',name:'site',source:'cloudflare'},{id:'c',type:'server',name:'box',provider:'Vultr'},
+  {id:'d',type:'server',name:'box2',provider:'Vultr',siteIcon:png,siteIconHost:'vultr.com'},{id:'e',type:'server',name:'box3',provider:'Hetzner',iconData:png},
+  {id:'f',type:'server',name:'box4',provider:'Hetzner',hiddenAt:'2026-10-01'},{id:'g',type:'domain',name:'mine.org',provider:'某注册商'}];
+ const plan=iconPlan(assets);
+ assert.deepEqual(plan.hosts.map(h=>[h.host,h.ids]),[['cloudflare.com',['a','b']],['vultr.com',['c']]]);
+ assert.deepEqual(plan.skipped,{custom:1,existing:1,unknown:1,hidden:1});
+ assert.deepEqual(iconPlan(assets,{overwrite:true}).hosts.find(h=>h.host==='vultr.com').ids,['c','d']);
+ const listed=JSON.stringify(plan.hosts);for(const name of ['one.dev','mine.org','box','site'])assert.ok(!listed.includes(`"${name}"`),'The plan never carries asset names');
+});
+
 const {blockDensity,setBlockDensity,ensureBlock:addBlockFor}=require('../asset-data.js');
 
 test('reads the card style of old and new blocks',()=>{

@@ -555,14 +555,111 @@ function unlinkAssets(assets,leftId,rightId){
 function linkedAssets(assets,asset){const ids=new Set(Array.isArray(asset?.links)?asset.links:[]);return assets.filter(item=>item.id!==asset?.id&&(ids.has(item.id)||Array.isArray(item.links)&&item.links.includes(asset?.id)));}
 function removeLinksTo(assets,id){for(const asset of assets)if(Array.isArray(asset.links)&&asset.links.includes(id))asset.links=asset.links.filter(item=>item!==id);}
 
-// Suggested website for an asset's icon: its management link, then the account's own service, then well-known names. The person can change it.
-const iconHints=[[/chatgpt|openai/i,'chatgpt.com'],[/claude|anthropic/i,'claude.ai'],[/gemini/i,'gemini.google.com'],[/midjourney/i,'midjourney.com'],[/perplexity/i,'perplexity.ai'],[/cursor/i,'cursor.com'],[/copilot|github/i,'github.com'],[/deepseek/i,'deepseek.com'],[/\bwise\b/i,'wise.com'],[/revolut/i,'revolut.com'],[/汇丰|hsbc/i,'hsbc.com.hk'],[/中银香港|bochk/i,'bochk.com'],[/招商银行|招行/i,'cmbchina.com'],[/giffgaff/i,'giffgaff.com'],[/cmlink/i,'cmlink.com'],[/figma/i,'figma.com'],[/notion/i,'notion.so'],[/cloudflare/i,'cloudflare.com']];
+// Icon sources (DESIGN-PRINCIPLES §9 rule 16). Every host here is a vendor's public homepage, checked by hand on 2026-10-09;
+// `tried` notes hosts that did not give a usable icon. A person's own names (domains, repositories, servers) never become a host.
+const iconVendors=[
+ // Registrars and DNS
+ {host:'cloudflare.com',label:'Cloudflare',match:/cloudflare|\bR2\b/i},
+ {host:'namecheap.com',label:'Namecheap',match:/namecheap/i},
+ {host:'godaddy.com',label:'GoDaddy',match:/godaddy/i},
+ {host:'porkbun.com',label:'Porkbun',match:/porkbun/i},
+ {host:'gandi.net',label:'Gandi',match:/gandi/i},
+ {host:'dynadot.com',label:'Dynadot',match:/dynadot/i},
+ {host:'squarespace.com',label:'Squarespace',match:/squarespace|google\s*domains/i},
+ {host:'dnspod.cn',label:'DNSPod',match:/dnspod/i},
+ {host:'west.cn',label:'西部数码',match:/西部数码|west\.cn/i},
+ {host:'xinnet.com',label:'新网',match:/新网|xinnet/i},
+ // Clouds and hosting
+ {host:'aliyun.com',label:'阿里云',match:/阿里云|万网|aliyun|alibaba\s*cloud|alibabacloud/i,tried:['alibabacloud.com: 只有 32px favicon，且部分网络下握手失败']},
+ {host:'cloud.tencent.com',label:'腾讯云',match:/腾讯云|tencent\s*cloud|tencentcloud|qcloud/i,tried:['tencentcloud.com: 每个路径都返回脚本渲染的页面，没有图标']},
+ {host:'huaweicloud.com',label:'华为云',match:/华为云|huawei\s*cloud|huaweicloud/i},
+ {host:'cloud.baidu.com',label:'百度智能云',match:/百度智能云|百度云|baidu\s*cloud/i},
+ {host:'aws.amazon.com',label:'AWS',match:/\baws\b|amazon\s*web\s*services|lightsail|\bec2\b|亚马逊云/i},
+ {host:'cloud.google.com',label:'Google Cloud',match:/google\s*cloud|\bgcp\b|firebase/i},
+ {host:'azure.microsoft.com',label:'Azure',match:/azure/i},
+ {host:'digitalocean.com',label:'DigitalOcean',match:/digital\s*ocean|droplet/i},
+ {host:'vultr.com',label:'Vultr',match:/vultr/i},
+ {host:'linode.com',label:'Linode',match:/linode|akamai/i,tried:['akamai.com: 首页对自动请求返回 403']},
+ {host:'hetzner.com',label:'Hetzner',match:/hetzner/i},
+ {host:'ovhcloud.com',label:'OVHcloud',match:/\bovh/i},
+ {host:'scaleway.com',label:'Scaleway',match:/scaleway/i},
+ {host:'fly.io',label:'Fly.io',match:/fly\.io/i},
+ {host:'render.com',label:'Render',match:/^render\b|render\.com/i},
+ {host:'railway.com',label:'Railway',match:/railway/i},
+ {host:'vercel.com',label:'Vercel',match:/vercel/i},
+ {host:'netlify.com',label:'Netlify',match:/netlify/i},
+ {host:'racknerd.com',label:'RackNerd',match:/racknerd/i},
+ {host:'bandwagonhost.com',label:'搬瓦工',match:/搬瓦工|bandwagon|\bbwh\b/i,tried:['bandwagonhost.com: 页面没有声明图标，/favicon.ico 返回 404']},
+ // Code, deployment and storage
+ {host:'github.com',label:'GitHub',match:/github|copilot/i},
+ {host:'gitlab.com',label:'GitLab',match:/gitlab/i},
+ {host:'gitee.com',label:'Gitee',match:/gitee|码云/i},
+ {host:'bitbucket.org',label:'Bitbucket',match:/bitbucket/i},
+ {host:'supabase.com',label:'Supabase',match:/supabase/i},
+ {host:'backblaze.com',label:'Backblaze',match:/backblaze/i},
+ // Subscriptions and AI
+ {host:'apple.com',label:'Apple',match:/\bapple\b|icloud|app\s*store/i},
+ {host:'google.com',label:'Google',match:/\bgoogle\b(?!\s*(cloud|domains))|google\s*one/i},
+ {host:'microsoft.com',label:'Microsoft',match:/microsoft|office\s*365|microsoft\s*365|onedrive/i},
+ {host:'adobe.com',label:'Adobe',match:/adobe|photoshop|creative\s*cloud/i},
+ {host:'jetbrains.com',label:'JetBrains',match:/jetbrains|intellij|webstorm|pycharm/i},
+ {host:'figma.com',label:'Figma',match:/figma/i},
+ {host:'notion.so',label:'Notion',match:/notion/i},
+ {host:'chatgpt.com',label:'ChatGPT',match:/chatgpt|openai/i},
+ {host:'claude.ai',label:'Claude',match:/claude|anthropic/i},
+ {host:'gemini.google.com',label:'Gemini',match:/gemini/i},
+ {host:'midjourney.com',label:'Midjourney',match:/midjourney/i},
+ {host:'perplexity.ai',label:'Perplexity',match:/perplexity/i},
+ {host:'cursor.com',label:'Cursor',match:/cursor/i},
+ {host:'deepseek.com',label:'DeepSeek',match:/deepseek/i},
+ // Banks and carriers
+ {host:'wise.com',label:'Wise',match:/\bwise\b/i},
+ {host:'revolut.com',label:'Revolut',match:/revolut/i},
+ {host:'hsbc.com.hk',label:'汇丰',match:/汇丰|hsbc/i},
+ {host:'bochk.com',label:'中银香港',match:/中银香港|bochk/i},
+ {host:'cmbchina.com',label:'招商银行',match:/招商银行|招行/i},
+ {host:'giffgaff.com',label:'giffgaff',match:/giffgaff/i},
+ {host:'cmlink.com',label:'CMLink',match:/cmlink/i}
+];
+// Types whose record name is the person's own thing (their domain, repository, machine, bucket…): only provider, account and source say who runs it.
+const ownNamedTypes=new Set(['domain','server','database','repository','deployment','storage']);
+// Known vendor for a host, including its subdomains (dash.cloudflare.com → Cloudflare).
+function vendorForHost(host){const h=String(host||'').toLowerCase().replace(/^www\./,'');if(!h)return null;return iconVendors.find(v=>h===v.host||h.endsWith('.'+v.host))||null;}
+// The vendor behind an asset, or null. Order: sync source, management link on a vendor host, provider/account text, then the name for service-named types.
+function iconVendor(asset){
+ if(!asset)return null;
+ if(asset.source==='cloudflare')return vendorForHost('cloudflare.com');
+ if(asset.source==='github')return vendorForHost('github.com');
+ let linkHost='';try{linkHost=new URL(asset.url||'').hostname;}catch{}
+ const byLink=vendorForHost(linkHost);if(byLink)return byLink;
+ const text=[asset.provider,asset.account].filter(Boolean).join(' ');
+ const byText=text&&iconVendors.find(v=>v.match.test(text));if(byText)return byText;
+ if(asset.type==='appleid')return vendorForHost('apple.com');
+ if(asset.type==='google')return vendorForHost('google.com');
+ if(!ownNamedTypes.has(asset.type)&&asset.name)return iconVendors.find(v=>v.match.test(asset.name))||null;
+ return null;
+}
+// Suggested website for the per-asset icon dialog (the person can change it). Beyond known vendors, a service-type asset may suggest its own management link;
+// own-named types never suggest their link, which may be the person's own site.
 function iconHost(asset){
+ const vendor=iconVendor(asset);if(vendor)return vendor.host;
+ if(ownNamedTypes.has(asset?.type))return '';
  try{const host=new URL(asset?.url||'').hostname.replace(/^www\./,'');if(host&&host!=='example.com')return host;}catch{}
- if(asset?.type==='appleid')return 'apple.com';
- if(asset?.type==='google')return 'google.com';
- const text=[asset?.provider,asset?.name].filter(Boolean).join(' ');
- return iconHints.find(([pattern])=>pattern.test(text))?.[1]||'';
+ return '';
+}
+// Plan for 「为全部资产获取网站图标」: one request per vendor host, shared by every asset it serves. Only vendor hosts from iconVendors are ever listed.
+// Assets with a custom icon are left alone (it wins anyway); assets that already have a site icon are skipped unless overwrite is set; hidden assets are skipped.
+function iconPlan(assets,{overwrite=false}={}){
+ const groups=new Map(),skipped={custom:0,existing:0,unknown:0,hidden:0};
+ for(const asset of assets||[]){
+  if(asset.hiddenAt){skipped.hidden++;continue;}
+  if(typeof asset.iconData==='string'&&asset.iconData.startsWith('data:image/')){skipped.custom++;continue;}
+  if(asset.siteIcon&&!overwrite){skipped.existing++;continue;}
+  const vendor=iconVendor(asset);if(!vendor){skipped.unknown++;continue;}
+  if(!groups.has(vendor.host))groups.set(vendor.host,{host:vendor.host,label:vendor.label,ids:[]});
+  groups.get(vendor.host).ids.push(asset.id);
+ }
+ return {hosts:[...groups.values()].sort((a,b)=>b.ids.length-a.ids.length||a.host.localeCompare(b.host)),skipped};
 }
 
 // Display limits: how much the board shows at once, so large collections never flood the one-screen board.
@@ -580,4 +677,4 @@ function strongDateIds(assets,now=new Date(),limit=DISPLAY_LIMITS.strongDates){
  return new Set([...rows.filter(row=>row.status.level==='overdue'),...soon].map(row=>row.id));
 }
 
-if(typeof module!=='undefined')module.exports={ACTION_FIELDS,QUICK_LIMIT,validActionField,sshCommand,cloneUrl,quickActions,recencyTime,recentFirst,arrangeAssets,touchedPrefix,swapInOrder,bringToFront,DISPLAY_LIMITS,formatCount,rowLimit,wholeRows,strongDateIds,blockDensity,setBlockDensity,ensureBlock,iconHost,guessAssetType,regionList,regionName,regionFlag,phoneParts,regionFromPhone,maskPhone,maskEmail,cardExpiry,expiryText,looksLikeCardNumber,linkAssets,unlinkAssets,linkedAssets,removeLinksTo,assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset,dateKinds,billingCycles,dayNumber,localDay,isoDay,addMonths,nextOccurrence,assetDateStatus,upcomingEvents,syncKey,assetSyncKey,isBlacklisted,findByExternal,findNameCollision,mergeCloudflare,mergeGitHub,applyCollision,parseSender,registrableDomain,cleanMerchant,findAmounts,findDates,findDomains,evidenceFacts,inferCycle,formatCost,matchAsset,buildCandidates,evidencePayload,parseAiItems,applyAiItem};
+if(typeof module!=='undefined')module.exports={ACTION_FIELDS,QUICK_LIMIT,validActionField,sshCommand,cloneUrl,quickActions,recencyTime,recentFirst,arrangeAssets,touchedPrefix,swapInOrder,bringToFront,DISPLAY_LIMITS,formatCount,rowLimit,wholeRows,strongDateIds,blockDensity,setBlockDensity,ensureBlock,iconHost,iconVendor,iconVendors,vendorForHost,iconPlan,guessAssetType,regionList,regionName,regionFlag,phoneParts,regionFromPhone,maskPhone,maskEmail,cardExpiry,expiryText,looksLikeCardNumber,linkAssets,unlinkAssets,linkedAssets,removeLinksTo,assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset,dateKinds,billingCycles,dayNumber,localDay,isoDay,addMonths,nextOccurrence,assetDateStatus,upcomingEvents,syncKey,assetSyncKey,isBlacklisted,findByExternal,findNameCollision,mergeCloudflare,mergeGitHub,applyCollision,parseSender,registrableDomain,cleanMerchant,findAmounts,findDates,findDomains,evidenceFacts,inferCycle,formatCost,matchAsset,buildCandidates,evidencePayload,parseAiItems,applyAiItem};
