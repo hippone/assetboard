@@ -549,3 +549,22 @@ body.drag-active .quick-action,.block.compact .quick-action{visibility:hidden}
 .detail-head{display:flex;align-items:center;gap:12px;margin:0 0 14px}
 .detail-head .eyebrow{margin:0}
 @media(max-width:760px){:root .card-name{font-size:13px}:root .card-head{padding:10px 10px 0}:root .card-foot{padding-left:52px;padding-right:8px}}
+
+/* Site icons, batch fetch (DESIGN-PRINCIPLES §9 rule 16). Marks that would vanish on the tile get a contrasting backing; the batch list is quiet. */
+:root[data-scheme=dark] .tile.mark-dark,:root[data-scheme=dark] .site-mark.mark-dark{background:#e9e9ec;box-shadow:none}
+:root:not([data-scheme=dark]) .tile.mark-light,:root:not([data-scheme=dark]) .site-mark.mark-light{background:#3a3a3e;box-shadow:none}
+.icon-batch-hosts{list-style:none;margin:4px 0 0;padding:0;max-height:260px;overflow:auto;border:1px solid var(--border);border-radius:var(--radius-sm)}
+.icon-batch-hosts li{display:flex;align-items:center;gap:8px;min-height:32px;padding:4px 10px;font-size:12px}
+.icon-batch-hosts li+li{border-top:1px solid var(--border)}
+.icon-batch-hosts strong{font-weight:500;color:var(--ink);font-variant-numeric:tabular-nums}
+.icon-batch-hosts span:last-child{margin-left:auto;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.icon-batch-hosts.failed span:last-child{max-width:60%}
+#icon-batch .check-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink)}
+#icon-batch progress{width:100%;height:4px;appearance:none;-webkit-appearance:none;border:0;border-radius:2px;background:var(--hover);overflow:hidden}
+#icon-batch progress::-webkit-progress-bar{background:var(--hover);border-radius:2px}
+#icon-batch progress::-webkit-progress-value{background:rgb(var(--tone-primary));border-radius:2px;transition:width var(--motion-base) var(--ease)}
+.icon-batch-link{justify-self:start;margin-top:4px;padding-left:0}
+/* A narrow block keeps its title on one line; the summary gives way first (it wrapped the title letter by letter at 25% width). */
+.block-head .block-title{flex-shrink:0}
+.block-title>span:not(.tile):not(.asset-count):not(.chevron){white-space:nowrap}
+.block-head .block-summary{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

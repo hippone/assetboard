@@ -368,6 +368,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     @objc func openGitHub() { if demoMode { demoBlocked(); return }; webView.evaluateJavaScript("githubDialog()") }
     @objc func openGmail() { if demoMode { demoBlocked(); return }; webView.evaluateJavaScript("gmailDialog()") }
     @objc func openInbox() { webView.evaluateJavaScript("inboxDialog()") }
+    @objc func openIconBatch() { if demoMode { demoBlocked(); return }; webView.evaluateJavaScript("iconBatchDialog()") }
     @objc func openAISettings() { if demoMode { demoBlocked(); return }; webView.evaluateJavaScript("aiDialog()") }
     func aiResult(_ result: [String: Any]) {
         DispatchQueue.main.async {
@@ -772,6 +773,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         let gmailItem = NSMenuItem(title: "Gmail 账单与服务通知…", action: #selector(openGmail), keyEquivalent: "")
         gmailItem.target = self
         fileMenu.addItem(gmailItem)
+        let iconsItem = NSMenuItem(title: "为全部资产获取网站图标…", action: #selector(openIconBatch), keyEquivalent: "")
+        iconsItem.target = self
+        fileMenu.addItem(iconsItem)
         let ocrItem = NSMenuItem(title: "导入截图或 PDF（本地识别）…", action: #selector(importDocumentOCR), keyEquivalent: "")
         ocrItem.target = self
         fileMenu.addItem(ocrItem)
@@ -911,6 +915,8 @@ func testIcons() {
     image.lockFocus(); NSColor.systemTeal.setFill(); NSRect(x: 0, y: 0, width: 64, height: 32).fill(); image.unlockFocus()
     let png = NSBitmapImageRep(data: image.tiffRepresentation!)!.representation(using: .png, properties: [:])!
     precondition(IconFetcher.normalized(Data("<html>".utf8)) == nil, "Non-images must be refused")
+    let defaults = IconFetcher().session.configuration
+    precondition(!defaults.httpShouldSetCookies && defaults.httpCookieAcceptPolicy == .never, "Icon requests must not send or keep cookies")
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [MockIconProtocol.self]
     let fetcher = IconFetcher(session: URLSession(configuration: configuration))
@@ -937,7 +943,7 @@ func testIcons() {
     precondition(requested == ["GET https://wise.com/", "GET https://wise.com/missing.png", "GET https://wise.com/apple-touch-icon.png"], requested.description)
     guard case .failure(let missing) = run("empty.example") { _ in (404, Data()) }, missing.localizedDescription.contains("没有在 empty.example 找到") else { fatalError("A site without icons must say so") }
     guard case .failure(let refused) = run("127.0.0.1") { _ in (200, png) }, requested.isEmpty, refused.localizedDescription.contains("域名") else { fatalError("Refused hosts must not be contacted") }
-    print("PASS: icon host validation, link ranking and fallbacks, GET-only fetch, PNG normalisation, missing icon and refused host")
+    print("PASS: icon host validation, link ranking and fallbacks, GET-only fetch, no cookies, PNG normalisation, missing icon and refused host")
 }
 
 func testCloudflare() {

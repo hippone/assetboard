@@ -60,10 +60,10 @@ function rememberDeleted(a){const key=assetSyncKey(a);if(!key)return;if(!Array.i
 function icon(type){return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[type]||icons.storage}</svg>`;}
 // One rounded tile per asset (DESIGN-PRINCIPLES §9): a real icon (custom iconData, then a fetched siteIcon) wins; the category line icon only fills in when there is none.
 function customIconSrc(a){return typeof a?.iconData==='string'&&a.iconData.length<400000&&/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(a.iconData)?a.iconData:'';}
-function tile(a,size=''){const custom=customIconSrc(a),src=custom||siteIconSrc(a);return `<span class="tile${size?' '+size:''} ${custom?'custom-art':src?'custom-art site-art':'type-art'}" aria-hidden="true">${src?`<img src="${src}" alt="" draggable="false">`:icon(a.type)}</span>`;}
+function tile(a,size=''){const custom=customIconSrc(a),src=custom||siteIconSrc(a),tone=src?markTone(src):'';return `<span class="tile${size?' '+size:''} ${custom?'custom-art':src?'custom-art site-art':'type-art'}${tone?' '+tone:''}" aria-hidden="true">${src?`<img src="${src}" alt="" draggable="false">`:icon(a.type)}</span>`;}
 function searchText(a){return [a.name,a.provider,a.purpose,a.reason,a.account,cats[a.type]?.name,regionName(a.region),a.region,a.network,a.last4,a.phone,String(a.phone||'').replace(/\D/g,'')].filter(Boolean).join(' ').toLowerCase();}
 function siteIconSrc(a){return typeof a?.siteIcon==='string'&&a.siteIcon.length<400000&&/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(a.siteIcon)?a.siteIcon:'';}
-function assetMark(a){const src=customIconSrc(a)||siteIconSrc(a);return src?`<img class="site-mark" src="${src}" alt="" draggable="false">`:icon(a.type);}
+function assetMark(a){const src=customIconSrc(a)||siteIconSrc(a),tone=src?markTone(src):'';return src?`<img class="site-mark${tone?' '+tone:''}" src="${src}" alt="" draggable="false">`:icon(a.type);}
 function matches(a){return !query||searchText(a).includes(query.toLowerCase());}
 function safeManagementUrl(value){try{const url=new URL(value);return ['https:','http:'].includes(url.protocol)&&url.hostname&&!url.username&&!url.password?url.href:null;}catch{return null;}}
 function displayName(a){return a.source==='github'&&a.name.includes('/')?a.name.slice(a.name.indexOf('/')+1):a.name;}
@@ -268,10 +268,11 @@ let iconRequest=0,iconPreview=null;
 function iconDialog(id){
  const a=state.assets.find(x=>x.id===id);if(!a||!nativeStore)return;
  const current=siteIconSrc(a);iconPreview=null;
- modal(`「${a.name}」的网站图标`,`<form id="icon-form" class="form" data-id="${esc(id)}"><label>网站域名<input name="host" required maxlength="253" autocomplete="off" value="${esc(a.siteIconHost||iconHost(a))}" placeholder="例如 wise.com"></label><div class="icon-preview" id="icon-preview" aria-live="polite">${current?`<img src="${current}" alt="当前图标">`:''}<span id="icon-status" class="form-note">${current?`当前图标来自 ${esc(a.siteIconHost||'网站')}。`:'图标直接从这个网站下载，不经过其他服务，只保存在此 Mac。'}</span></div><div class="confirm-actions"><button class="button" type="submit">获取</button><button class="button primary" type="button" data-action="icon-apply" data-id="${esc(id)}" disabled>使用这个图标</button>${a.siteIcon?`<button class="button danger-quiet" type="button" data-action="icon-remove" data-id="${esc(id)}">移除</button>`:''}</div></form>`);
+ modal(`「${a.name}」的网站图标`,`<form id="icon-form" class="form" data-id="${esc(id)}"><label>网站域名<input name="host" required maxlength="253" autocomplete="off" value="${esc(a.siteIconHost||iconHost(a))}" placeholder="例如 wise.com"></label><div class="icon-preview" id="icon-preview" aria-live="polite">${current?`<img src="${current}" alt="当前图标">`:''}<span id="icon-status" class="form-note">${current?`当前图标来自 ${esc(a.siteIconHost||'网站')}。`:'图标直接从这个网站下载，不经过其他服务，只保存在此 Mac。'}</span></div><div class="confirm-actions"><button class="button" type="submit">获取</button><button class="button primary" type="button" data-action="icon-apply" data-id="${esc(id)}" disabled>使用这个图标</button>${a.siteIcon?`<button class="button danger-quiet" type="button" data-action="icon-remove" data-id="${esc(id)}">移除</button>`:''}</div><button class="text-button icon-batch-link" type="button" data-action="icon-batch">为全部资产获取网站图标…</button></form>`);
  $('#icon-form [name="host"]').focus();
 }
 window.assetboardIconResult=result=>{
+ if(iconBatch?.pending.has(result?.requestId)){iconBatchReply(result);return;}
  if(result?.requestId!==iconRequest||!$('#icon-form'))return;
  $('#icon-form [type="submit"]').disabled=false;
  const valid=result.ok&&siteIconSrc({siteIcon:result.dataUrl});
@@ -281,6 +282,78 @@ window.assetboardIconResult=result=>{
  $('[data-action="icon-apply"]').disabled=false;$('[data-action="icon-apply"]').focus();
 };
 document.addEventListener('submit',e=>{if(e.target.id!=='icon-form')return;e.preventDefault();const host=e.target.elements.host.value.trim();if(!host||!nativeStore)return;iconPreview=null;$('[data-action="icon-apply"]').disabled=true;e.target.querySelector('[type="submit"]').disabled=true;$('#icon-status').textContent=`正在从 ${host} 获取…`;window.webkit.messageHandlers.assetboard.postMessage({action:'iconFetch',requestId:++iconRequest,host});});
+// 「为全部资产获取网站图标」(DESIGN-PRINCIPLES §9 rule 16): native only, started by the person, never in demo mode.
+// The confirm step lists only vendor homepages from iconVendors; three requests at a time; one request per vendor, shared by its assets;
+// results are applied together after the run, behind one checkpoint, so a single undo removes them all. Failures keep the category icon.
+const ICON_BATCH_LIMIT=3,ICON_BATCH_TIMEOUT=30000;let iconBatch=null,iconBatchOverwrite=false;
+// Icons already on this Mac, by vendor host; skipped when the person asks to replace icons, since that means fetching fresh ones.
+function iconCache(){const cache=new Map();if(iconBatchOverwrite)return cache;for(const a of state.assets){const src=siteIconSrc(a),v=src&&vendorForHost(a.siteIconHost);if(v&&!cache.has(v.host))cache.set(v.host,src);}return cache;}
+function iconBatchDialog(){
+ if(demoMode){window.assetboardDemoBlocked();return;}
+ if(!nativeStore){toast('网站图标只能在 Mac App 里获取');return;}
+ if(iconBatch)return;
+ const plan=iconPlan(state.assets,{overwrite:iconBatchOverwrite}),cache=iconCache(),fetchHosts=plan.hosts.filter(h=>!cache.has(h.host)),reuse=plan.hosts.filter(h=>cache.has(h.host)),assetsCount=plan.hosts.reduce((n,h)=>n+h.ids.length,0),existing=iconPlan(state.assets,{overwrite:true}).hosts.reduce((n,h)=>n+h.ids.length,0)-iconPlan(state.assets).hosts.reduce((n,h)=>n+h.ids.length,0);
+ const skippedNote=[plan.skipped.unknown&&`${formatCount(plan.skipped.unknown)} 项没有识别出平台`,plan.skipped.existing&&`${formatCount(plan.skipped.existing)} 项已有网站图标`,plan.skipped.custom&&`${formatCount(plan.skipped.custom)} 项用的是自定义图标`,plan.skipped.hidden&&`${formatCount(plan.skipped.hidden)} 项已隐藏`].filter(Boolean).join('，');
+ const list=fetchHosts.length?`<ul class="icon-batch-hosts">${fetchHosts.map(h=>`<li><span class="tile sm type-art" aria-hidden="true">${icon('domain')}</span><strong>${esc(h.host)}</strong><span>${esc(h.label)} · ${formatCount(h.ids.length)} 项</span></li>`).join('')}</ul>`:'';
+ modal('为全部资产获取网站图标',`<div id="icon-batch" class="form">${plan.hosts.length?`<p class="form-note">将为 ${formatCount(assetsCount)} 项资产配上所属平台的图标。${fetchHosts.length?`需要联系下面 ${formatCount(fetchHosts.length)} 个平台官网，每个只请求一次：`:'所需图标都已在本机，不需要联网。'}</p>${list}${reuse.length?`<p class="form-note">${esc(reuse.map(h=>h.label).join('、'))} 的图标已在本机，直接复用。</p>`:''}`:'<p class="form-note">没有需要获取图标的资产。</p>'}
+ ${existing?`<label class="check-row"><input type="checkbox" id="icon-batch-overwrite" ${iconBatchOverwrite?'checked':''}> 也替换已有的网站图标（${formatCount(existing)} 项）</label>`:''}
+ <p class="form-note">只访问平台官网首页和它声明的图标文件，直接连接、不带 Cookie、只用 https，不经过任何图标服务；不会访问你自己的域名或站点，也不发送资产名称。${skippedNote?skippedNote+'，不处理。':''}抓不到的保留类别图标。</p>
+ <div class="confirm-actions"><button class="button primary" data-action="icon-batch-start" ${plan.hosts.length?'':'disabled'}>${fetchHosts.length?'开始获取':'应用'}</button><button class="button" data-action="icon-batch-cancel">取消</button></div></div>`);
+ $('#icon-batch-overwrite')?.addEventListener('change',e=>{iconBatchOverwrite=e.target.checked;iconBatchDialog();});
+ (plan.hosts.length?$('[data-action="icon-batch-start"]'):$('[data-action="icon-batch-cancel"]'))?.focus();
+}
+function iconBatchStart(){
+ if(demoMode||!nativeStore||iconBatch)return;
+ const plan=iconPlan(state.assets,{overwrite:iconBatchOverwrite}),cache=iconCache();
+ iconBatch={plan,queue:plan.hosts.filter(h=>!cache.has(h.host)),pending:new Map(),done:[],failed:[],icons:new Map([...cache].filter(([host])=>plan.hosts.some(h=>h.host===host)))};
+ iconBatch.total=iconBatch.queue.length;
+ const dialog=$('#modal');dialog.addEventListener('close',iconBatchAbort,{once:true});
+ $('#icon-batch').innerHTML=`<p class="form-note" id="icon-batch-status" aria-live="polite"></p><progress id="icon-batch-progress" max="${Math.max(1,iconBatch.total)}" value="0"></progress><div class="confirm-actions"><button class="button" data-action="icon-batch-cancel">停止</button></div>`;
+ iconBatchPump();
+}
+function iconBatchPump(){
+ const run=iconBatch;if(!run)return;
+ while(run.pending.size<ICON_BATCH_LIMIT&&run.queue.length){
+  const h=run.queue.shift(),requestId=++iconRequest;
+  run.pending.set(requestId,{host:h,timer:setTimeout(()=>iconBatchReply({requestId,ok:false,error:'超时'}),ICON_BATCH_TIMEOUT)});
+  window.webkit.messageHandlers.assetboard.postMessage({action:'iconFetch',requestId,host:h.host});
+ }
+ const finished=run.done.length+run.failed.length;
+ if($('#icon-batch-status'))$('#icon-batch-status').textContent=run.total?`正在获取 ${formatCount(finished)} / ${formatCount(run.total)}…`:'正在应用…';
+ if($('#icon-batch-progress'))$('#icon-batch-progress').value=finished;
+ if(!run.pending.size&&!run.queue.length)iconBatchFinish();
+}
+function iconBatchReply(result){
+ const run=iconBatch,entry=run?.pending.get(result?.requestId);if(!entry)return;
+ clearTimeout(entry.timer);run.pending.delete(result.requestId);
+ const src=result.ok&&siteIconSrc({siteIcon:result.dataUrl});
+ if(src){run.icons.set(entry.host.host,src);run.done.push(entry.host);}
+ else{const error=String(result.error||'');run.failed.push({...entry.host,reason:error==='超时'?'超时，没有回应':/无法连接/.test(error)?'连不上（站点拒绝自动访问或网络不通）':/没有在/.test(error)?'官网没有可下载的图标':error||'没有获取到可用的图标'});}
+ iconBatchPump();
+}
+function iconBatchAbort(){const run=iconBatch;if(!run||run.finished)return;for(const {timer} of run.pending.values())clearTimeout(timer);iconBatch=null;toast('已停止获取，没有改动任何资产');}
+function iconBatchFinish(){
+ const run=iconBatch;run.finished=true;iconBatch=null;
+ let changed=0;const touched=[];
+ for(const h of run.plan.hosts){const src=run.icons.get(h.host);if(!src)continue;for(const id of h.ids){const a=state.assets.find(x=>x.id===id);if(a&&!(a.siteIcon&&!iconBatchOverwrite)&&a.siteIcon!==src){touched.push([a,src,h.host]);}}}
+ if(touched.length){checkpoint();for(const [a,src,host] of touched){a.siteIcon=src;a.siteIconHost=host;changed++;}save();}
+ const failedAssets=run.failed.reduce((n,h)=>n+h.ids.length,0);
+ if($('#icon-batch'))$('#icon-batch').innerHTML=`<div id="icon-batch-done"><p class="form-note">${changed?`已为 ${formatCount(changed)} 项资产配上图标。`:'没有资产需要更新。'}${run.total?`联系了 ${formatCount(run.total)} 个平台官网，成功 ${formatCount(run.done.length)} 个。`:''}</p>${run.failed.length?`<p class="form-note">下面 ${formatCount(run.failed.length)} 个平台没有拿到图标，${formatCount(failedAssets)} 项资产继续用类别图标，可在资产详情里手动上传或换个域名重试：</p><ul class="icon-batch-hosts failed">${run.failed.map(h=>`<li><strong>${esc(h.host)}</strong><span>${esc(h.reason)}</span></li>`).join('')}</ul>`:''}<div class="confirm-actions"><button class="button primary" data-action="icon-batch-cancel">完成</button></div></div>`;
+ $('#icon-batch-done [data-action="icon-batch-cancel"]')?.focus();
+ render();if(activeAsset)showDetail(activeAsset);
+ if(changed)toast(`已为 ${formatCount(changed)} 项资产配上网站图标`,true);
+}
+// Real icons are drawn on the neutral tile; a dark mark on transparency gets a light backing in dark mode, a light mark a dark one in light mode.
+const markTones=new Map();
+function markTone(src){
+ if(markTones.has(src))return markTones.get(src);
+ markTones.set(src,'');const img=new Image();
+ img.onload=()=>{try{const c=document.createElement('canvas');c.width=c.height=32;const g=c.getContext('2d',{willReadFrequently:true});g.drawImage(img,0,0,32,32);const d=g.getImageData(0,0,32,32).data;let opaque=0,lum=0;for(let i=0;i<d.length;i+=4)if(d[i+3]>128){opaque++;lum+=(.2126*d[i]+.7152*d[i+1]+.0722*d[i+2])/255;}
+  const mean=opaque?lum/opaque:0,clear=opaque<1024*.9;markTones.set(src,clear&&opaque&&mean<.3?'mark-dark':clear&&opaque&&mean>.85?'mark-light':'');}catch{markTones.set(src,'');}
+  refreshMarkTones();};
+ img.src=src;return '';
+}
+function refreshMarkTones(){document.querySelectorAll('.tile.custom-art img,.site-mark').forEach(img=>{const tone=markTones.get(img.getAttribute('src'));if(tone===undefined)return;const host=img.classList.contains('site-mark')?img:img.parentElement;host.classList.toggle('mark-dark',tone==='mark-dark');host.classList.toggle('mark-light',tone==='mark-light');});}
 function closeDetail(){ $('#detail').hidden=true;activeAsset=null;if(lastFocus?.isConnected)lastFocus.focus();}
 function modal(title,html,view=''){$('#modal-title').textContent=title;$('#modal-content').innerHTML=html;$('#modal').dataset.view=view;if(!html.includes('id="asset-form"')&&!html.includes("id='asset-form'")&&!html.includes('id="dirty-save"'))assetFormSnapshot=null;if(nativeStore)$('#modal-content').querySelectorAll('.form-note').forEach(el=>{if(el.textContent.includes('浏览器'))el.textContent=el.textContent.replaceAll('当前浏览器','此 Mac').replaceAll('此浏览器','此 Mac');});if(!$('#modal').open)$('#modal').showModal();}
 function addBlock(){modal('给大板添一个区块',Object.entries(cats).map(([id,c])=>`<button class="category-choice" data-action="choose-block" data-id="${id}" ${state.blocks.some(b=>b.id===id)?'disabled':''}><span class="tile type-art" aria-hidden="true">${icon(id)}</span><span>${c.name}<small>${c.hint}</small></span><span class="plus">${state.blocks.some(b=>b.id===id)?'✓':'＋'}</span></button>`).join('')+'<p class="form-note">区块按类别展示已有资产。添加后可以自由移动、调整大小。</p>');}
@@ -474,6 +547,9 @@ document.addEventListener('click',e=>{const button=e.target.closest('[data-actio
  else if(action==='reveal'){const value=button.previousElementSibling,shown=button.getAttribute('aria-pressed')==='true';value.textContent=shown?value.dataset.masked:value.dataset.full;button.setAttribute('aria-pressed',String(!shown));button.textContent=shown?'显示':'隐藏';}
  else if(action==='link-picker')linkPicker(id);
  else if(action==='icon-dialog')iconDialog(id);
+ else if(action==='icon-batch')iconBatchDialog();
+ else if(action==='icon-batch-start')iconBatchStart();
+ else if(action==='icon-batch-cancel')$('#modal').close();
  else if(action==='icon-apply'){const a=state.assets.find(x=>x.id===id);if(!a||!iconPreview)return;checkpoint();a.siteIcon=iconPreview.dataUrl;a.siteIconHost=iconPreview.host;save();$('#modal').close();render();if(activeAsset===id)showDetail(id);toast('已使用网站图标',true);}
  else if(action==='icon-remove'){const a=state.assets.find(x=>x.id===id);if(!a?.siteIcon)return;checkpoint();delete a.siteIcon;delete a.siteIconHost;save();$('#modal').close();render();if(activeAsset===id)showDetail(id);toast('已移除网站图标',true);}
  else if(action==='link'){$('#modal').close();checkpoint();if(!linkAssets(state.assets,id,button.dataset.target)){history.pop();return;}save();render();showDetail(id);toast('已关联',true);}
