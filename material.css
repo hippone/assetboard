@@ -502,3 +502,15 @@ body.drag-active .quick-action,.block.compact .quick-action{visibility:hidden}
 :root .empty>span{display:block;font-size:32px;line-height:1;color:var(--muted);margin-bottom:8px}
 :root .empty h2{margin:0 0 6px;font-size:17px;font-weight:600;color:var(--ink)}
 :root .empty p{margin:0 0 16px;font-size:13px;color:var(--muted)}
+/* Spacing (2026-10-09, §9 rule 4): 12px between cards, 16px between blocks; block widths keep tiling for any --board-gap. */
+:root{--card-gap:12px}
+:root .board{--board-gap:16px;gap:var(--board-gap);padding:var(--board-gap)}
+:root .block{width:calc(var(--width,50)*1% + var(--width,50)*var(--board-gap)/100 - var(--board-gap))}
+:root .cards{gap:var(--card-gap);padding:4px var(--card-gap) var(--card-gap)}
+@media(min-width:761px){:root .cards{grid-template-columns:repeat(auto-fit,minmax(max(180px,calc((100% - 3*var(--card-gap))/4)),1fr))}:root .block.compact .cards{grid-template-columns:repeat(auto-fit,minmax(max(168px,calc((100% - 3*var(--card-gap))/4)),1fr))}}
+.compact-repositories-grid{gap:8px}
+:root .eyebrow,:root .flip-label{letter-spacing:0;text-transform:none}
+:root .welcome h1{font-size:22px;letter-spacing:0;margin:0 0 8px}
+:root .card-foot .card-event{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Hover-only card actions take no room until shown, so the date keeps the whole foot at rest. */
+@media(hover:hover){.asset-card:not(:hover):not(:focus-within) .card-foot :is(.card-hide,.quick-action,.repo-swap){display:none}.asset-card:is(:hover,:focus-within) .card-foot :is(.card-hide,.quick-action,.repo-swap){animation:keys-fade var(--motion-base) var(--ease)}}

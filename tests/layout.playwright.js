@@ -62,9 +62,9 @@ async (page) => {
   let x=await edge('domain','x');const width=(await p.locator('.block.domain').boundingBox()).width;
   await p.keyboard.down('Meta');await drag({x:x.x+4,y:x.y+x.height/2},{x:x.x+4+37,y:x.y+x.height/2});await p.keyboard.up('Meta');
   check(Math.abs((await p.locator('.block.domain').boundingBox()).width-width-37)<1,'Resize must follow the pointer within one pixel');
-  const target=await p.evaluate(()=>{const board=document.querySelector('#board'),style=getComputedStyle(board),inner=board.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight);return {inner,left:document.querySelector('.block.domain').getBoundingClientRect().left};});
+  const target=await p.evaluate(()=>{const board=document.querySelector('#board'),style=getComputedStyle(board),inner=board.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight);return {inner,gap:parseFloat(style.columnGap)||0,left:document.querySelector('.block.domain').getBoundingClientRect().left};});
   x=await edge('domain','x');
-  await drag({x:x.x+4,y:x.y+x.height/2},{x:target.left+(2/3)*(target.inner+4)-4,y:x.y+x.height/2});
+  await drag({x:x.x+4,y:x.y+x.height/2},{x:target.left+(2/3)*(target.inner+target.gap)-target.gap,y:x.y+x.height/2});
   check(Math.abs(await p.evaluate(()=>state.blocks.find(b=>b.id==='domain').width)-66.7)<.05,'Width must snap to 2/3 when released 5px past it');
   check(await p.evaluate(async()=>{const node=document.querySelector('.domain');window.dispatchEvent(new Event('resize'));await new Promise(requestAnimationFrame);return node===document.querySelector('.domain');}),'Window resize must preserve DOM nodes');
 
