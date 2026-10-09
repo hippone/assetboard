@@ -492,3 +492,13 @@ body.drag-active .quick-action,.block.compact .quick-action{visibility:hidden}
 :root .flip-actions .button{background:var(--surface-card);border-color:var(--border);color:var(--ink)}
 :root .flip-actions .button:hover{background:var(--surface-card);border-color:var(--border-strong)}
 #board .flip-actions .button:focus-visible{outline-color:rgb(var(--tone-primary));outline-offset:2px}
+/* Detail actions read as one cluster: 8px inside, 16px before the hide/delete pair, 24px from the heading. */
+:root #detail-content .detail-actions{gap:8px;margin:8px 0 0}
+:root #detail-content :not(.detail-actions)+.detail-actions{margin-top:24px}
+:root #detail-content .detail-actions+.secondary-actions{margin-top:16px}
+:root #detail-content .detail-note-inline{margin:8px 0 24px}
+/* Empty search: one clear line, one quiet hint, one action. */
+:root .empty{padding:96px 24px}
+:root .empty>span{display:block;font-size:32px;line-height:1;color:var(--muted);margin-bottom:8px}
+:root .empty h2{margin:0 0 6px;font-size:17px;font-weight:600;color:var(--ink)}
+:root .empty p{margin:0 0 16px;font-size:13px;color:var(--muted)}
