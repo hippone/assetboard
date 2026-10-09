@@ -69,15 +69,17 @@ async (page) => {
   check(await p.evaluate(async()=>{const node=document.querySelector('.domain');window.dispatchEvent(new Event('resize'));await new Promise(requestAnimationFrame);return node===document.querySelector('.domain');}),'Window resize must preserve DOM nodes');
 
   // Bottom edge fixes the height by whole rows, pulling past the content returns to auto, double-click restores auto.
+  // Pull up by one card row (cards are short since the tile redesign, so the distance follows the real row).
+  const oneRow=await p.evaluate(()=>{const c=document.querySelector('.block.domain .asset-card');return c.getBoundingClientRect().height+parseFloat(getComputedStyle(c.parentElement).rowGap||0);});
   let y=await edge('domain','y');
-  await drag({x:y.x+y.width/2,y:y.y+4},{x:y.x+y.width/2,y:y.y-160});
+  await drag({x:y.x+y.width/2,y:y.y+4},{x:y.x+y.width/2,y:y.y-oneRow});
   check(await p.evaluate(()=>state.blocks.find(b=>b.id==='domain').height)>0,'Bottom edge must set a fixed height');
   check(await p.locator('.block.domain.fixed [data-action="all"]').isVisible(),'Hidden cards must offer 查看全部');
   y=await edge('domain','y');
   await drag({x:y.x+y.width/2,y:y.y+4},{x:y.x+y.width/2,y:y.y+400});
   check(await p.evaluate(()=>state.blocks.find(b=>b.id==='domain').height)===null,'Pulling past the content must return to auto height');
   y=await edge('domain','y');
-  await drag({x:y.x+y.width/2,y:y.y+4},{x:y.x+y.width/2,y:y.y-160});
+  await drag({x:y.x+y.width/2,y:y.y+4},{x:y.x+y.width/2,y:y.y-oneRow});
   y=await edge('domain','y');
   await p.mouse.dblclick(y.x+y.width/2,y.y+4);await settle();
   check(await p.evaluate(()=>state.blocks.find(b=>b.id==='domain').height)===null,'Double-click must restore auto height');
@@ -104,6 +106,7 @@ async (page) => {
   // Height decides the style: under one full row cards turn compact, further up the block folds, pulling far past the compact content opens full cards.
   const full=(await p.locator('.block.domain .asset-card').first().boundingBox()).height;
   // Leave about 50px for the cards: less than one full row, more than half a compact row.
+  await p.evaluate(()=>scrollTo(0,0));await settle(); // with short cards the edge can sit near the top; keep the drag target on screen
   const gridHeight=await p.locator('.block.domain .cards').evaluate(e=>e.clientHeight);
   let bottom=await edge('domain','y');
   await drag({x:bottom.x+bottom.width/2,y:bottom.y+4},{x:bottom.x+bottom.width/2,y:bottom.y-gridHeight+50},{hold:async()=>check((await p.locator('.float-tip').textContent()).startsWith('紧凑'),'The tip must name the compact style')});

@@ -29,7 +29,7 @@ async (page) => {
   check(await p.evaluate(()=>!state.assets.find(a=>a.id==='wise').siteIcon),'Preview must not save');
   await p.locator('[data-action="icon-apply"]').click();
   check(await p.evaluate(()=>{const a=state.assets.find(a=>a.id==='wise');return a.siteIcon?.startsWith('data:image/png;base64,')&&a.siteIconHost==='wise.com';}),'Apply stores the icon and its host');
-  check(await p.locator('[data-asset="wise"] .art image').count()===1,'A bank card shows the icon as a badge on its drawn art');
+  check(await p.locator('[data-asset="wise"] .card-head .tile.site-art img').count()===1&&await p.locator('[data-asset="wise"] .card-head .tile svg').count()===0,'A fetched icon replaces the category icon in the tile, bank cards included');
   check(await p.locator('[data-asset="site"] .link-chip .site-mark').count()===1,'Link chips show the icon');
   await p.locator('#toast .toast-undo').click();
   check(await p.evaluate(()=>!state.assets.find(a=>a.id==='wise').siteIcon),'Undo removes the icon');
@@ -57,6 +57,6 @@ async (page) => {
   await p.locator('[data-action="icon-remove"]').click();
   check(await p.evaluate(()=>!state.assets.find(a=>a.id==='site').siteIcon)&&await p.locator('[data-asset="site"] .site-art').count()===0,'Remove clears the icon');
   check(!errors.length,'Page errors: '+errors.join(' | '));
-  return 'PASS: suggested host, bridge fetch, preview before save, badge on drawn art, link chip mark, undo, error state, stale reply ignored, site art, remove';
+  return 'PASS: suggested host, bridge fetch, preview before save, site icon in tile, link chip mark, undo, error state, stale reply ignored, site art, remove';
  } finally { await p.close(); }
 }
