@@ -454,7 +454,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         if configure || !FileManager.default.fileExists(atPath: clientFile.path) {
             let panel = NSOpenPanel()
             panel.allowedContentTypes = [.json]
-            panel.message = "选择从 Google Cloud 下载的桌面应用 OAuth 客户端 JSON。"
+            panel.message = "选择桌面应用类型的 OAuth 客户端 JSON"
             panel.beginSheetModal(for: window) { response in
                 guard response == .OK, let url = panel.url else {
                     self.gmailResult(["ok": false, "error": "尚未选择 OAuth 客户端 JSON。"])
@@ -510,7 +510,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [UTType.png, .jpeg, .pdf] + [UTType(filenameExtension: "webp")].compactMap { $0 }
         panel.allowsMultipleSelection = true
-        panel.message = "选择截图或 PDF；文字只在此 Mac 识别和保存。"
+        panel.message = "选择截图或 PDF，文字只在此 Mac 识别"
         panel.beginSheetModal(for: window) { response in
             guard response == .OK else { return }
             let urls = panel.urls.prefix(10)
@@ -893,10 +893,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         exportItem.keyEquivalentModifierMask = [.command, .shift]
         exportItem.target = self
         fileMenu.addItem(exportItem)
-        let iconsItem = NSMenuItem(title: "为全部资产获取网站图标…", action: #selector(openIconBatch), keyEquivalent: "")
+        let iconsItem = NSMenuItem(title: "获取网站图标…", action: #selector(openIconBatch), keyEquivalent: "")
         iconsItem.target = self
         fileMenu.addItem(iconsItem)
-        let evidenceItem = NSMenuItem(title: "待确认资料…", action: #selector(showImportedEvidence), keyEquivalent: "")
+        let evidenceItem = NSMenuItem(title: "待确认…", action: #selector(showImportedEvidence), keyEquivalent: "")
         evidenceItem.target = self
         fileMenu.addItem(evidenceItem)
         let aiItem = NSMenuItem(title: "AI 识别设置…", action: #selector(openAISettings), keyEquivalent: "")

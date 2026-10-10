@@ -33,26 +33,26 @@ const nativeStore=window.__ASSETBOARD_NATIVE__;
 const MOTION_MS=200;
 // Demo mode (`--demo` in the Mac app, `?demo` in the browser) shows the fictional board from demo-data.js and never saves.
 const demoMode=!!(nativeStore?.demo||(!nativeStore&&new URLSearchParams(location.search).has('demo')))&&typeof window.assetboardDemoBoard==='function';
-window.assetboardDemoBlocked=()=>{if($('#modal')?.open)$('#modal').close();toast('演示模式不连接外部服务，也不读写本机数据');};
+window.assetboardDemoBlocked=()=>{if($('#modal')?.open)$('#modal').close();toast('演示模式下不可用');};
 window.assetboardConnectionState=connections=>{
  if(!nativeStore)return;
  Object.assign(nativeStore,connections);
  const cloudflareStatus=$('#cloudflare-status');
- if(cloudflareStatus)cloudflareStatus.textContent=nativeStore.cloudflareConnected?'已连接 · 可重新同步':nativeStore.keychainUnavailable?'本机钥匙串暂未响应，可重新输入令牌同步':'尚未连接';
+ if(cloudflareStatus)cloudflareStatus.textContent=nativeStore.cloudflareConnected?'已连接':nativeStore.keychainUnavailable?'钥匙串没有响应，可重新输入令牌':'未连接';
  const githubStatus=$('#github-status');
- if(githubStatus)githubStatus.textContent=nativeStore.githubConnected?'已连接 · 可重新同步':nativeStore.keychainUnavailable?'本机钥匙串暂未响应，可使用 gh 同步':'尚未连接';
+ if(githubStatus)githubStatus.textContent=nativeStore.githubConnected?'已连接':nativeStore.keychainUnavailable?'钥匙串没有响应，可用 gh 同步':'未连接';
 };
 let state=structuredClone(seed),query='',focusCategory=null,history=[],future=[],activeAsset=null,lastFocus=null,toastTimer,showHiddenBlocks=new Set(),assetFormSnapshot=null;
 let migratedLegacyData=false;
 try{const saved=demoMode?window.assetboardDemoBoard():nativeStore?nativeStore.data:JSON.parse(localStorage.getItem(key));if(saved&&Array.isArray(saved.blocks)&&Array.isArray(saved.assets)&&saved.blocks.every(b=>cats[b.id])){const migration=removeUntouchedDemo(saved);state=migration.board;migratedLegacyData=!!(migration.removed||migration.removedBlocks);}}catch{} if(!Array.isArray(state.deletedExternalIds))state.deletedExternalIds=[];
 let saveSequence=0;
-window.assetboardSaved=(sequence,success)=>{if(sequence!==saveSequence)return;if(!success)toast('本机文件保存失败，请保留窗口后重试');};
-function save(){if(demoMode)return;try{if(nativeStore)window.webkit.messageHandlers.assetboard.postMessage({action:'save',sequence:++saveSequence,data:state});else localStorage.setItem(key,JSON.stringify(state));}catch{toast('未能保存，请保留此窗口');}}
+window.assetboardSaved=(sequence,success)=>{if(sequence!==saveSequence)return;if(!success)toast('保存失败，请保留此窗口');};
+function save(){if(demoMode)return;try{if(nativeStore)window.webkit.messageHandlers.assetboard.postMessage({action:'save',sequence:++saveSequence,data:state});else localStorage.setItem(key,JSON.stringify(state));}catch{toast('保存失败，请保留此窗口');}}
 function checkpoint(){history.push(JSON.stringify(state));if(history.length>25)history.shift();future=[];}
 function toast(message,undoable=false,redoable=false){clearTimeout(toastTimer);const offer=(undoable&&history.length)||(redoable&&future.length);$('#toast').innerHTML=`<span>${esc(message)}</span>${undoable&&history.length?'<button class="toast-undo" data-action="undo">撤销</button>':redoable&&future.length?'<button class="toast-undo" data-action="redo">重做</button>':''}`;$('#toast').classList.add('show');toastTimer=setTimeout(()=>$('#toast').classList.remove('show'),offer?6000:3000);}
 function restoreSnapshot(json){state=JSON.parse(json);save();if(activeAsset&&!state.assets.some(a=>a.id===activeAsset))closeDetail();else if(activeAsset)showDetail(activeAsset);render();}
-function undo(){if(!history.length){toast('没有可撤销的修改');return;}future.push(JSON.stringify(state));if(future.length>25)future.shift();restoreSnapshot(history.pop());toast('已撤销上一次修改',false,true);}
-function redo(){if(!future.length){toast('没有可重做的修改');return;}history.push(JSON.stringify(state));if(history.length>25)history.shift();restoreSnapshot(future.pop());toast('已重做',true);}
+function undo(){if(!history.length){toast('没有可撤销的');return;}future.push(JSON.stringify(state));if(future.length>25)future.shift();restoreSnapshot(history.pop());toast('已撤销',false,true);}
+function redo(){if(!future.length){toast('没有可重做的');return;}history.push(JSON.stringify(state));if(history.length>25)history.shift();restoreSnapshot(future.pop());toast('已重做',true);}
 function confirmDialog(title,message,confirmLabel,danger=false){return new Promise(resolve=>{modal(title,`<p class="form-note confirm-message">${esc(message).replaceAll('\n','<br>')}</p><div class="confirm-actions"><button class="button ${danger?'danger':'primary'}" id="confirm-yes">${esc(confirmLabel)}</button><button class="button" id="confirm-no">取消</button></div>`);const dialog=$('#modal');let settled=false;const finish=value=>{if(settled)return;settled=true;dialog.removeEventListener('close',cancel);resolve(value);},cancel=()=>finish(false);dialog.addEventListener('close',cancel);$('#confirm-yes').onclick=()=>{finish(true);dialog.close();};$('#confirm-no').onclick=()=>dialog.close();$('#confirm-no').focus();});}
 
 function isHidden(a){return !!(a&&a.hiddenAt);}
@@ -92,7 +92,7 @@ function runQuick(id,quickId,kind){
  else if(q.kind==='local'&&nativeStore)window.webkit.messageHandlers.assetboard.postMessage({action:'openLocalDirectory',path:q.value});
  return true;
 }
-window.assetboardLocalResult=ok=>toast(ok?'已用本机编辑器打开':'找不到这个本机目录，请在资料里检查路径');
+window.assetboardLocalResult=ok=>toast(ok?'已打开':'找不到这个目录，请检查路径');
 // Only the most urgent few "soon" dates in a block stay amber (DISPLAY_LIMITS.strongDates); overdue always stays red.
 function mutedEvent(event,strong){return strong||event.cls!=='warn'?event:{...event,cls:''};}
 // Card text has three layers at most: name, one source line (provider · account, or region + masked identifier for priority types), one status in the foot.
@@ -241,8 +241,8 @@ function dateText(a){const status=assetDateStatus(a);if(status.level==='none')re
 // Manual display order from the detail panel: bring one card to the front of its block, or go back to recency order.
 function manualOrder(type){return !!(state.cardOrder?.[type]?.length||(type==='repository'&&state.featuredRepositoryIds?.length));}
 function orderActions(a){if(a.hiddenAt||!cats[a.type])return '';return `<div class="detail-actions order-actions"><button class="button" data-action="pin-front" data-id="${esc(a.id)}" title="放到「${esc(cats[a.type].name)}」显示区的第一位">放到前面</button>${manualOrder(a.type)?`<button class="button" data-action="auto-order" data-id="${esc(a.id)}" title="「${esc(cats[a.type].name)}」恢复按最近更新排列">恢复自动排序</button>`:''}</div>`;}
-function pinFront(id){const a=state.assets.find(x=>x.id===id);if(!a||a.hiddenAt)return;checkpoint();state.cardOrder||={};state.cardOrder[a.type]=bringToFront(state.cardOrder[a.type],id);if(a.type==='repository')state.featuredRepositoryIds=bringToFront(state.featuredRepositoryIds,id);save();render();if(activeAsset===id)showDetail(id);toast(`已把「${displayName(a)}」放到${cats[a.type].name}最前`,true);}
-function autoOrder(id){const a=state.assets.find(x=>x.id===id);if(!a||!manualOrder(a.type))return;checkpoint();if(state.cardOrder)delete state.cardOrder[a.type];if(a.type==='repository')state.featuredRepositoryIds=[];save();render();if(activeAsset===id)showDetail(id);toast(`${cats[a.type].name}已恢复按最近更新排列`,true);}
+function pinFront(id){const a=state.assets.find(x=>x.id===id);if(!a||a.hiddenAt)return;checkpoint();state.cardOrder||={};state.cardOrder[a.type]=bringToFront(state.cardOrder[a.type],id);if(a.type==='repository')state.featuredRepositoryIds=bringToFront(state.featuredRepositoryIds,id);save();render();if(activeAsset===id)showDetail(id);toast('已放到最前',true);}
+function autoOrder(id){const a=state.assets.find(x=>x.id===id);if(!a||!manualOrder(a.type))return;checkpoint();if(state.cardOrder)delete state.cardOrder[a.type];if(a.type==='repository')state.featuredRepositoryIds=[];save();render();if(activeAsset===id)showDetail(id);toast('已恢复自动排序',true);}
 function showDetail(id){const a=state.assets.find(a=>a.id===id);if(!a)return;lastFocus=document.activeElement;activeAsset=id;const link=safeManagementUrl(a.url),realLink=link&&new URL(link).hostname!=='example.com',lastSync=a.syncedAt&&!isNaN(Date.parse(a.syncedAt))?new Date(a.syncedAt).toLocaleString('zh-CN'):'';$('#detail-content').innerHTML=`<div class="detail-head">${tile(a,'lg')}<span class="eyebrow">${esc(cats[a.type].name)}</span></div><h2>${esc(a.name)}</h2><p class="detail-sub">${esc(assetProfiles[a.type]?[regionFlag(a.region),identityText(a)].filter(Boolean).join(' '):[a.provider,a.account].filter(Boolean).join(' · '))}</p>${a.purpose?`<span class="detail-badge">${esc(a.purpose)}</span>`:''}<div class="detail-actions">${realLink?`<button class="button primary" data-action="external" data-id="${esc(id)}" title="打开管理页">打开 ↗</button>`:''}<button class="button" data-action="edit-asset" data-id="${esc(id)}">编辑</button>${nativeStore?`<button class="button" data-action="icon-dialog" data-id="${esc(id)}" title="网站图标">图标</button>`:''}</div>${quickRow(a)}${orderActions(a)}<div class="detail-actions secondary-actions"><button class="button" data-action="${a.hiddenAt?'restore-asset':'hide-asset'}" data-id="${esc(id)}" title="${a.hiddenAt?'恢复显示':'仅在本机隐藏，可随时恢复'}">${a.hiddenAt?'恢复':'隐藏'}</button><button class="button danger-quiet" data-action="delete-asset" data-id="${esc(id)}" title="只删除 Assetboard 里的记录">删除</button></div><div class="facts">${detailFacts(a,lastSync)}</div>${linkSection(a)}${(()=>{const src={cloudflare:'同步自 Cloudflare，名称和账号下次同步会按平台值更新。',github:'同步自 GitHub，名称和账号下次同步会按平台值更新。',ssh:'来自 ~/.ssh/config，名称和主机下次导入会按配置更新。',manual:'',demo:'演示数据，不代表实际账户。'}[a.source]??'演示数据，不代表实际账户。';return a.notes||src?`<details><summary>${a.notes?'备注':'来源'}${a.notes&&src?' · 来源':''}</summary>${a.notes?`<p>${esc(a.notes)}</p>`:''}${src?`<p>${src}</p>`:''}</details>`:'';})()}`;$('#detail').hidden=false;$('#close-detail').focus();}
 // Masked values reveal on request; the full value never appears on the board.
 function secret(full,masked){return full&&masked&&masked!==full?`<span class="secret" data-full="${esc(full)}" data-masked="${esc(masked)}">${esc(masked)}</span><button class="text-button reveal" data-action="reveal" aria-pressed="false">显示</button>`:esc(full||'');}
@@ -591,58 +591,60 @@ function profileFields(type,v){
  return provider+account+region+phone+card+dates+(actions?`<div class="field-row action-fields">${actions}</div>`:'')+(p.note?`<span class="form-note form-warning">${p.note}</span>`:'');
 }
 function cloudflareDialog(){
- if(!nativeStore){toast('Cloudflare 同步仅在 macOS App 中可用');return;}
+ if(!nativeStore){toast('Cloudflare 仅 Mac App 可用');return;}
  const connected=nativeStore.cloudflareConnected;
  const tokenUrl=cloudflareTokenTemplateUrl({name:'Assetboard'});
- modal('Cloudflare · 只读同步',`<div class="form"><p class="form-note">使用只读 API Token。预填权限：Zone、Account Settings、Pages、Workers Scripts、R2（均为 Read）。若令牌含 Registrar 读权限，还会写入域名到期日（新接口 /registrar/registrations）。多账户资源在同一区块内用账号标签区分。不读取脚本代码、对象内容或账单。</p><button class="button" data-action="setup-cloudflare" data-url="${esc(tokenUrl)}">打开预填权限的建令牌页 ↗</button><label>${connected?'更换令牌（留空则使用已保存令牌）':'只读 API 令牌'}<input id="cloudflare-token" type="password" autocomplete="off" spellcheck="false" placeholder="${connected?'留空使用现有令牌':'粘贴令牌'}"></label><p id="cloudflare-status" class="form-note">${connected?'已连接 · 可重新同步或更换令牌':nativeStore.cloudflareChecking?'正在检查本机钥匙串…':nativeStore.keychainUnavailable?'本机钥匙串暂未响应，可重新输入令牌同步':'尚未连接'}</p><button id="cloudflare-sync" class="button primary">${connected?'重新同步':'验证权限并同步'}</button>${connected?'<button id="cloudflare-disconnect" class="button">断开本机连接</button>':''}<p class="form-note">令牌经验证后存入 macOS 钥匙串。断开不会撤销 Cloudflare 后台的令牌，已同步资产仍保留。</p></div>`);
- $('#cloudflare-sync').onclick=()=>{const token=$('#cloudflare-token').value;$('#cloudflare-token').value='';$('#cloudflare-sync').disabled=true;$('#cloudflare-status').textContent='正在验证权限并读取全部分页…';window.webkit.messageHandlers.assetboard.postMessage({action:'cloudflareSync',token});};
+ const status=connected?'已连接':nativeStore.cloudflareChecking?'检查钥匙串…':nativeStore.keychainUnavailable?'钥匙串没有响应，可重新输入令牌':'未连接';
+ modal('Cloudflare',`<div class="form"><div class="platform-bar"><span id="cloudflare-status" class="chip ${connected?'ok':''}">${status}</span><button class="button" data-action="setup-cloudflare" data-url="${esc(tokenUrl)}" title="打开预填只读权限的建令牌页：Zone、Account Settings、Pages、Workers Scripts、R2 Read；含 Registrar 读权限时还会读域名到期日">建令牌 ↗</button></div><label>${connected?'更换令牌':'令牌'}<input id="cloudflare-token" type="password" autocomplete="off" spellcheck="false" placeholder="${connected?'留空使用已保存的令牌':'粘贴只读令牌'}"></label><div class="confirm-actions"><button id="cloudflare-sync" class="button primary">${connected?'重新同步':'验证并同步'}</button>${connected?'<button id="cloudflare-disconnect" class="button" title="删除本机保存的令牌；Cloudflare 后台的令牌需自行撤销，已同步资产保留">断开</button>':''}</div><p class="form-note platform-note">${ui('lock')}只读；令牌存入 macOS 钥匙串</p></div>`);
+ $('#cloudflare-sync').onclick=()=>{const token=$('#cloudflare-token').value;$('#cloudflare-token').value='';$('#cloudflare-sync').disabled=true;$('#cloudflare-status').textContent='验证中…';window.webkit.messageHandlers.assetboard.postMessage({action:'cloudflareSync',token});};
  if(connected)$('#cloudflare-disconnect').onclick=()=>window.webkit.messageHandlers.assetboard.postMessage({action:'cloudflareDisconnect'});
 }
 window.assetboardCloudflareResult=result=>{
- if(!result.ok){const status=$('#cloudflare-status');if(status)status.textContent=result.error||'同步失败';const button=$('#cloudflare-sync');if(button)button.disabled=false;return;}
- if(result.disconnected){nativeStore.cloudflareConnected=false;cloudflareDialog();toast('已删除本机保存的 Cloudflare 令牌');return;}
+ if(!result.ok){const status=$('#cloudflare-status');if(status)status.textContent=result.error||'同步失败';status.classList.add('bad');const button=$('#cloudflare-sync');if(button)button.disabled=false;return;}
+ if(result.disconnected){nativeStore.cloudflareConnected=false;cloudflareDialog();toast('已删除令牌');return;}
  checkpoint();const merge=mergeCloudflare(state,result);state=merge.board;
- nativeStore.cloudflareConnected=true;save();render();$('#modal').close();toast(`Cloudflare 读取 ${merge.read} 项，新增 ${merge.added} 项`,true);
+ nativeStore.cloudflareConnected=true;save();render();$('#modal').close();toast(`Cloudflare：读 ${merge.read}，新增 ${merge.added}`,true);
  syncFollowUp('Cloudflare',merge,result.warnings||[]);
 };
 function githubDialog(){
- if(!nativeStore){toast('GitHub 同步仅在 macOS App 中可用');return;}
+ if(!nativeStore){toast('GitHub 仅 Mac App 可用');return;}
  const connected=nativeStore.githubConnected;
  const cli=window.__localCli||{};
  const accounts=cli.ghAccounts||[];
- const localLabel=accounts.length?`使用本机 gh 同步（${esc(accounts.join('、'))}）`:'使用本机 gh 登录同步';
- modal('GitHub · 只读同步',`<div class="form"><p class="form-note">优先用本机已登录的 gh（支持多账号，只调用 gh 命令，不读其凭据文件）。仓库按 owner 账号标签显示在同一「代码仓库」区块。失败时可用细粒度令牌（Metadata → Read）。</p><button id="github-local-sync" class="button primary" data-action="github-local-sync">${localLabel}</button><span class="form-note">需已安装并登录 GitHub CLI。此次不会将令牌另存到 Assetboard 钥匙串。</span><button class="button" data-action="setup-github-token">打开 GitHub 细粒度令牌页 ↗</button><label>${connected?'更换令牌（留空则使用已保存令牌）':'或者填写 GitHub 令牌'}<input id="github-token" type="password" autocomplete="off" spellcheck="false" placeholder="${connected?'留空使用现有令牌':'粘贴令牌'}"></label><p id="github-status" class="form-note">${connected?'已连接 · 可重新同步或更换令牌':cli.gh===false?'未检测到 gh · 可安装或改用令牌':'尚未连接'}</p><button id="github-sync" class="button">${connected?'使用已保存令牌重新同步':'验证填写的令牌并同步'}</button>${connected?'<button id="github-disconnect" class="button">断开本机连接</button>':''}<p class="form-note">填写的令牌经验证后保存在 macOS 钥匙串。断开会删除 Assetboard 保存的令牌，已同步资产仍保留。</p></div>`);
+ const tags=accounts.map(n=>`<span class="account-tag">${esc(n)}</span>`).join('');
+ const status=connected?'已连接':cli.gh===false?'未检测到 gh':'未连接';
+ modal('GitHub',`<div class="form"><div class="platform-bar"><span id="github-status" class="chip ${connected?'ok':''}">${status}</span><button class="button" data-action="setup-github-token" title="打开 GitHub 细粒度令牌页：Metadata → Read">建令牌 ↗</button></div><button id="github-local-sync" class="button primary" data-action="github-local-sync" title="只调用 gh 命令，不读它的凭据文件；多个账号的仓库显示在同一区块">${ui('github')}用本机 gh${tags}</button><label>${connected?'更换令牌':'或填写令牌'}<input id="github-token" type="password" autocomplete="off" spellcheck="false" placeholder="${connected?'留空使用已保存的令牌':'粘贴只读令牌'}"></label><div class="confirm-actions"><button id="github-sync" class="button">${connected?'用已保存的令牌同步':'验证并同步'}</button>${connected?'<button id="github-disconnect" class="button" title="删除 Assetboard 保存的令牌，已同步资产保留">断开</button>':''}</div><p class="form-note platform-note">${ui('lock')}只读；令牌存入 macOS 钥匙串</p></div>`);
  if(!cli.gh&&cli.gh!==false)requestLocalCliDetect();
- $('#github-sync').onclick=()=>{const token=$('#github-token').value;$('#github-token').value='';$('#github-sync').disabled=true;$('#github-status').textContent='正在验证权限并读取全部分页…';window.webkit.messageHandlers.assetboard.postMessage({action:'githubSync',token});};
+ $('#github-sync').onclick=()=>{const token=$('#github-token').value;$('#github-token').value='';$('#github-sync').disabled=true;$('#github-status').textContent='验证中…';window.webkit.messageHandlers.assetboard.postMessage({action:'githubSync',token});};
  if(connected)$('#github-disconnect').onclick=()=>window.webkit.messageHandlers.assetboard.postMessage({action:'githubDisconnect'});
 }
 function gmailDialog(){
- if(!nativeStore){toast('Gmail 导入仅在 macOS App 中可用');return;}
- modal('Gmail · 本地筛选导入',`<div class="form"><p class="form-note">先在 Google Cloud 网页启用 Gmail API，创建“桌面应用”OAuth 客户端并下载 JSON。授权使用 Gmail Readonly：Google 授予的是整个邮箱只读权限；Assetboard 实际只搜索账单、收据、续费、订阅和服务通知，不发送或修改邮件。匹配内容仅保存在此 Mac 的 SQLite 数据库。</p><button class="button" data-action="setup-gmail">前往 Google Cloud 获取 OAuth 客户端 ↗</button><button id="gmail-sync" class="button primary">${nativeStore.gmailConfigured?'重新搜索并导入匹配邮件':'选择 OAuth JSON 并授权导入'}</button>${nativeStore.gmailConfigured?'<button id="gmail-reconfigure" class="button">更换 OAuth 客户端 JSON</button>':''}<p id="gmail-status" class="form-note">筛选词：invoice、receipt、billing、renewal、subscription、payment、账单、续费、订阅、服务通知。只搜索最近 14 个月，最多处理 2000 封匹配邮件；超出时本次不写入。导入后在“待确认”中逐组核对。</p></div>`);
- $('#gmail-sync').onclick=()=>{$('#gmail-sync').disabled=true;$('#gmail-status').textContent='正在本机完成授权并读取匹配邮件；首次连接会打开 Google 授权网页…';window.webkit.messageHandlers.assetboard.postMessage({action:'gmailSync'});};
+ if(!nativeStore){toast('Gmail 仅 Mac App 可用');return;}
+ modal('Gmail',`<div class="form"><div class="platform-bar"><span id="gmail-status" class="chip ${nativeStore.gmailConfigured?'ok':''}">${nativeStore.gmailConfigured?'已配置':'未配置'}</span><button class="button" data-action="setup-gmail" title="在 Google Cloud 启用 Gmail API，创建「桌面应用」OAuth 客户端并下载 JSON">获取 OAuth 客户端 ↗</button></div><div class="confirm-actions"><button id="gmail-sync" class="button primary">${nativeStore.gmailConfigured?'重新导入':'选择 JSON 并授权'}</button>${nativeStore.gmailConfigured?'<button id="gmail-reconfigure" class="button">更换 JSON</button>':''}</div><p class="form-note platform-note" title="关键词：invoice、receipt、billing、renewal、subscription、payment、账单、续费、订阅、服务通知；最近 14 个月，最多 2000 封，超出本次不写入">${ui('lock')}只读邮箱；只搜账单和续费类邮件，结果存在此 Mac，不发送或修改邮件</p></div>`);
+ $('#gmail-sync').onclick=()=>{$('#gmail-sync').disabled=true;$('#gmail-status').textContent='读取中…';window.webkit.messageHandlers.assetboard.postMessage({action:'gmailSync'});};
  if(nativeStore.gmailConfigured)$('#gmail-reconfigure').onclick=()=>{window.webkit.messageHandlers.assetboard.postMessage({action:'gmailSync',configure:true});};
 }
 window.assetboardGmailResult=result=>{
- if(!result.ok){const status=$('#gmail-status');if(status)status.textContent=result.error||'Gmail 导入失败';const button=$('#gmail-sync');if(button)button.disabled=false;return;}
- nativeStore.gmailConfigured=true;$('#modal').close();toast(`Gmail 本地导入完成：匹配 ${result.count} 封邮件`);requestEvidence(()=>inboxDialog(false));
+ if(!result.ok){const status=$('#gmail-status');if(status)status.textContent=result.error||'导入失败';status.classList.add('bad');const button=$('#gmail-sync');if(button)button.disabled=false;return;}
+ nativeStore.gmailConfigured=true;$('#modal').close();toast(`Gmail：${result.count} 封`);requestEvidence(()=>inboxDialog(false));
 };
 window.assetboardGitHubResult=result=>{
  if(!result.ok){
   const status=$('#github-status');
   const steps=(result.nextSteps||[]).join(' · ');
-  if(status)status.textContent=(result.error||'同步失败')+(steps?' · '+steps:'');
+  if(status){status.textContent=(result.error||'同步失败')+(steps?' · '+steps:'');status.classList.add('bad');}
   for(const id of ['#github-sync','#github-local-sync']){const button=$(id);if(button)button.disabled=false;}
   if(result.tokenUrl){
    const form=$('#modal-content .form');
-   if(form&&!$('#github-fallback-link'))form.insertAdjacentHTML('beforeend',`<button class="button" id="github-fallback-link" data-action="setup-github-token">打开建令牌页（退路）↗</button>`);
+   if(form&&!$('#github-fallback-link'))form.insertAdjacentHTML('beforeend',`<button class="button" id="github-fallback-link" data-action="setup-github-token">建令牌 ↗</button>`);
   }
   return;
  }
- if(result.disconnected){nativeStore.githubConnected=false;githubDialog();toast('已删除本机保存的 GitHub 令牌');return;}
+ if(result.disconnected){nativeStore.githubConnected=false;githubDialog();toast('已删除令牌');return;}
  checkpoint();const merge=mergeGitHub(state,result);state=merge.board;
  nativeStore.githubConnected=!!result.connected||nativeStore.githubConnected;save();render();$('#modal').close();
- const who=(result.accounts||[]).length?`（${result.accounts.join('、')}）`:'';
- toast(`GitHub 读取成功${who}：读取 ${merge.read} 个仓库，新增 ${merge.added} 项`,true);
+ const who=(result.accounts||[]).length?` ${result.accounts.join('、')}`:'';
+ toast(`GitHub${who}：读 ${merge.read}，新增 ${merge.added}`,true);
  syncFollowUp('GitHub',merge,result.warnings||[]);
 };
 let pendingCollisions=[];
@@ -677,19 +679,19 @@ function aiLocal(host){return ['localhost','127.0.0.1','::1','[::1]'].includes(S
 function aiReady(){const ai=nativeStore?.ai;return !!(ai?.model&&(nativeStore.aiKeySaved||aiLocal(ai.host)));}
 function aiRequest(params){return new Promise(resolve=>{const requestId=++aiSequence;aiRequests.set(requestId,resolve);window.webkit.messageHandlers.assetboard.postMessage({action:'aiRecognize',requestId,...params});});}
 function aiDialog(){
- if(!nativeStore){toast('AI 识别仅在 macOS App 中可用');return;}
+ if(!nativeStore){toast('AI 识别仅 Mac App 可用');return;}
  const ai=nativeStore.ai||{},provider=ai.provider||'anthropic',preset=aiProviders[provider];
- modal('AI 识别 · 使用你自己的 API key',`<form class="form" id="ai-form"><p class="form-note">默认只用本机规则识别。配置后，你在“待确认”中选择用 AI 识别时，Assetboard 会把那份资料（邮件的发件人、标题和正文，或截图原图）从此 Mac 直接发送到下面的接口，不经过 Assetboard 的服务器。费用与数据处理按该服务和你账号的条款。</p><label>服务类型<select name="provider">${Object.entries(aiProviders).map(([key,p])=>`<option value="${key}" ${key===provider?'selected':''}>${p.label}</option>`).join('')}</select></label><label>接口地址<input name="baseURL" required maxlength="300" value="${esc(ai.baseURL||preset.baseURL)}" placeholder="https://api.openai.com/v1"></label><label>模型<input name="model" required maxlength="120" value="${esc(ai.model||preset.model)}" placeholder="填写服务商提供的、支持图片的模型名"></label><label>${nativeStore.aiKeySaved?'更换 API key（留空则继续使用已保存的）':'API key'}<input name="apiKey" type="password" autocomplete="off" spellcheck="false" placeholder="${nativeStore.aiKeySaved?'留空使用已保存的 key':'粘贴 API key'}"></label><label class="check-label"><input type="checkbox" name="autoImages" ${ai.autoImages===false?'':'checked'}>导入截图后自动用 AI 识别图片</label><p id="ai-status" class="form-note">${ai.model?`已配置 · ${esc(ai.model)} · ${esc(ai.host)}${nativeStore.aiKeySaved||aiLocal(ai.host)?'':' · 钥匙串中没有 API key'}`:'尚未配置'}</p><button class="button primary" type="submit">验证并保存</button>${ai.model?'<button class="button" type="button" data-action="ai-disconnect">删除 AI 设置与 API key</button>':''}<p class="form-note">保存前会发送一条很短的测试请求。API key 保存在 macOS 钥匙串，网页界面读不到它。接口地址填本机服务（如 http://127.0.0.1:11434/v1）时可以不填 key，资料不会离开此 Mac。</p></form>`,'ai');
+ modal('AI 识别',`<form class="form" id="ai-form"><p class="form-note platform-note">${ui('lock')}只在你点「用 AI 识别」时，把那份资料从此 Mac 直接发到下面的接口</p><label>服务类型<select name="provider">${Object.entries(aiProviders).map(([key,p])=>`<option value="${key}" ${key===provider?'selected':''}>${p.label}</option>`).join('')}</select></label><label>接口地址<input name="baseURL" required maxlength="300" value="${esc(ai.baseURL||preset.baseURL)}" placeholder="https://api.openai.com/v1"></label><label>模型<input name="model" required maxlength="120" value="${esc(ai.model||preset.model)}" placeholder="支持图片的模型名"></label><label>${nativeStore.aiKeySaved?'更换 API key':'API key'}<input name="apiKey" type="password" autocomplete="off" spellcheck="false" placeholder="${nativeStore.aiKeySaved?'留空使用已保存的':'粘贴 API key'}"></label><label class="check-label"><input type="checkbox" name="autoImages" ${ai.autoImages===false?'':'checked'}>截图导入后自动用 AI 识别</label><p id="ai-status" class="form-note">${ai.model?`${esc(ai.model)} · ${esc(ai.host)}${nativeStore.aiKeySaved||aiLocal(ai.host)?'':' · 钥匙串里没有 API key'}`:'未配置'}</p><button class="button primary" type="submit">验证并保存</button>${ai.model?'<button class="button" type="button" data-action="ai-disconnect" title="删除 AI 设置和钥匙串里的 API key">删除设置</button>':''}<p class="form-note platform-note" title="保存前会发一条很短的测试请求；接口地址填本机服务（如 http://127.0.0.1:11434/v1）时可不填 key，资料不离开此 Mac">${ui('lock')}API key 存入 macOS 钥匙串，网页读不到</p></form>`,'ai');
  const form=$('#ai-form');let previous=provider;
  form.elements.provider.onchange=()=>{const from=aiProviders[previous],to=aiProviders[form.elements.provider.value];for(const name of ['baseURL','model'])if(!form.elements[name].value||form.elements[name].value===from[name])form.elements[name].value=to[name];previous=form.elements.provider.value;};
 }
-document.addEventListener('submit',e=>{if(e.target.id!=='ai-form')return;e.preventDefault();const form=e.target;form.querySelector('[type="submit"]').disabled=true;$('#ai-status').textContent='正在发送测试请求…';window.webkit.messageHandlers.assetboard.postMessage({action:'aiSave',provider:form.elements.provider.value,baseURL:form.elements.baseURL.value,model:form.elements.model.value,apiKey:form.elements.apiKey.value,autoImages:form.elements.autoImages.checked});form.elements.apiKey.value='';});
+document.addEventListener('submit',e=>{if(e.target.id!=='ai-form')return;e.preventDefault();const form=e.target;form.querySelector('[type="submit"]').disabled=true;$('#ai-status').textContent='测试中…';window.webkit.messageHandlers.assetboard.postMessage({action:'aiSave',provider:form.elements.provider.value,baseURL:form.elements.baseURL.value,model:form.elements.model.value,apiKey:form.elements.apiKey.value,autoImages:form.elements.autoImages.checked});form.elements.apiKey.value='';});
 window.assetboardAIResult=result=>{
  if(result.kind==='settings'){
   if(!result.ok){const status=$('#ai-status');if(status)status.textContent=result.error||'验证失败';const button=$('#ai-form [type="submit"]');if(button)button.disabled=false;return;}
   const closeSettings=()=>{if($('#modal').open&&$('#modal').dataset.view==='ai')$('#modal').close();};
-  if(result.disconnected){nativeStore.ai=null;nativeStore.aiKeySaved=false;closeSettings();toast('已删除 AI 设置与本机保存的 API key');return;}
-  nativeStore.ai=result.ai;nativeStore.aiKeySaved=!!result.aiKeySaved;closeSettings();toast(`AI 识别已可用 · ${result.ai.model}`);return;
+  if(result.disconnected){nativeStore.ai=null;nativeStore.aiKeySaved=false;closeSettings();toast('已删除 AI 设置和 API key');return;}
+  nativeStore.ai=result.ai;nativeStore.aiKeySaved=!!result.aiKeySaved;closeSettings();toast(`AI 已就绪 · ${result.ai.model}`);return;
  }
  if(result.ok&&result.evidenceId){const row=evidenceRows.find(item=>item.id===result.evidenceId);if(row){row.payload=JSON.stringify({...evidencePayload(row),ai:result.ai});evidenceVersion++;}}
  const resolve=aiRequests.get(result.requestId);aiRequests.delete(result.requestId);resolve?.(result);
@@ -734,8 +736,8 @@ function inboxDialog(refresh=true){
  const list=candidates(),pending=list.filter(c=>c.pending),strong=pending.filter(c=>!c.weak),weak=pending.filter(c=>c.weak),resolved=list.filter(c=>!c.pending);
  const paste=`<form class="form inbox-paste" id="paste-form"><textarea id="paste-text" rows="3" aria-label="粘贴续费通知、账单或收据的文字" placeholder="粘贴通知或账单文字" title="在${nativeStore?'此 Mac':'此浏览器'}按规则识别，不上传；确认前不写入资产"></textarea><div class="paste-bar"><span class="chip" title="在${nativeStore?'此 Mac':'此浏览器'}按规则识别，不上传；确认前不写入资产">${ui('lock')}本地识别</span><button class="button primary" type="submit">识别</button></div></form>`;
  const aiControls=!nativeStore?'':aiBatchState?`<span id="ai-progress" class="candidate-meta">${aiProgressText()}</span><button class="text-button" data-action="ai-stop">停止</button>`:aiReady()?`${pending.some(c=>!c.ai)?'<button class="text-button" data-action="ai-batch" title="用 AI 识别全部待确认资料">全部 AI 识别</button>':''}<button class="icon-button" data-action="ai-settings" title="AI 设置" aria-label="AI 设置">${ui('gear')}</button>`:'<button class="text-button" data-action="ai-settings" title="配置 AI 识别">配置 AI</button>';
- const imported=nativeStore||evidenceRows.length?`<div class="inbox-head"><strong>待确认<b class="count">${strong.length}</b></strong><span>${aiControls}${nativeStore?`<button class="icon-button" data-action="import-hub" title="导入" aria-label="打开导入">${ui('download')}</button>`:''}</span></div>${strong.length?strong.slice(0,100).map(candidateRow).join(''):`<p class="form-note">${evidenceRows.length?'没有待确认':'还没有资料'}</p>`}${weak.length?`<details class="inbox-more"><summary title="没识别出金额或日期">未识别 ${weak.length} 组</summary>${weak.slice(0,100).map(candidateRow).join('')}<button class="text-button" data-action="dismiss-weak">全部忽略</button></details>`:''}${resolved.length?`<details class="inbox-more"><summary>已处理 ${resolved.length} 组</summary>${resolved.slice(0,100).map(candidateRow).join('')}</details>`:''}`:'';
- modal('待确认资料',`<div class="inbox">${paste}${imported}</div>`,'inbox');
+ const imported=nativeStore||evidenceRows.length?`<div class="inbox-head"><strong><b class="count">${strong.length}</b>组待核对</strong><span>${aiControls}${nativeStore?`<button class="icon-button" data-action="import-hub" title="导入" aria-label="打开导入">${ui('download')}</button>`:''}</span></div>${strong.length?strong.slice(0,100).map(candidateRow).join(''):`<p class="form-note">${evidenceRows.length?'没有待确认':'还没有资料'}</p>`}${weak.length?`<details class="inbox-more"><summary title="没识别出金额或日期">未识别 ${weak.length} 组</summary>${weak.slice(0,100).map(candidateRow).join('')}<button class="text-button" data-action="dismiss-weak">全部忽略</button></details>`:''}${resolved.length?`<details class="inbox-more"><summary>已处理 ${resolved.length} 组</summary>${resolved.slice(0,100).map(candidateRow).join('')}</details>`:''}`:'';
+ modal('待确认',`<div class="inbox">${paste}${imported}</div>`,'inbox');
  if(refresh&&nativeStore)requestEvidence();
 }
 function refreshReview(key,index){const dialog=$('#modal');if(!dialog.open||dialog.dataset.view!=='review'||dialog.dataset.key!==key)return;const c=findCandidate(key);if(c)candidateReview(c,index??(Number(dialog.dataset.index)||0));}
@@ -780,14 +782,14 @@ document.addEventListener('click',e=>{const button=e.target.closest('[data-actio
  else if(action==='icon-batch')iconBatchDialog();
  else if(action==='icon-batch-start')iconBatchStart();
  else if(action==='icon-batch-cancel')$('#modal').close();
- else if(action==='icon-apply'){const a=state.assets.find(x=>x.id===id);if(!a||!iconPreview)return;checkpoint();a.siteIcon=iconPreview.dataUrl;a.siteIconHost=iconPreview.host;save();$('#modal').close();render();if(activeAsset===id)showDetail(id);toast('已使用网站图标',true);}
- else if(action==='icon-remove'){const a=state.assets.find(x=>x.id===id);if(!a?.siteIcon)return;checkpoint();delete a.siteIcon;delete a.siteIconHost;save();$('#modal').close();render();if(activeAsset===id)showDetail(id);toast('已移除网站图标',true);}
+ else if(action==='icon-apply'){const a=state.assets.find(x=>x.id===id);if(!a||!iconPreview)return;checkpoint();a.siteIcon=iconPreview.dataUrl;a.siteIconHost=iconPreview.host;save();$('#modal').close();render();if(activeAsset===id)showDetail(id);toast('已使用图标',true);}
+ else if(action==='icon-remove'){const a=state.assets.find(x=>x.id===id);if(!a?.siteIcon)return;checkpoint();delete a.siteIcon;delete a.siteIconHost;save();$('#modal').close();render();if(activeAsset===id)showDetail(id);toast('已移除图标',true);}
  else if(action==='link'){$('#modal').close();checkpoint();if(!linkAssets(state.assets,id,button.dataset.target)){history.pop();return;}save();render();showDetail(id);toast('已关联',true);}
  else if(action==='unlink'){checkpoint();if(!unlinkAssets(state.assets,id,button.dataset.target)){history.pop();return;}save();render();showDetail(id);toast('已取消关联',true);}
  else if(action==='inbox')inboxDialog();
  else if(action==='agenda-all')agendaAll();
  else if(action==='close-modal')$('#modal').close();
- else if(action==='apply-collisions'){const chosen=[...document.querySelectorAll('input[name="collision"]:checked')].map(input=>pendingCollisions[Number(input.value)]).filter(Boolean);$('#modal').close();if(!chosen.length)return;checkpoint();const applied=chosen.filter(item=>applyCollision(state,item)).length;pendingCollisions=[];save();render();toast(`已用同步结果覆盖 ${applied} 条本地记录`,true);}
+ else if(action==='apply-collisions'){const chosen=[...document.querySelectorAll('input[name="collision"]:checked')].map(input=>pendingCollisions[Number(input.value)]).filter(Boolean);$('#modal').close();if(!chosen.length)return;checkpoint();const applied=chosen.filter(item=>applyCollision(state,item)).length;pendingCollisions=[];save();render();toast(`已覆盖 ${applied} 条`,true);}
  else if(action==='candidate-review'){const c=findCandidate(id);if(c)candidateReview(c);}
  else if(action==='candidate-apply'){const c=findCandidate(id);if(!c)return;const index=Number(button.dataset.index)||0,target=$('#candidate-target').value,existing=target&&state.assets.find(a=>a.id===target);assetForm(existing?existing.type:candidateView(c,index).type,existing?existing.id:null,candidateFill(c,existing,index),c.key,index);}
  else if(action==='ai-settings')aiDialog();
@@ -796,9 +798,9 @@ document.addEventListener('click',e=>{const button=e.target.closest('[data-actio
  else if(action==='ai-batch')aiBatch();
  else if(action==='ai-stop'){if(aiBatchState){aiBatchState.stop=true;const progress=$('#ai-progress');if(progress)progress.textContent=aiProgressText();}}
  else if(action==='ai-item'){const c=findCandidate(id);if(c)candidateReview(c,Number(button.value)||0);}
- else if(action==='candidate-dismiss'){if(id==='paste'){inboxDialog(false);return;}checkpoint();const count=resolveCandidate(id,'dismissed');if(!count){history.pop();return;}save();render();inboxDialog(false);toast('已忽略这组资料',true);}
- else if(action==='candidate-reopen'){const c=findCandidate(id);if(!c)return;checkpoint();for(const key of c.ids)delete state.evidenceDecisions?.[key];save();render();inboxDialog(false);toast('已恢复为待确认',true);}
- else if(action==='dismiss-weak'){const weak=candidates().filter(c=>c.pending&&c.weak);if(!weak.length)return;checkpoint();for(const c of weak)resolveCandidate(c.key,'dismissed');save();render();inboxDialog(false);toast(`已忽略 ${weak.length} 组资料`,true);}
+ else if(action==='candidate-dismiss'){if(id==='paste'){inboxDialog(false);return;}checkpoint();const count=resolveCandidate(id,'dismissed');if(!count){history.pop();return;}save();render();inboxDialog(false);toast('已忽略',true);}
+ else if(action==='candidate-reopen'){const c=findCandidate(id);if(!c)return;checkpoint();for(const key of c.ids)delete state.evidenceDecisions?.[key];save();render();inboxDialog(false);toast('已恢复待确认',true);}
+ else if(action==='dismiss-weak'){const weak=candidates().filter(c=>c.pending&&c.weak);if(!weak.length)return;checkpoint();for(const c of weak)resolveCandidate(c.key,'dismissed');save();render();inboxDialog(false);toast(`已忽略 ${weak.length} 组`,true);}
  else if(action==='pin-front')pinFront(id);
  else if(action==='auto-order')autoOrder(id);
  else if(action==='repo-swap'){checkpoint();state.featuredRepositoryIds=swapRepositoryDisplay(state.assets,state.featuredRepositoryIds,id);save();render();}
@@ -827,7 +829,7 @@ document.addEventListener('click',e=>{const button=e.target.closest('[data-actio
  else if(action==='local-cli-refresh')requestLocalCliDetect();
  else if(action==='ssh-import'){
   if(demoMode){window.assetboardDemoBlocked();return;}
-  if(!nativeStore){toast('SSH 配置导入仅在 macOS App 中可用');return;}
+  if(!nativeStore){toast('SSH 导入仅 Mac App 可用');return;}
   window.webkit.messageHandlers.assetboard.postMessage({action:'sshConfigImport'});
  }
  else if(action==='github-local-sync'){
@@ -838,20 +840,20 @@ document.addEventListener('click',e=>{const button=e.target.closest('[data-actio
   window.webkit.messageHandlers.assetboard.postMessage({action:'githubSyncLocal'});
  }
  else if(action==='choose-asset-type')assetForm(id);
- else if(action==='external'){const a=state.assets.find(a=>a.id===id),url=safeManagementUrl(a?.url);if(!url||new URL(url).hostname==='example.com'){toast('请先在资产资料中填写真实管理链接');return;}if(nativeStore)window.webkit.messageHandlers.assetboard.postMessage({action:'openExternal',url});else window.open(url,'_blank','noopener,noreferrer');}
- else if(action==='collapse'){if(query||focusCategory){toast('返回大板后可收起区块');return;}const b=state.blocks.find(x=>x.id===id);if(!b)return;const fold=!b.folded,targets=e.altKey?state.blocks:[b];checkpoint();for(const block of targets)block.folded=fold;save();foldRender(targets.map(x=>x.id),id);document.querySelector(`#board [data-action="collapse"][data-id="${id}"]`)?.focus();if(e.altKey)toast(fold?'已收起全部区块':'已展开全部区块',true);}
+ else if(action==='external'){const a=state.assets.find(a=>a.id===id),url=safeManagementUrl(a?.url);if(!url||new URL(url).hostname==='example.com'){toast('先在资料里填管理链接');return;}if(nativeStore)window.webkit.messageHandlers.assetboard.postMessage({action:'openExternal',url});else window.open(url,'_blank','noopener,noreferrer');}
+ else if(action==='collapse'){if(query||focusCategory){toast('回到大板后可收起区块');return;}const b=state.blocks.find(x=>x.id===id);if(!b)return;const fold=!b.folded,targets=e.altKey?state.blocks:[b];checkpoint();for(const block of targets)block.folded=fold;save();foldRender(targets.map(x=>x.id),id);document.querySelector(`#board [data-action="collapse"][data-id="${id}"]`)?.focus();if(e.altKey)toast(fold?'已收起全部区块':'已展开全部区块',true);}
  else if(action==='all'){focusCategory=id;closeDetail();render();window.scrollTo({top:0,behavior:'smooth'});}
  else if(action==='back'){focusCategory=null;render();}
  else if(action==='add-asset')assetForm(id);
  else if(action==='edit-asset')assetForm(state.assets.find(a=>a.id===id).type,id);
  else if(action==='settings')settings(id);
- else if(action==='choose-block'){checkpoint();state.blocks.push({id,width:50,height:null,density:'full',folded:false});save();$('#modal').close();render();toast('区块已加入，已有资产会自动出现',true);}
+ else if(action==='choose-block'){checkpoint();state.blocks.push({id,width:50,height:null,density:'full',folded:false});save();$('#modal').close();render();toast('已添加区块',true);}
  else if(action==='save-settings'){checkpoint();const b=state.blocks.find(b=>b.id===id);b.width=Number($('#block-width').value);b.height=Number($('#block-height').value)||null;const style=$('#block-density').value;if(style!==blockDensity(b)||b.collapsed!==undefined)setBlockDensity(b,style);save();$('#modal').close();render();toast('布局已更新',true);}
  else if(action==='toggle-hidden'){if(showHiddenBlocks.has(id))showHiddenBlocks.delete(id);else showHiddenBlocks.add(id);render();document.querySelector(`[data-action="toggle-hidden"][data-id="${id}"]`)?.focus();}
  else if(action==='hide-asset'){const a=state.assets.find(a=>a.id===id);if(!a||a.hiddenAt)return;checkpoint();a.hiddenAt=new Date().toISOString();save();if(activeAsset===id)closeDetail();render();toast('已隐藏',true);}
  else if(action==='restore-asset'){const a=state.assets.find(a=>a.id===id),fromBoard=!!button.closest('#board');if(!a)return;checkpoint();delete a.hiddenAt;save();if(activeAsset===id)showDetail(id);render();if(fromBoard)(document.querySelector(`#board [data-asset="${CSS.escape(id)}"] .card-open`)||document.querySelector(`#board .block[data-block="${a.type}"] [data-action="restore-asset"]`))?.focus();toast('已恢复显示',true);}
  else if(action==='delete-asset'){const a=state.assets.find(a=>a.id===id);if(!a)return;confirmDialog(`删除「${a.name}」？`,`只删除 Assetboard 里的记录，不取消订阅，也不动线上资源。之后同步不会加回。`,'删除',true).then(ok=>{const a=state.assets.find(a=>a.id===id);if(!ok||!a)return;checkpoint();rememberDeleted(a);state.assets=state.assets.filter(x=>x.id!==id);removeLinksTo(state.assets,id);if(Array.isArray(state.featuredRepositoryIds))state.featuredRepositoryIds=state.featuredRepositoryIds.filter(x=>x!==id);if(state.cardOrder){for(const key of Object.keys(state.cardOrder))state.cardOrder[key]=(state.cardOrder[key]||[]).filter(x=>x!==id);}if(activeAsset===id)closeDetail();save();render();toast('已删除',true);});}
- else if(action==='remove-block'){checkpoint();state.blocks=state.blocks.filter(b=>b.id!==id);showHiddenBlocks.delete(id);if(focusCategory===id)focusCategory=null;save();$('#modal').close();render();toast('区块已移除，资产仍被保留',true);}
+ else if(action==='remove-block'){checkpoint();state.blocks=state.blocks.filter(b=>b.id!==id);showHiddenBlocks.delete(id);if(focusCategory===id)focusCategory=null;save();$('#modal').close();render();toast('区块已移除，资产保留',true);}
  else if(action==='move-up'||action==='move-down'){moveBlock(id,action==='move-up'?-1:1);$('#modal').close();}
 });
 document.addEventListener('submit',async e=>{if(e.target.id!=='asset-form')return;e.preventDefault();const form=e.target,data=new FormData(form),name=String(data.get('name')).trim(),url=String(data.get('url')).trim(),file=form.elements.icon.files[0];if(!name)return;const leaked=['name','provider','account','purpose','reason','cost','notes'].find(key=>looksLikeCardNumber(data.get(key)));if(leaked){const input=form.elements[leaked];input.setCustomValidity('这里像是完整卡号。Assetboard 只保存卡号后 4 位，请删掉后再保存。');input.reportValidity();input.addEventListener('input',()=>input.setCustomValidity(''),{once:true});return;}if(url&&!safeManagementUrl(url)){form.elements.url.setCustomValidity('请输入不含账号密码的 http 或 https 链接');form.elements.url.reportValidity();return;}form.elements.url.setCustomValidity('');const actionHints={host:'请填写主机名或 IP，例如 203.0.113.10',sshUser:'SSH 用户只能包含字母、数字和 _ . -',sshPort:'端口是 1 到 65535 之间的数字',localPath:'请填写以 / 或 ~/ 开头的本机目录'};for(const key of Object.keys(actionHints)){const input=form.elements[key];if(!input)continue;input.setCustomValidity(validActionField(key,input.value)?'':actionHints[key]);if(!input.checkValidity()){input.reportValidity();input.addEventListener('input',()=>input.setCustomValidity(''),{once:true});return;}}if(file&&(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>256*1024)){toast('图标需为 PNG、JPEG 或 WebP，且不超过 256 KB');return;}const submit=form.querySelector('[type="submit"]');submit.disabled=true;try{const iconData=file?await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);}):null;const id=form.dataset.id,chosen=String(data.get('type')||''),type=cats[chosen]?chosen:form.dataset.type,candidateKey=form.dataset.candidate,candidateItem=form.dataset.item===''||form.dataset.item===undefined?null:Number(form.dataset.item),profile=assetProfiles[type]||{},date=data.has('expiry')?cardExpiry(data.get('expiry'))||'':String(data.get('date')??''),dateKind=data.has('expiry')?'expire':dateKinds[data.get('dateKind')]?String(data.get('dateKind')):'expire',cycle=billingCycles[data.get('cycle')]?String(data.get('cycle')):'',extras=Object.fromEntries((profile.extra||[]).map(key=>[key,String(data.get(key)??'').trim()])),fields={name,provider:profile.fixedProvider||String(data.get('provider')??'').trim()||(assetProfiles[type]?'':'平台待补充'),account:String(data.get('account')).trim(),purpose:String(data.get('purpose')).trim(),reason:String(data.get('reason')||'').trim(),date,dateKind,cycle,cost:String(data.get('cost')).trim()||'未知',notes:String(data.get('notes')).trim(),url:url?safeManagementUrl(url):''},event=date?`${date} ${dateKinds[dateKind].future}`:'日期待补充';if(extras.region&&!regionName(extras.region))extras.region='';if(extras.last4&&!/^\d{4}$/.test(extras.last4))extras.last4='';if(extras.network&&!cardNetworks.includes(extras.network))extras.network='';if(extras.phone)extras.phone=extras.phone.slice(0,30);Object.assign(fields,extras);for(const [key] of ACTION_FIELDS[type]||[])if(data.has(key))fields[key]=String(data.get(key)).trim();checkpoint();let assetId=id;if(id){const a=state.assets.find(a=>a.id===id);const synced=['cloudflare','github'].includes(a.source);Object.assign(a,fields);for(const key of ['region','last4','network','phone'])if(!(key in extras))delete a[key];if(file)a.iconData=iconData;else if(data.has('removeIcon'))delete a.iconData;if(!synced){a.source='manual';a.type=type;a.event=event;a.updatedAt=new Date().toISOString();}delete a.warn;ensureBlock(state,a.type);}else{assetId='asset-'+crypto.randomUUID();state.assets.push({id:assetId,type,...fields,iconData,source:'manual',event,art:'generic',createdAt:new Date().toISOString()});if(state.cardOrder?.[type]?.length)state.cardOrder[type].unshift(assetId);ensureBlock(state,type);}const resolved=candidateKey?resolveCandidate(candidateKey,id?'linked':'created',assetId,candidateItem):0;assetFormSnapshot=null;save();render();if(id&&activeAsset===id)showDetail(id);const source=candidateKey&&findCandidate(candidateKey),items=source?.ai?.items||[],recorded=items.length>1?recordedItems(source):[],next=items.length>1?items.findIndex((_,index)=>!recorded.includes(index)):-1;if(next>=0){candidateReview(source,next);toast(`已记录，这份资料里还有 ${items.length-recorded.length} 项`,true);}else if(candidateKey&&nativeStore&&pendingCount()){inboxDialog(false);toast(resolved?'已记录，继续核对下一组':'已记录',true);}else{$('#modal').close();toast(id?'资料已更新':'资产已添加',true);}}catch{toast('读取图标失败，请重试');}finally{submit.disabled=false;}});
@@ -880,18 +882,18 @@ function fire(action,id){const b=document.createElement('button');b.hidden=true;
 function clearSwapMark(){document.querySelectorAll('#board .swap-mark').forEach(n=>n.classList.remove('swap-mark'));swapMark=null;}
 function markSwap(el){
  const id=el.dataset.asset,block=el.closest('.block');
- if(query||el.classList.contains('flip-card')){toast('搜索结果和已隐藏资产里不能交换位置');return;}
- if(!swapMark){swapMark=id;el.classList.add('swap-mark');toast('已选中。移到同类的另一张卡上再按 X 交换，Esc 取消');return;}
+ if(query||el.classList.contains('flip-card')){toast('搜索结果和隐藏资产里不能交换');return;}
+ if(!swapMark){swapMark=id;el.classList.add('swap-mark');toast('再选一张同类卡按 X，Esc 取消');return;}
  const first=document.querySelector(`#board [data-asset="${CSS.escape(swapMark)}"]`);clearSwapMark();
  if(!first||first===el){toast('已取消交换');return;}
- if(first.closest('.block')!==block){toast('只能和同一类别里的卡交换');return;}
+ if(first.closest('.block')!==block){toast('只能和同类卡交换');return;}
  const info=swapZones({block,el:first}),grid=block.querySelector('.cards'),order=info?info.order:[...grid.querySelectorAll('[data-asset]')].map(idOf),shown=info&&info.sameZone===null?info.shown:null;
  if(applySwap(block.dataset.block,order,shown,swapMark||first.dataset.asset,id))focusAsset(id);
 }
 function keysHelpHtml(){
  const row=(keys,label)=>`<li><span>${label}</span><span class="keys">${keys.map(k=>`<kbd>${k}</kbd>`).join('')}</span></li>`;
- const groups=[['浏览',[[['⌘K','/'],'搜索'],[['←','→','↑','↓'],'在卡片之间移动'],[['↩'],'打开详情'],[['esc'],'关闭或返回']]],['整理',[[['I'],'打开导入'],[['N'],'新建资产'],[['E'],'编辑资料'],[['H'],'隐藏 / 恢复'],[['F'],'放到前面'],[['⌥','← →'],'和相邻卡交换'],[['X'],'选两张卡交换位置']]],['快捷操作',[[['O'],'打开链接或本机目录'],[['⌘C'],'复制 SSH、域名或克隆地址']]],['编辑',[[['⌘Z'],'撤销'],[['⇧⌘Z'],'重做'],[['⌘↩'],'在表单里保存'],[['tab'],'在表单里切换字段']]]];
- return `<div class="keys-card" role="document" tabindex="-1"><div class="keys-head"><h2 id="keys-help-title">键盘快捷键</h2><button class="close" data-action="keys-help" aria-label="关闭快捷键说明">×</button></div><div class="keys-grid">${groups.map(([title,rows])=>`<section><h3>${title}</h3><ul>${rows.map(([k,l])=>row(k,l)).join('')}</ul></section>`).join('')}</div><p class="keys-foot">在输入框里打字时，字母快捷键不会生效。</p></div>`;
+ const groups=[['浏览',[[['⌘K','/'],'搜索'],[['←','→','↑','↓'],'移动'],[['↩'],'详情'],[['esc'],'返回']]],['整理',[[['I'],'导入'],[['N'],'新建'],[['E'],'编辑'],[['H'],'隐藏'],[['F'],'置前'],[['⌥','← →'],'交换'],[['X'],'选两张交换']]],['快捷',[[['O'],'打开'],[['⌘C'],'复制']]],['编辑',[[['⌘Z'],'撤销'],[['⇧⌘Z'],'重做'],[['⌘↩'],'保存'],[['tab'],'换字段']]]];
+ return `<div class="keys-card" role="document" tabindex="-1"><div class="keys-head"><h2 id="keys-help-title" title="在输入框里打字时，字母键不生效">快捷键</h2><button class="close" data-action="keys-help" aria-label="关闭快捷键说明">×</button></div><div class="keys-grid">${groups.map(([title,rows])=>`<section><h3>${title}</h3><ul>${rows.map(([k,l])=>row(k,l)).join('')}</ul></section>`).join('')}</div></div>`;
 }
 function toggleKeysHelp(show){
  const layer=$('#keys-help'),open=show??layer.hidden;if(open===!layer.hidden)return;
@@ -914,7 +916,7 @@ document.addEventListener('keydown',e=>{
  }
  if(e.target.id==='search'&&key==='ArrowDown'&&!mod&&!e.altKey){const first=navTargets().find(n=>!n.classList.contains('block-title'));if(first){e.preventDefault();focusCard(first);}return;}
  if(modalOpen||typing(e))return;
- if(mod&&!e.altKey&&!e.shiftKey&&key==='c'&&!String(getSelection?.()||'')){const id=keyAsset(e);if(id){e.preventDefault();if(!runQuick(id,null,'copy'))toast('这项资产没有可复制的内容');}return;}
+ if(mod&&!e.altKey&&!e.shiftKey&&key==='c'&&!String(getSelection?.()||'')){const id=keyAsset(e);if(id){e.preventDefault();if(!runQuick(id,null,'copy'))toast('没有可复制的内容');}return;}
  if(mod||e.altKey)return;
  if(e.key==='?'){e.preventDefault();toggleKeysHelp();return;}
  if(helpOpen)return;
@@ -925,7 +927,7 @@ document.addEventListener('keydown',e=>{
  if(key==='n'){e.preventDefault();const type=e.target.closest?.('#board .block')?.dataset.block||(e.target.closest?.('#detail')&&state.assets.find(a=>a.id===activeAsset)?.type)||focusCategory;if(cats[type])assetForm(type);else manualImport();return;}
  const id=keyAsset(e),a=id&&state.assets.find(x=>x.id===id);if(!a)return;
  if(key==='e'){e.preventDefault();assetForm(a.type,id);}
- else if(key==='o'){e.preventDefault();if(!runQuick(id,null,'open'))toast('这项资产还没有可打开的链接或本机目录');}
+ else if(key==='o'){e.preventDefault();if(!runQuick(id,null,'open'))toast('没有可打开的链接或目录');}
  else if(key==='f'){e.preventDefault();if(a.hiddenAt){toast('先恢复显示，再放到前面');return;}pinFront(id);if(!e.target.closest('#detail'))focusAsset(id);}
  else if(key==='h'){
   e.preventDefault();const inDetail=!!e.target.closest('#detail'),peers=navTargets().filter(n=>!n.classList.contains('block-title')),own=peers.findIndex(n=>n.closest('[data-asset]')?.dataset.asset===id),near=[peers[own+1],peers[own-1]].map(n=>n?.closest('[data-asset]')?.dataset.asset).filter(Boolean),restoring=!!a.hiddenAt;
@@ -1079,7 +1081,7 @@ function applySwap(category,order,shown,source,other){
  save();render();
  if(!reduceMotion())for(const id of [source,other])document.querySelector(`#board [data-asset="${CSS.escape(id)}"]`)?.animate([{opacity:.35},{opacity:1}],{duration:MOTION_MS,easing:'ease-out'});
  const name=id=>displayName(state.assets.find(a=>a.id===id)||{name:''});
- toast(`已交换「${name(source)}」和「${name(other)}」的位置`,true);return true;
+ toast('已交换位置',true);return true;
 }
 function finishCross(g,type){
  const a=g.asset,ghost=g.el.getBoundingClientRect(),target=g.cross;
@@ -1093,7 +1095,7 @@ function finishCross(g,type){
   if(moved.style.visibility==='hidden'){const block=moved.closest('.block');block.classList.add('drop-flash');setTimeout(()=>block.classList.remove('drop-flash'),600);}
   else{const to=moved.getBoundingClientRect();moved.animate([{transform:`translate(${ghost.left+ghost.width/2-to.left-to.width/2}px,${ghost.top+ghost.height/2-to.top-to.height/2}px)`,opacity:.5},{transform:'none',opacity:1}],{duration:MOTION_MS,easing:settleEase});}
  }
- toast(`已将「${displayName(a)}」移到「${cats[type].name}」`,true);
+ toast(`已移到「${cats[type].name}」`,true);
 }
 function rubber(value,min,max){const damp=over=>(1-1/(over*.55/120+1))*120;return value<min?min-damp(min-value):value>max?max+damp(value-max):value;}
 function startResize(e,edge){
@@ -1160,7 +1162,7 @@ function startResize(e,edge){
   const styleChanged=!!b.folded!==startFolded||blockDensity(b)!==startDensity,changed=styleChanged||b.width!==startWidth||b.height!==startHeight;
   if(!changed)history.pop();else save();
   if(!moved){block.classList.remove('resizing');return;}
-  if(styleChanged){block.classList.remove('resizing');block.style.width='';foldRender([b.id],b.id,before);toast(b.folded?'区块已收起 · 点标题可展开':blockDensity(b)==='compact'?'已切换为紧凑卡片':'已展开为完整卡片',true);return;}
+  if(styleChanged){block.classList.remove('resizing');block.style.width='';foldRender([b.id],b.id,before);toast(b.folded?'已收起':blockDensity(b)==='compact'?'紧凑卡片':'完整卡片',true);return;}
   const finish=()=>{block.classList.remove('resizing','settling-size');render();if(changed)toast('区块大小已调整',true);};
   if(reduceMotion()){finish();return;}
   block.classList.add('settling-size');block.style.width=px(b.width)+'px';grid.style.height=(b.height??m.natural)+'px';setTimeout(finish,MOTION_MS);

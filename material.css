@@ -647,7 +647,7 @@ body.import-drag::after{content:'松开以导入';position:fixed;inset:12px;bord
 .paste-bar .chip{display:inline-flex;align-items:center;gap:4px;color:var(--muted)}
 .paste-bar .chip .ui-icon{width:12px;height:12px}
 .paste-bar .button{margin:0;min-width:96px}
-.inbox-head .count,.import-group .count{display:inline-block;margin-left:6px;padding:0 7px;border-radius:999px;background:var(--surface-panel);font-size:11px;font-weight:600}
+.inbox-head .count,.import-group .count{display:inline-block;margin:0 6px 0 0;padding:0 7px;border-radius:999px;background:var(--surface-panel);font-size:11px;font-weight:600}
 .inbox-head .icon-button{border:0;background:none;padding:5px;border-radius:var(--radius-sm);cursor:pointer;color:var(--muted)}
 .inbox-head .icon-button:hover{background:var(--hover);color:var(--ink)}
 .ai-send{display:flex;align-items:center;gap:4px}
@@ -665,3 +665,10 @@ body.import-drag::after{content:'松开以导入';position:fixed;inset:12px;bord
 .detail .secondary-actions{margin-bottom:14px}
 :root .detail .detail-actions.secondary-actions{margin-bottom:16px}
 :root #detail-content .detail-actions.secondary-actions{margin-bottom:16px}
+.platform-bar{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.platform-bar .button{margin:0}
+.chip.ok{color:var(--ink);border-color:rgba(var(--tone-primary),.5)}
+.chip.bad{color:var(--danger);border-color:var(--danger-border)}
+.platform-note{display:flex;align-items:flex-start;gap:6px}
+.platform-note .ui-icon{width:13px;height:13px;margin-top:2px}
+.platform-bar .chip{font-size:11px;padding:3px 9px}
