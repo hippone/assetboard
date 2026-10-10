@@ -2,13 +2,13 @@
 async (page) => {
  const p=await page.context().newPage();
  const failures=[],counts=[];
- const audit=async label=>{
-  const result=await p.evaluate(label=>{
+ const audit=async (label,scope)=>{
+  const result=await p.evaluate(({label,scope})=>{
    const parse=value=>{const m=(value.match(/[\d.]+/g)||[0,0,0,0]).map(Number);return {r:m[0],g:m[1],b:m[2],a:m[3]??1};};
    const over=(top,bottom)=>({r:top.r*top.a+bottom.r*(1-top.a),g:top.g*top.a+bottom.g*(1-top.a),b:top.b*top.a+bottom.b*(1-top.a),a:1});
    const lum=({r,g,b})=>[r,g,b].map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4;}).reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);
    const ratio=(a,b)=>{const [x,y]=[lum(a),lum(b)].sort((m,n)=>n-m);return (x+.05)/(y+.05);};
-   const root=document.querySelector('#modal[open]')||document.body,seen=new Set(),found=[];let checked=0;
+   const root=document.querySelector('#modal[open]')||(scope&&document.querySelector(scope))||document.body,seen=new Set(),found=[];let checked=0;
    const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
    while(walker.nextNode()){
     const element=walker.currentNode.parentElement;
@@ -17,7 +17,8 @@ async (page) => {
     const style=getComputedStyle(element);if(style.visibility!=='visible'||!element.getClientRects().length)continue;
     let opacity=1;for(let node=element;node;node=node.parentElement)opacity*=Number(getComputedStyle(node).opacity);
     if(opacity<.5)continue;
-    const layers=[];for(let node=element;node;node=node.parentElement){const c=parse(getComputedStyle(node).backgroundColor);if(c.a>0){layers.push(c);if(c.a>=1)break;}}
+    const resolve=v=>{const c=document.createElement('canvas');c.width=c.height=1;const x=c.getContext('2d');x.fillStyle=v;x.fillRect(0,0,1,1);const d=x.getImageData(0,0,1,1).data;return {r:d[0],g:d[1],b:d[2],a:1};};
+    const layers=[];for(let node=element;node;node=node.parentElement){const bot=node.classList?.contains('asset-card')?getComputedStyle(node).getPropertyValue(matchMedia('(prefers-color-scheme:dark)').matches?'--card-top':'--card-bottom').trim():'';const c=bot?resolve(bot):parse(getComputedStyle(node).backgroundColor);if(c.a>0){layers.push(c);if(c.a>=1)break;}}
     let background={r:255,g:255,b:255,a:1};for(const layer of layers.reverse())background=over(layer,background);
     const color=parse(style.color);color.a*=opacity;
     const size=parseFloat(style.fontSize),bold=Number(style.fontWeight)>=700,need=size>=24||(size>=18.66&&bold)?3:4.5,value=ratio(over(color,background),background);
@@ -25,7 +26,7 @@ async (page) => {
     if(value<need)found.push(`${label}: "${walker.currentNode.textContent.trim().slice(0,24)}" <${element.tagName.toLowerCase()}.${[...element.classList].join('.')}> ${value.toFixed(2)} < ${need}`);
    }
    return {checked,found};
-  },label);
+  },{label,scope});
   failures.push(...result.found);counts.push(`${label} ${result.checked}`);
  };
  try {
@@ -64,7 +65,10 @@ async (page) => {
    await p.locator('#detail [data-action="link-picker"]').click();await audit(scheme+' link picker');
    await p.evaluate(()=>{$('#modal').close();closeDetail();assetForm('bankcard');});await audit(scheme+' bank card form');
    // Panorama (v13b): lanes, chips, stopped chip, tray heads and the unmounted strip. The dimmed non-focus state is intentionally excluded.
-   await p.evaluate(()=>{$('#modal').close();closeDetail();state=window.assetboardDemoBoard();state.assets.find(a=>a.id==='demo-d2').stopped=true;state.assets.find(a=>a.id==='demo-s2').stopped=true;render();panoramaOpen(true);});
+   await p.evaluate(()=>{$('#modal').close();closeDetail();state=window.assetboardDemoBoard();state.assets.find(a=>a.id==='demo-d2').stopped=true;state.assets.find(a=>a.id==='demo-s2').stopped=true;render();scrollTo(0,0);});await p.waitForTimeout(450);
+   // Only the stopped cards: this audit reads background colours, not gradients, so the rest of the board is judged elsewhere.
+   await audit(scheme+' stopped domain card','#board [data-asset="demo-d2"]');await audit(scheme+' stopped server card','#board [data-asset="demo-s2"]');
+   await p.evaluate(()=>panoramaOpen(true));
    await audit(scheme+' panorama');
    await p.locator('[data-loose-more]').click();await audit(scheme+' panorama unmounted open');
    await p.evaluate(()=>{panoramaFocus('demo-s2');});await p.waitForTimeout(300);await audit(scheme+' panorama focused (stopped server)');

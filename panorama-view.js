@@ -168,6 +168,7 @@ document.addEventListener('keydown',e=>{
  if(mod&&key==='k'){panoramaOpen(false);return;}
  if(key==='Escape'){if(dialogs||!$('#detail').hidden)return;e.preventDefault();e.stopImmediatePropagation();if(panoFocus)panoramaUnfocus();else panoramaOpen(false);return;}
  if(dialogs||typing(e)||e.target.closest?.('#detail'))return;
+ if(key==='s'&&!mod&&!e.altKey&&!e.shiftKey){const n=e.target.closest?.('#panorama [data-chip],#panorama [data-lane-head],#panorama [data-hero-head]');e.preventDefault();e.stopImmediatePropagation();const id=n?.dataset.chip||n?.dataset.laneHead||(n&&'heroHead' in n.dataset?panoFocus:'');if(id&&!toggleStopped(id))toast('这类不用标停用');return;}
  if(key==='l'&&!mod&&!e.altKey&&!e.shiftKey){const chip=e.target.closest?.('#panorama .pano-chip[data-chip]');e.preventDefault();e.stopImmediatePropagation();if(chip)panoLinkStart(chip);return;}
  if(!mod&&!e.altKey&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(key)){
   const from=e.target.closest?.('#panorama [data-nav]');e.preventDefault();e.stopImmediatePropagation();

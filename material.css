@@ -829,9 +829,9 @@ dialog[open]::backdrop{animation:v12-fade .15s var(--ease) both}
 .ip-sub{display:flex;align-items:baseline;gap:5px;min-width:0;overflow:hidden;white-space:nowrap;font-variant-numeric:tabular-nums}
 .ip-sub .ip-text{flex:none;color:var(--muted)}
 .ip-sub em{font-style:normal;flex:none}
-.ip-sub .ip-more{color:var(--faint);font-size:11px}
+.ip-sub .ip-more{color:var(--muted);font-size:11px}
 .ip-sub .ip-inner,.ip-pill em{font-style:normal;font-size:11px;line-height:14px;padding:0 3px;border:1px solid var(--border-strong);border-radius:4px;color:var(--muted)}
-.ip-sub .ip-prov{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--faint)}
+.ip-sub .ip-prov{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
 .ip-pills{display:flex;flex-wrap:wrap;gap:6px}
 .ip-pill{display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:12px;font-variant-numeric:tabular-nums;color:var(--ink);padding:2px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface-card);cursor:pointer}
 .ip-pill:hover{background:var(--hover);border-color:var(--border-strong)}
@@ -988,3 +988,8 @@ body.pano-open main{visibility:hidden}
 @media(max-width:760px){.pano-legend,.pano-totals{display:none}.pano-bar{padding:0 14px;gap:10px}.pano-body{padding:12px 14px}}
 @media(max-width:900px){.pano-legend{display:none}}
 @media(prefers-reduced-motion:no-preference){.panorama:not([hidden]){animation:v12-fade .15s ease-out}}
+
+/* v13b P5 · manually stopped: a hollow ring after the name and a muted name; the tile greys. Never a probe result. */
+.stop-ring{display:inline-block;flex:none;width:7px;height:7px;margin-left:6px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--muted);vertical-align:middle}
+:root .asset-card.stopped .card-name,:root .compact-repo.stopped .compact-repo-open>span:not(.tile){color:var(--muted)}
+:root .asset-card.stopped .tile,:root .compact-repo.stopped .tile{filter:grayscale(1);opacity:.7}
