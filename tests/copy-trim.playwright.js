@@ -54,7 +54,7 @@ async (page) => {
   check(await p.locator('.import-group.hold').count()===2,'Same-name and deleted groups are marked as holds');
   check((await p.locator('#import-preview').innerText()).includes('已删除'),'Deleted-skipped still stated');
   check(!(await p.locator('#import-preview').innerText()).includes('已有同名记录，默认跳过；勾选则用导入内容更新'),'Per-row sentences are gone');
-  check(await p.locator('[data-action="import-hub"][aria-label]').count()===1,'Back icon is named');
+  check(await p.locator('#modal [data-action="import-hub"][aria-label]').count()===1,'Back icon is named');
   await p.evaluate(()=>{$('#modal').close();});
 
   // Inbox: textarea named, no help sentence, icon buttons named, count badge.

@@ -40,7 +40,7 @@ function themeDialog(){
  document.querySelector('#save-theme').onclick=()=>{checkpoint();state.theme=picker.value;save();themePreview=false;document.querySelector('#modal').close();};
 }
 document.addEventListener('DOMContentLoaded',()=>{
- const button=document.createElement('button');button.id='theme';button.className='button';button.textContent='色调';button.onclick=themeDialog;document.querySelector('#add-block').before(button);
+ const button=document.createElement('button');button.id='theme';button.className='button icon-only';button.onclick=themeDialog;document.querySelector('#add-block').before(button);if(typeof setIconButton==='function'){setIconButton(button,'palette','色调');}else{button.textContent='色调';button.title='色调';}
  document.querySelector('#modal').addEventListener('close',()=>{if(themePreview){themePreview=false;applyBoardTheme(state.theme);}});
  applyBoardTheme(state.theme);
  schemeQuery?.addEventListener?.('change',()=>applyBoardTheme(appliedTheme));

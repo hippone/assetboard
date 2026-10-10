@@ -17,10 +17,10 @@ async (page) => {
   });
   const agenda=await p.locator('#agenda').innerText();
   check(await p.locator('#agenda').isVisible(),'Agenda must be visible when assets exist');
-  check(/late\.dev[\s\S]*已过期 2 天/.test(agenda),'Overdue asset must lead the agenda: '+agenda);
-  check(/soon\.dev[\s\S]*7 天后到期[\s\S]*客户站点仍在使用/.test(agenda),'Soon asset shows relative date and keep reason');
+  check(/late\.dev[\s\S]*过期 2 天/.test(agenda),'Overdue asset must lead the agenda: '+agenda);
+  check(/soon\.dev[\s\S]*7 天[\s\S]*客户站点仍在使用/.test(agenda),'Soon asset shows relative date and keep reason');
   check(!agenda.includes('Hidden tool'),'Hidden assets stay out of the agenda');
-  check(/天后扣款|今天扣款|明天扣款/.test(agenda),'Monthly renewal rolls forward to its next charge');
+  check(/\d+ 天|今天|明天/.test(agenda)&&await p.locator('#agenda [aria-label*="扣款"]').count()>0,'Monthly renewal rolls forward to its next charge');
   check((await p.locator('.domain .block-summary').innerText())==='1 项已过期 · 1 项即将到期','Block summary counts computed dates');
   check((await p.locator('[data-asset="soon"] .card-event').getAttribute('class')).includes('warn'),'Soon card is marked');
 
@@ -80,14 +80,14 @@ async (page) => {
 
   // Evidence rows group into one candidate; ignoring resolves every row and undo brings it back.
   await p.evaluate(()=>{evidenceRows=[1,2,3].map(n=>({id:`gmail-${n}`,kind:'gmail',source:'Notion <team@makenotion.com>',title:'Your receipt',body:'Total $10.00',payload:JSON.stringify({date:isoDay(localDay()-n*30-1)})}));evidenceVersion++;render();});
-  check((await p.locator('#inbox-button').innerText())==='待确认 1','Toolbar counts pending groups');
+  check((await p.locator('#inbox-button').getAttribute('aria-label'))==='待确认 1'&&(await p.locator('#inbox-button').innerText())==='1','Toolbar counts pending groups');
   await p.locator('#inbox-button').click();
   check(await p.locator('.candidate').count()===1,'Receipts from one sender form one group');
   await p.locator('[data-action="candidate-dismiss"]').first().click();
   check(await p.evaluate(()=>['gmail-1','gmail-2','gmail-3'].every(id=>state.evidenceDecisions[id]?.status==='dismissed')),'Ignoring resolves all rows in the group');
   await p.locator('#close-modal').click();
   await p.locator('#toast .toast-undo').click();
-  check((await p.locator('#inbox-button').innerText())==='待确认 1','Undo restores the pending group');
+  check((await p.locator('#inbox-button').getAttribute('aria-label'))==='待确认 1','Undo restores the pending group');
 
   // Unsaved-changes prompt keeps what was typed and still protects it afterwards.
   await p.evaluate(()=>assetForm('domain','soon'));

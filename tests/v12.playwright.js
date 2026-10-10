@@ -36,6 +36,20 @@ async (page) => {
    check(ratio(d.faint,d.card.slice(0,3))>=4.5,scheme+' faint text on card >= 4.5: '+ratio(d.faint,d.card.slice(0,3)).toFixed(2));
   }
   await p.emulateMedia({colorScheme:'light'});
+  // C: one glass top bar. Icon-only actions keep title + accessible name, the inbox count is a badge, agenda chips are dot + name + days.
+  const top=await p.evaluate(()=>{const bar=document.querySelector('#topbar'),cs=getComputedStyle(bar),blurred=[...document.querySelectorAll('body *')].filter(el=>{const s=getComputedStyle(el);return (s.backdropFilter&&s.backdropFilter!=='none'||s.webkitBackdropFilter&&s.webkitBackdropFilter!=='none')&&el.getClientRects().length;}).map(el=>el.id||el.className),
+    buttons=[...bar.querySelectorAll('.button.icon-only')].map(b=>({id:b.id,text:b.textContent.trim(),label:b.getAttribute('aria-label'),title:b.title,svg:!!b.querySelector('svg')})),chips=[...bar.querySelectorAll('.agenda-item')].map(el=>({dot:!!el.querySelector('.dot'),label:el.getAttribute('aria-label'),when:el.querySelector('.agenda-when')?.textContent,tile:!!el.querySelector('.tile')})),
+    sticky=cs.position==='sticky',label=bar.querySelector('.agenda-label');
+   return {blurred,buttons,chips,sticky,labelName:label?.getAttribute('aria-label'),more:bar.querySelector('.agenda-more')?.getAttribute('aria-label'),badge:!!bar.querySelector('.demo-badge'),badgeText:bar.querySelector('.demo-badge')?.textContent,bottomPill:!!document.body.querySelector(':scope > .demo-badge')};});
+  check(top.sticky&&top.blurred.join()==='topbar','The top bar is the only blur layer on the board: '+top.blurred.join());
+  check(top.buttons.length===4&&top.buttons.every(b=>b.svg&&!b.text.replace(/\d+/g,'')&&b.label&&b.title),'Four named icon buttons: '+JSON.stringify(top.buttons));
+  check(top.chips.length===3&&top.chips.every(c=>c.dot&&!c.tile&&c.label&&/^(过期 \d+ 天|今天|明天|\d+ 天)$/.test(c.when)),'Agenda chips are dot, name, bare days: '+JSON.stringify(top.chips));
+  check(top.chips[0].label.includes('过期')&&top.labelName==='接下来'&&/全部 \d+ 项/.test(top.more),'Full meaning stays in the accessible names');
+  check(top.badge&&top.badgeText==='演示'&&!top.bottomPill,'Demo note is a small badge in the bar, not a bottom pill');
+  // Pending count is a badge on the tray icon with the full name on the button.
+  await p.evaluate(()=>{window.pendingCount=()=>3;syncToolbar();});
+  const inbox=await p.evaluate(()=>{const b=document.querySelector('#inbox-button');return {badge:b.querySelector('.count-badge')?.textContent,label:b.getAttribute('aria-label'),title:b.title};});
+  check(inbox.badge==='3'&&inbox.label==='待确认 3'&&inbox.title==='待确认 3','Inbox count badge: '+JSON.stringify(inbox));
   check(errors.length===0,'No page errors: '+errors.join('; '));
   return 'PASS: demo board plain, origin hoisted to block header, mixed blocks keep sources, lock for private, hidden toggle icon+count, search not hoisted, category hints trimmed';
  }finally{await context.close();}

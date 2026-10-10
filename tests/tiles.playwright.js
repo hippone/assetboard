@@ -42,11 +42,11 @@ async (page) => {
   check(result.maxHeight<=104,'Full cards stay compact, tallest is '+result.maxHeight);
   check(result.headTiles,'Every block header carries its category tile');
 
-  // The same tile shows up wherever the asset does: detail, agenda chips, compact strips, folded peeks, flip cards and search.
+  // The same tile shows up wherever the asset does: detail, compact strips, folded peeks, flip cards and search.
   const spots=await p.evaluate(()=>{
    const out={};showDetail('t-site');out.detail=!!document.querySelector('#detail .detail-head .tile.lg.site-art img');closeDetail();
    const day=new Date();day.setDate(day.getDate()+3);const a=state.assets.find(x=>x.id==='t-database');a.date=day.toISOString().slice(0,10);render();
-   out.agenda=!!document.querySelector('#agenda .agenda-item[data-id="t-database"] .tile.sm svg');
+   out.agenda=!!document.querySelector('#agenda .agenda-item[data-id="t-database"] .dot')&&!document.querySelector('#agenda .agenda-item[data-id="t-database"] .tile');
    state.blocks.find(b=>b.id==='server').density='compact';render();
    const compactTile=document.querySelector('#board .block.server [data-asset="t-custom"] .card-head .tile');out.compact=!!compactTile&&Math.round(compactTile.getBoundingClientRect().width)===20&&!!compactTile.querySelector('img');
    state.blocks.find(b=>b.id==='domain').folded=true;render();out.peek=document.querySelectorAll('#board .block.domain .peek-mark .tile.sm').length===2;
@@ -65,6 +65,6 @@ async (page) => {
   check(await p.locator('#board .asset-card .card-head .tile').count()>0&&await p.locator('#board .card-hit').count()>0,'Search results show tiles and say when the match is in the purpose');
   await p.fill('#search','');
   check(!errors.length,'Page errors: '+errors.join(' | '));
-  return 'PASS: every category has a distinct 1.5px icon, real icons win, system sans only, three text layers, compact cards, tiles in header/detail/agenda/compact/peek/flip/search, stable hover height, readable hidden card';
+  return 'PASS: every category has a distinct 1.5px icon, real icons win, system sans only, three text layers, compact cards, tiles in header/detail/compact/peek/flip/search, stable hover height, readable hidden card';
  } finally { await p.close(); }
 }

@@ -269,7 +269,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             toolbar.allowsUserCustomization = false
             window.toolbar = toolbar
             window.isOpaque = false
-            window.backgroundColor = NSColor(calibratedRed: 0.80, green: 0.85, blue: 0.82, alpha: 0.88)
+            window.backgroundColor = NSColor(calibratedRed: 0.80, green: 0.85, blue: 0.82, alpha: 0.92)
             window.minSize = NSSize(width: 390, height: 500)
             let glass = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: 1320, height: 900))
             glass.material = .underWindowBackground
@@ -330,29 +330,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         let item = NSToolbarItem(itemIdentifier: id)
         switch id.rawValue {
         case "theme":
-            let button = NSButton(title: "色调", target: self, action: #selector(openTheme))
-            button.bezelStyle = .rounded
             item.label = "色调"
-            item.view = button
+            item.toolTip = "色调"
+            item.view = iconButton("paintpalette", "色调", #selector(openTheme))
         case "search":
-            searchField.placeholderString = "搜索资产"
+            searchField.placeholderString = "搜索"
             searchField.delegate = self
             searchField.sendsSearchStringImmediately = true
             item.label = "搜索资产"
             item.view = searchField
         case "inbox":
-            inboxButton = NSButton(title: "待确认", target: self, action: #selector(openInbox))
-            inboxButton.bezelStyle = .rounded
+            inboxButton = iconButton("tray", "待确认", #selector(openInbox))
             item.label = "待确认"
+            item.toolTip = "待确认"
             item.view = inboxButton
         case "add":
-            let button = NSButton(title: "添加区块", image: NSImage(systemSymbolName: "plus", accessibilityDescription: "添加区块")!, target: self, action: #selector(addBlock))
-            button.bezelStyle = .rounded
             item.label = "添加区块"
-            item.view = button
+            item.toolTip = "添加区块"
+            item.view = iconButton("plus", "添加区块", #selector(addBlock))
         default: return nil
         }
         return item
+    }
+    /// Icon-only toolbar button: the symbol carries the meaning, the tooltip and accessibility label carry the name.
+    func iconButton(_ symbol: String, _ label: String, _ action: Selector) -> NSButton {
+        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: label) ?? NSImage()
+        let button = NSButton(image: image, target: self, action: action)
+        button.bezelStyle = .rounded
+        button.imagePosition = .imageLeading
+        button.toolTip = label
+        button.setAccessibilityLabel(label)
+        return button
     }
     func controlTextDidChange(_ notification: Notification) {
         guard let bytes = try? JSONSerialization.data(withJSONObject: [searchField.stringValue]),
@@ -710,7 +718,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
               let body = message.body as? [String: Any] else { return }
         if body["action"] as? String == "themeColor" {
             if let rgb = body["rgb"] as? [Double], rgb.count == 3, rgb.allSatisfy({ $0.isFinite && $0 >= 0 && $0 <= 255 }) {
-                window.backgroundColor = NSColor(calibratedRed: rgb[0]/255, green: rgb[1]/255, blue: rgb[2]/255, alpha: 0.88)
+                window.backgroundColor = NSColor(calibratedRed: rgb[0]/255, green: rgb[1]/255, blue: rgb[2]/255, alpha: 0.92)
             }
             return
         }
@@ -723,7 +731,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         }
         if body["action"] as? String == "toolbarState" {
             let pending = body["pending"] as? Int ?? 0
-            inboxButton?.title = pending > 0 ? "待确认 \(pending)" : "待确认"
+            // The count sits beside the tray icon; the full name stays in the tooltip and accessibility label.
+            let label = pending > 0 ? "待确认 \(pending)" : "待确认"
+            inboxButton?.title = pending > 0 ? "\(pending)" : ""
+            inboxButton?.toolTip = label
+            inboxButton?.setAccessibilityLabel(label)
             searchField.stringValue = body["query"] as? String ?? ""
             return
         }
@@ -1327,7 +1339,7 @@ func testWebView() {
         let rows = String(data: try JSONSerialization.data(withJSONObject: try store.database.listEvidence()), encoding: .utf8)!
         _ = run("window.assetboardEvidenceList(\(rows));''")
         let evidence = run("JSON.stringify({pending:pendingCount(),date:candidates()[0]?.date?.value,cost:candidates()[0]?.cost,agenda:document.querySelector('#agenda').innerText})")
-        precondition(evidence.contains("\"pending\":1") && evidence.contains("2099-10-06") && evidence.contains("$15.00 / 月") && evidence.contains("3 天后到期"), evidence)
+        precondition(evidence.contains("\"pending\":1") && evidence.contains("2099-10-06") && evidence.contains("$15.00 / 月") && evidence.contains("3 天"), evidence)
         let opened = run("document.querySelector('[data-asset=\"a\"] .card-open').click();document.querySelector('#detail [data-action=\"delete-asset\"]').click();String(!!document.querySelector('#modal[open] #confirm-yes'))")
         precondition(opened == "true", "Delete must ask with the in-page dialog in WebKit")
         let saves = handler.actions.filter { $0 == "save" }.count
@@ -1339,10 +1351,10 @@ func testWebView() {
         precondition(reading == "[\"Figma Professional\",\"$15 / 月\",\"ai\"]", "AI reading must parse in WebKit: " + reading)
         webView.appearance = NSAppearance(named: .aqua)
         wait { run("document.documentElement.dataset.scheme") == "light" }
-        let lightCanvas = run("getComputedStyle(document.body).backgroundColor")
+        let lightCanvas = run("getComputedStyle(document.body).backgroundColor+getComputedStyle(document.body).backgroundImage")
         webView.appearance = NSAppearance(named: .darkAqua)
         wait { run("document.documentElement.dataset.scheme") == "dark" }
-        let darkCanvas = run("getComputedStyle(document.body).backgroundColor")
+        let darkCanvas = run("getComputedStyle(document.body).backgroundColor+getComputedStyle(document.body).backgroundImage")
         precondition(lightCanvas != darkCanvas && handler.actions.filter { $0 == "themeColor" }.count >= 2, "Page must follow the system appearance: \(lightCanvas) / \(darkCanvas)")
         // Direct manipulation with synthetic pointer events: card reorder, cross-block move, edge resize.
         let setup = run("""
