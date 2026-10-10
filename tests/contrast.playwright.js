@@ -67,7 +67,9 @@ async (page) => {
    await p.evaluate(()=>{$('#modal').close();closeDetail();state=window.assetboardDemoBoard();state.assets.find(a=>a.id==='demo-d2').stopped=true;state.assets.find(a=>a.id==='demo-s2').stopped=true;render();panoramaOpen(true);});
    await audit(scheme+' panorama');
    await p.locator('[data-loose-more]').click();await audit(scheme+' panorama unmounted open');
-   await p.evaluate(()=>panoramaOpen(false));
+   await p.evaluate(()=>{panoramaFocus('demo-s2');});await p.waitForTimeout(300);await audit(scheme+' panorama focused (stopped server)');
+  await p.evaluate(()=>{panoramaFocus('demo-s1');});await p.waitForTimeout(300);await audit(scheme+' panorama focused');
+  await p.evaluate(()=>panoramaOpen(false));
   }
   if(failures.length)throw new Error(`${failures.length} low-contrast texts:\n`+failures.join('\n'));
   return 'PASS: text contrast in light and dark — '+counts.join(', ');

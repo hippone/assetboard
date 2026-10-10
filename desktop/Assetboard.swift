@@ -1403,9 +1403,11 @@ func testWebView() {
         // Panorama: opens on P, shows a server lane and the registered-status label, closes on Esc.
         let panorama = run("""
             (()=>{document.dispatchEvent(new KeyboardEvent('keydown',{key:'p',bubbles:true,cancelable:true}));const opened=!document.querySelector('#panorama').hidden,lane=!!document.querySelector('#panorama .pano-lane'),tag=document.querySelector('.pano-tag')?.textContent||'';
-            document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));return JSON.stringify({opened,lane,tag,closed:document.querySelector('#panorama').hidden});})()
+            document.querySelector('#panorama [data-lane-head]')?.click();const hero=!!document.querySelector('#panorama .pano-hero');
+                const esc=()=>document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));esc();const back=!!document.querySelector('#panorama .pano-lane')&&!document.querySelector('#panorama .pano-hero');
+                esc();return JSON.stringify({opened,lane,tag,hero,back,closed:document.querySelector('#panorama').hidden});})()
             """)
-        check(panorama.contains("\"opened\":true") && panorama.contains("\"lane\":true") && panorama.contains("登记状态") && panorama.contains("\"closed\":true"), "Panorama must open on P and close on Esc in WebKit: " + panorama)
+        check(panorama.contains("\"opened\":true") && panorama.contains("\"lane\":true") && panorama.contains("\"hero\":true") && panorama.contains("\"back\":true") && panorama.contains("登记状态") && panorama.contains("\"closed\":true"), "Panorama must open on P, focus a server on click, and peel with Esc in WebKit: " + panorama)
         check(run("JSON.stringify(window.__errors)") == "[]", "Page reported script errors: " + run("JSON.stringify(window.__errors)"))
         print("PASS: WebKit board load, evidence bridge candidates, agenda, in-page delete confirmation, toast undo, AI reply parsing, light/dark appearance, card drag, cross-block move, edge resize, panorama open and close")
     } catch { fputs("WebView test failed: \(error)\n", stderr); exit(1) }

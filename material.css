@@ -942,6 +942,38 @@ body.pano-open main{visibility:hidden}
 .pano-body[data-layout="stack"] .pano-lanes{flex-direction:column}
 .pano-body[data-layout="stack"] .pano-loose{flex-direction:column;align-items:flex-start}
 .pano-body[data-layout="stack"] .pano-loose-chips{flex-wrap:wrap}
+/* v13b P3 · focused state: one server as the protagonist (hero card, level 2), every server in a rail, what sits on it in three columns */
+.pano-body.pano-focused{display:grid;grid-template-columns:224px minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;gap:14px 18px}
+.pano-rail{grid-row:1;min-height:0;display:flex;flex-direction:column;gap:3px;padding:8px;border-radius:14px;overflow:auto;background:var(--surface-tray);box-shadow:inset 0 1px 3px var(--tray-inset,rgba(0,0,0,.05))}
+.pf-srv{flex:none;display:flex;align-items:center;gap:9px;min-width:0;padding:7px 9px;border:1px solid transparent;border-radius:8px;background:none;font:inherit;color:var(--ink);text-align:left;cursor:pointer}
+.pf-srv:hover{background:var(--hover)}
+.pf-srv.on{background:var(--surface-card);border-color:var(--border);box-shadow:var(--shadow-card)}
+.pf-srv.peer{outline:1.5px solid rgb(var(--tone-primary));outline-offset:-1px}
+.pf-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.pf-tx b{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pf-tx small{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pf-srv em{flex:none;font-style:normal;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.pf-stage{grid-row:1;min-width:0;min-height:0;display:flex;flex-direction:column;align-items:center;gap:14px;overflow:auto;padding:4px 4px 8px}
+.pf-acct{flex:none;display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:3px 11px 3px 9px;border:1px solid var(--border);border-radius:999px;background:var(--surface-panel);font:inherit;font-size:12px;font-weight:500;color:var(--muted);cursor:pointer}
+.pf-acct:hover{background:var(--hover)}.pf-acct svg{width:13px;height:13px}.pf-acct span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pano-hero{flex:none;width:min(560px,100%);display:flex;flex-direction:column;gap:12px;padding:18px 22px 14px;border:1.5px solid rgb(var(--tone-primary));border-radius:14px;background:var(--surface-card);box-shadow:var(--shadow-pop)}
+.pano-hero.stopped .ph-nm{color:var(--muted)}
+.ph-head{display:flex;align-items:center;gap:12px;min-width:0;padding:0;border:0;border-radius:8px;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer}
+.ph-head:hover{background:var(--hover)}
+.ph-nm{font-size:17px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ph-ips .ip-pill{font-size:15px;padding:3px 10px}
+.ph-st{display:flex;align-items:center;gap:10px;min-height:18px;padding-top:10px;border-top:1px solid var(--border)}
+.ph-st .pl-cnt{font-size:12px}.ph-st .pl-cnt svg{width:13px;height:13px}
+.pf-cols{flex:none;width:min(900px,100%);display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:start}
+.pf-col{display:flex;flex-direction:column;gap:5px;padding:10px;border-radius:14px;background:var(--surface-tray);box-shadow:inset 0 1px 3px var(--tray-inset,rgba(0,0,0,.05))}
+.pf-col h3{display:flex;align-items:center;gap:6px;margin:0 0 3px;padding:0 4px;font-size:11px;font-weight:500;color:var(--muted);font-variant-numeric:tabular-nums}
+.pf-col h3 svg{width:14px;height:14px}
+.pano-focused .pano-loose{grid-column:1/-1}
+.pano-body[data-layout="stack"].pano-focused{display:flex;flex-direction:column;overflow:auto}
+.pano-body[data-layout="stack"] .pano-rail{flex:none;flex-direction:row;overflow-x:auto}
+.pano-body[data-layout="stack"] .pf-srv{width:170px}
+.pano-body[data-layout="stack"] .pf-stage{flex:none;overflow:visible}
+.pano-body[data-layout="stack"] .pf-cols{grid-template-columns:1fr}
 @media(max-width:760px){.pano-legend,.pano-totals{display:none}.pano-bar{padding:0 14px;gap:10px}.pano-body{padding:12px 14px}}
 @media(max-width:900px){.pano-legend{display:none}}
 @media(prefers-reduced-motion:no-preference){.panorama:not([hidden]){animation:v12-fade .15s ease-out}}

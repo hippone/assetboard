@@ -2,8 +2,9 @@
 // Status here is the registered status (expiry, manual stop), never a live probe, and the view says so (DESIGN-PRINCIPLES: no probing, not real-time).
 uiGlyphs.grid='<rect x="4" y="4" width="7" height="7" rx="1.8"/><rect x="13" y="4" width="7" height="7" rx="1.8"/><rect x="4" y="13" width="7" height="7" rx="1.8"/><rect x="13" y="13" width="7" height="7" rx="1.8"/>';
 uiGlyphs.eyeOff='<path d="M3.5 12s3-5.5 8.5-5.5c1.2 0 2.3.3 3.2.7M20.5 12s-1.1 2-3.2 3.6M9.9 9.9a3 3 0 0 0 4.2 4.2M4 4l16 16"/>';
-let panoOpen=false,panoReturn=null,panoFrame=0,panoObserver=null,panoKey='',panoLooseOpen=false;
+let panoFocus=null,panoOrigin=null,panoOpen=false,panoReturn=null,panoFrame=0,panoObserver=null,panoKey='',panoLooseOpen=false;
 const panoExpanded=new Set();
+const PANO_FOCUS_CAP=6;
 const PANO_TYPE_LABEL={domain:'域名',repository:'仓库',database:'数据库'};
 const panoDot=(tone,stopped)=>`<i class="pd${tone?' '+tone:''}${stopped?' off':''}" aria-hidden="true"></i>`;
 function panoSyncTime(){const times=state.assets.map(a=>Date.parse(a.syncedAt)).filter(Boolean);if(!times.length)return '';return new Date(Math.max(...times)).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false});}
@@ -53,31 +54,73 @@ function panoLoose(model){
  return `<aside class="pano-loose${panoLooseOpen?' open':''}" aria-label="未挂载，${model.unmounted.total} 项"><div class="pano-loose-head">${icon('server')}<span>未挂载</span><b>${model.unmounted.total>99?'99+':model.unmounted.total}</b></div><div class="pano-loose-chips">${cap.shown.map(c=>panoChip(c,'')).join('')}${cap.more?`<button class="pano-more" data-nav data-loose-more aria-label="另外 ${cap.more} 项，展开" title="展开">+${cap.more}</button>`:panoLooseOpen&&model.unmounted.total>PANORAMA_UNMOUNTED_CAP?'<button class="pano-more" data-nav data-loose-more aria-label="收起" title="收起">−</button>':''}</div></aside>`;
 }
 function panoTotals(t){return [['server','服务器',t.server],['domain','域名',t.domain],['repository','仓库',t.repository],['database','数据库',t.database]].map(([type,name,n])=>`<span class="pano-total" title="${name} ${n}" aria-label="${name} ${n}">${icon(type)}${n}</span>`).join('');}
+
+// Focused state (v13b P3): one server is the protagonist. Left rail = every server, centre = the hero card with its addresses, three columns of what sits on it.
+function panoRail(model,id){
+ return `<nav class="pano-rail" aria-label="服务器">${model.lanes.map(l=>{const st=panoStatus(l.server),ip=l.ip;return `<button class="pf-srv${l.id===id?' on':''}" data-nav data-pick="${esc(l.id)}" ${l.id===id?'aria-current="true"':''} aria-label="${esc([l.server.name,ip?.ip,`挂载 ${l.total} 项`,st.text].filter(Boolean).join('，'))}" title="${esc(l.server.name)}">${panoDot(st.tone,l.stopped)}<span class="pf-tx"><b>${esc(displayName(l.server))}</b>${ip?`<small>${esc(ip.ip)}</small>`:''}</span><em>${l.total}</em></button>`;}).join('')}</nav>`;
+}
+function panoHero(lane,model){
+ const a=lane.server,status=panoStatus(a),provider=a.provider&&a.provider!=='SSH'?a.provider:'',ips=assetIps(a);
+ const account=lane.account?model.accounts.find(x=>x.id===lane.account)?.asset:null;
+ const label=[a.name,ips.map(x=>x.ip).join('、'),`挂载 ${lane.total} 项`,status.text].filter(Boolean).join('，');
+ return `${account?`<button class="pf-acct" data-nav data-open="${esc(account.id)}" aria-label="账号 ${esc(displayName(account))}" title="${esc(displayName(account))}">${icon('subscription')}<span>${esc(displayName(account))}</span></button>`:''}
+ <article class="pano-hero${lane.stopped?' stopped':''}" data-hero="${esc(lane.id)}"><button class="ph-head" data-nav data-hero-head aria-label="${esc(label)}" title="${esc(label)}">${cardTile(a,'sm')}<span class="pl-tx"><b class="ph-nm">${esc(displayName(a))}</b>${provider?`<span class="pl-prov">${esc(provider)}</span>`:''}</span></button>
+ ${ips.length?`<div class="ip-pills ph-ips">${ips.map(x=>`<button class="ip-pill" data-action="copy-ip" data-ip="${esc(x.ip)}" title="复制 IP" aria-label="复制 IP ${esc(x.ip)}">${x.inner?'<em>内</em>':''}${esc(x.ip)}</button>`).join('')}</div>`:''}
+ <div class="ph-st"><span class="pl-state ${status.tone}">${panoDot(status.tone,lane.stopped)}${esc(status.text)}</span>${panoCounts(lane,lane.groups)}</div></article>`;
+}
+function panoFocusColumns(lane){
+ const cols=lane.groups.filter(g=>g.total).map(g=>{
+  const key=lane.id+':f:'+g.key,open=panoExpanded.has(key),list=open?g.chips:g.chips.slice(0,PANO_FOCUS_CAP),more=g.total-PANO_FOCUS_CAP;
+  return `<section class="pf-col" data-group="${g.key}" aria-label="${PANO_TYPE_LABEL[g.key]} ${g.total}"><h3>${icon(g.key)}<span>${g.total>99?'99+':g.total}</span></h3>${list.map(c=>panoChip(c,lane.id)).join('')}${more>0?`<button class="pano-more" data-nav data-more="${esc(key)}" aria-label="${open?'收起':`另外 ${more} 项，展开`}" title="${open?'收起':'展开'}">${open?'−':'+'+more}</button>`:''}</section>`;}).join('');
+ return cols?`<div class="pf-cols">${cols}</div>`:'';
+}
+function panoFocusHtml(model,lane,fit){
+ return `<div class="pano-body pano-focused" data-level="f" data-layout="${fit.layout}">${panoRail(model,lane.id)}<div class="pf-stage">${panoHero(lane,model)}${panoFocusColumns(lane)}</div>${panoLoose(model)}</div>`;
+}
+function panoFlip(el,from){
+ if(!el||!from||matchMedia('(prefers-reduced-motion:reduce)').matches||!el.animate)return;
+ const to=el.getBoundingClientRect();if(!to.width||!to.height||!from.width)return;
+ el.animate([{transformOrigin:'0 0',transform:`translate(${from.left-to.left}px,${from.top-to.top}px) scale(${from.width/to.width},${from.height/to.height})`,opacity:.35},{transformOrigin:'0 0',transform:'none',opacity:1}],{duration:200,easing:'cubic-bezier(.2,.8,.2,1)'});
+}
+function panoramaFocus(id,from,stay=false){
+ if(!panoOpen)return;
+ const lane=buildPanorama(state.assets,{cardOrder:state.cardOrder||{}}).lanes.find(l=>l.id===id);if(!lane)return;
+ panoOrigin=from||panoOrigin;panoFocus=id;panoramaRender();
+ const root=$('#panorama');if(!stay)root.querySelector('.ph-head')?.focus({preventScroll:true});
+ panoFlip(root.querySelector('.pano-hero'),from);
+}
+function panoramaUnfocus(){
+ if(!panoOpen||!panoFocus)return;
+ const id=panoFocus;panoFocus=null;panoramaRender();
+ const root=$('#panorama'),head=root.querySelector(`[data-lane-head="${CSS.escape(id)}"]`);head?.focus({preventScroll:true});
+ if(head&&!matchMedia('(prefers-reduced-motion:reduce)').matches)root.querySelector('.pano-body')?.animate([{opacity:.4},{opacity:1}],{duration:150,easing:'ease-out'});
+}
 function panoramaHtml(model,fit){
  const sync=panoSyncTime(),tag=`登记状态 · 非实时${sync?' · 同步 '+sync:''}`;
  const body=model.lanes.length?`<div class="pano-trays">${model.accounts.map(acc=>panoTray(acc,fit,model.accounts.length===1)).join('')}</div>`:`<div class="pano-empty"><p>还没有服务器</p><button class="button icon-only" data-action="pano-add" aria-label="添加服务器" title="添加服务器">${ui('plus')}</button></div>`;
- return `<header class="pano-bar"><h2 class="pano-title">${ui('grid')}全景</h2><div class="pano-totals">${panoTotals(model.totals)}</div><span class="pano-spacer"></span><div class="pano-legend" aria-hidden="true"><span>${panoDot('red')}已过期</span><span>${panoDot('amber')}即将到期</span><span>${panoDot('')}登记中</span><span>${panoDot('',true)}已停用</span></div><span class="pano-tag" title="只显示你登记和同步的数据，不探测网络">${tag}</span><button class="button icon-only pano-close" data-action="pano-close" aria-label="关闭全景" title="关闭全景（Esc）">×</button></header><div class="pano-body" data-level="${fit.level}" data-layout="${fit.layout}">${body}${panoLoose(model)}</div>`;
+ const focusLane=panoFocus&&model.lanes.find(l=>l.id===panoFocus);if(panoFocus&&!focusLane)panoFocus=null;
+ return `<header class="pano-bar"><h2 class="pano-title">${ui('grid')}全景</h2><div class="pano-totals">${panoTotals(model.totals)}</div><span class="pano-spacer"></span><div class="pano-legend" aria-hidden="true"><span>${panoDot('red')}已过期</span><span>${panoDot('amber')}即将到期</span><span>${panoDot('')}登记中</span><span>${panoDot('',true)}已停用</span></div><span class="pano-tag" title="只显示你登记和同步的数据，不探测网络">${tag}</span><button class="button icon-only pano-close" data-action="pano-close" aria-label="关闭全景" title="关闭全景（Esc）">×</button></header>${focusLane?panoFocusHtml(model,focusLane,fit):`<div class="pano-body" data-level="${fit.level}" data-layout="${fit.layout}">${body}${panoLoose(model)}</div>`}`;
 }
 function panoramaRender(){
  const root=$('#panorama');if(!panoOpen||!root)return;
  const model=buildPanorama(state.assets,{cardOrder:state.cardOrder||{}});panoShared=model.shared;
  const fit=panoramaFit({lanes:model.lanes.length,accounts:model.accounts.length,width:innerWidth,height:innerHeight});
- const keep=document.activeElement?.closest?.('#panorama')?document.activeElement:null,saved=keep&&{chip:keep.dataset.chip,lane:keep.dataset.laneHead,more:keep.dataset.more,loose:'looseMore' in keep.dataset,close:keep.classList.contains('pano-close')};
+ const keep=document.activeElement?.closest?.('#panorama')?document.activeElement:null,saved=keep&&{pick:keep.dataset.pick,hero:'heroHead' in keep.dataset,open:keep.dataset.open,chip:keep.dataset.chip,lane:keep.dataset.laneHead,more:keep.dataset.more,loose:'looseMore' in keep.dataset,close:keep.classList.contains('pano-close')};
  root.innerHTML=panoramaHtml(model,fit);root.dataset.level=fit.level;
- if(saved){const sel=saved.chip?`[data-chip="${CSS.escape(saved.chip)}"]`:saved.lane?`[data-lane-head="${CSS.escape(saved.lane)}"]`:saved.more?`[data-more="${CSS.escape(saved.more)}"]`:saved.loose?'[data-loose-more]':saved.close?'.pano-close':'';(sel&&root.querySelector(sel)||root.querySelector('[data-nav]')||root.querySelector('.pano-close'))?.focus({preventScroll:true});}
+ if(saved){const sel=saved.pick?`[data-pick="${CSS.escape(saved.pick)}"]`:saved.hero?'[data-hero-head]':saved.open?`[data-open="${CSS.escape(saved.open)}"]`:saved.chip?`[data-chip="${CSS.escape(saved.chip)}"]`:saved.lane?`[data-lane-head="${CSS.escape(saved.lane)}"]`:saved.more?`[data-more="${CSS.escape(saved.more)}"]`:saved.loose?'[data-loose-more]':saved.close?'.pano-close':'';(sel&&root.querySelector(sel)||root.querySelector('[data-nav]')||root.querySelector('.pano-close'))?.focus({preventScroll:true});}
 }
-function panoramaOpen(show=!panoOpen){
+function panoramaOpen(show=!panoOpen,serverId=null){
  const root=$('#panorama');if(!root||show===panoOpen)return;
  if(show){
   if($('#modal').open||!$('#keys-help').hidden)return;
   if(!$('#detail').hidden)closeDetail();
-  panoReturn=document.activeElement;panoOpen=true;panoLooseOpen=false;panoExpanded.clear();
+  panoReturn=document.activeElement;panoOpen=true;panoFocus=serverId&&state.assets.some(a=>a.id===serverId&&a.type==='server'&&!a.hiddenAt)?serverId:null;panoLooseOpen=false;panoExpanded.clear();
   root.hidden=false;document.body.classList.add('pano-open');$('main').inert=true;
-  panoramaRender();(root.querySelector('[data-nav]')||root.querySelector('.pano-close')).focus({preventScroll:true});
+  panoramaRender();(root.querySelector(panoFocus?'.ph-head':'[data-nav]')||root.querySelector('.pano-close')).focus({preventScroll:true});
   panoObserver||=new ResizeObserver(()=>{if(!panoOpen||panoFrame)return;panoFrame=requestAnimationFrame(()=>{panoFrame=0;const key=innerWidth+'x'+innerHeight;if(key===panoKey)return;panoKey=key;panoramaRender();});});
   panoKey=innerWidth+'x'+innerHeight;panoObserver.observe(root);
  }else{
-  panoOpen=false;panoObserver?.disconnect();cancelAnimationFrame(panoFrame);panoFrame=0;
+  panoOpen=false;panoFocus=null;panoObserver?.disconnect();cancelAnimationFrame(panoFrame);panoFrame=0;
   root.hidden=true;root.innerHTML='';document.body.classList.remove('pano-open');$('main').inert=false;
   if(panoReturn?.isConnected)panoReturn.focus({preventScroll:true});panoReturn=null;
  }
@@ -87,7 +130,24 @@ const togglePanorama=show=>panoramaOpen(show);
 {const boardRender=render;render=function(){boardRender.apply(this,arguments);if(panoOpen)panoramaRender();};}
 // Keyboard: P toggles, Esc closes (but lets an open detail or dialog take it first), arrows move between lanes and chips, board letter keys sit still.
 function panoNavItems(){return [...document.querySelectorAll('#panorama [data-nav]')].filter(n=>n.getClientRects().length);}
+function panoMoveFocus(from,key){
+ const items=panoNavItems(),rail=items.filter(n=>n.closest('.pano-rail')),top=items.filter(n=>n.closest('.pf-stage')&&!n.closest('.pf-col')),loose=items.filter(n=>n.closest('.pano-loose'));
+ const cols=[...document.querySelectorAll('#panorama .pf-col')].map(c=>items.filter(n=>n.closest('.pf-col')===c)).filter(c=>c.length),col=cols.findIndex(c=>c.includes(from));
+ const step=(list,d)=>list[list.indexOf(from)+d],vertical=key==='ArrowDown'||key==='ArrowUp',d=key==='ArrowDown'||key==='ArrowRight'?1:-1;
+ if(vertical){
+  if(rail.includes(from))step(rail,d)?.focus();
+  else if(top.includes(from)){if(d>0&&top.at(-1)===from)(cols[0]?.[0]||loose[0])?.focus();else step(top,d)?.focus();}
+  else if(col>=0){const n=step(cols[col],d);if(n)n.focus();else if(d<0)top.at(-1)?.focus();else loose[0]?.focus();}
+  else if(loose.includes(from)&&d<0)(cols[0]?.at(-1)||top.at(-1))?.focus();
+  return;
+ }
+ if(rail.includes(from)){if(d>0)top.find(n=>n.dataset.heroHead!==undefined)?.focus();return;}
+ if(top.includes(from)){if(d<0)(rail.find(n=>n.classList.contains('on'))||rail[0])?.focus();return;}
+ if(col>=0){const row=cols[col].indexOf(from),next=cols[col+d];if(next)next[Math.min(row,next.length-1)].focus();else if(d<0)(rail.find(n=>n.classList.contains('on'))||rail[0])?.focus();return;}
+ if(loose.includes(from))step(loose,d)?.focus();
+}
 function panoMove(from,key){
+ if(panoFocus)return panoMoveFocus(from,key);
  const items=panoNavItems(),at=items.indexOf(from);if(at<0)return;
  const laneOf=n=>n.dataset.laneHead||n.dataset.lane||(n.closest('.pano-loose')?'~':''),heads=items.filter(n=>n.dataset.laneHead);
  if(key==='ArrowDown'||key==='ArrowUp'){const next=items[at+(key==='ArrowDown'?1:-1)];if(next&&laneOf(next)===laneOf(from)&&!(from.dataset.laneHead&&key==='ArrowUp'))next.focus();return;}
@@ -101,10 +161,10 @@ function panoMove(from,key){
 document.addEventListener('keydown',e=>{
  const key=e.key.length===1?e.key.toLowerCase():e.key,mod=e.metaKey||e.ctrlKey;
  const dialogs=$('#modal').open||!$('#keys-help').hidden;
- if(key==='p'&&!mod&&!e.altKey&&!e.shiftKey&&!dialogs&&!typing(e)&&!e.target.closest?.('#detail')){e.preventDefault();e.stopImmediatePropagation();panoramaOpen();return;}
+ if(key==='p'&&!mod&&!e.altKey&&!e.shiftKey&&!dialogs&&!typing(e)&&!e.target.closest?.('#detail')){e.preventDefault();e.stopImmediatePropagation();if(panoOpen){panoramaOpen(false);return;}const card=document.activeElement?.closest?.('#board [data-asset]'),a=card&&state.assets.find(x=>x.id===card.dataset.asset),server=a&&(a.type==='server'?a:serverChain(state.assets,a).servers.find(x=>!x.hiddenAt));panoramaOpen(true,server?.id||null);return;}
  if(!panoOpen)return;
  if(mod&&key==='k'){panoramaOpen(false);return;}
- if(key==='Escape'){if(dialogs||!$('#detail').hidden)return;e.preventDefault();e.stopImmediatePropagation();panoramaOpen(false);return;}
+ if(key==='Escape'){if(dialogs||!$('#detail').hidden)return;e.preventDefault();e.stopImmediatePropagation();if(panoFocus)panoramaUnfocus();else panoramaOpen(false);return;}
  if(dialogs||typing(e)||e.target.closest?.('#detail'))return;
  if(!mod&&!e.altKey&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(key)){
   const from=e.target.closest?.('#panorama [data-nav]');e.preventDefault();e.stopImmediatePropagation();
@@ -120,10 +180,14 @@ document.addEventListener('click',e=>{
  if(e.target.closest('[data-action="pano-add"]')){panoramaOpen(false);assetForm('server');return;}
  const more=e.target.closest('[data-more]');if(more){const k=more.dataset.more;panoExpanded.has(k)?panoExpanded.delete(k):panoExpanded.add(k);panoramaRender();return;}
  if(e.target.closest('[data-loose-more]')){panoLooseOpen=!panoLooseOpen;panoramaRender();return;}
- const target=e.target.closest('[data-chip],[data-lane-head]');if(target)showDetail(target.dataset.chip||target.dataset.laneHead);
+ const pick=e.target.closest('[data-pick]');if(pick){if(pick.dataset.pick!==panoFocus)panoramaFocus(pick.dataset.pick,pick.getBoundingClientRect(),true);return;}
+ const opener=e.target.closest('[data-open]');if(opener){showDetail(opener.dataset.open);return;}
+ if(e.target.closest('[data-hero-head]')){showDetail(panoFocus);return;}
+ const lane=e.target.closest('[data-lane-head]');if(lane){panoramaFocus(lane.dataset.laneHead,lane.getBoundingClientRect());return;}
+ const chip=e.target.closest('[data-chip]');if(chip)showDetail(chip.dataset.chip);
 });
 // Shared things: hovering or focusing one copy rings the others.
-function panoRing(id){document.querySelectorAll('#panorama .pano-chip.peer').forEach(n=>n.classList.remove('peer'));if(!id)return;document.querySelectorAll(`#panorama .pano-chip[data-chip="${CSS.escape(id)}"][data-shared]`).forEach(n=>n.classList.add('peer'));}
+function panoRing(id){document.querySelectorAll('#panorama .peer').forEach(n=>n.classList.remove('peer'));if(!id)return;if(panoFocus)for(const other of panoShared?.get(id)||[])if(other!==panoFocus)document.querySelector(`#panorama .pf-srv[data-pick="${CSS.escape(other)}"]`)?.classList.add('peer');document.querySelectorAll(`#panorama .pano-chip[data-chip="${CSS.escape(id)}"][data-shared]`).forEach(n=>n.classList.add('peer'));}
 document.addEventListener('pointerover',e=>{if(panoOpen&&e.pointerType==='mouse')panoRing(e.target.closest?.('#panorama .pano-chip[data-shared]')?.dataset.chip);});
 document.addEventListener('pointerout',e=>{if(panoOpen&&e.target.closest?.('#panorama .pano-chip'))panoRing(null);});
 document.addEventListener('focusin',e=>{if(panoOpen)panoRing(e.target.closest?.('#panorama .pano-chip[data-shared]')?.dataset.chip);});

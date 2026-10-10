@@ -11,6 +11,9 @@ async (page) => {
   const st=await p.evaluate(()=>({role:document.querySelector('#panorama').getAttribute('role'),label:document.querySelector('#panorama').getAttribute('aria-label'),inert:document.querySelector('main').inert,mainHidden:getComputedStyle(document.querySelector('main')).visibility,focusIn:!!document.activeElement.closest('#panorama'),title:document.querySelector('.pano-tag').textContent,tip:document.querySelector('.pano-tag').title}));
   check(st.role==='dialog'&&/登记状态，非实时/.test(st.label)&&st.inert&&st.mainHidden==='hidden'&&st.focusIn,'A named dialog; the board is inert and hidden: '+JSON.stringify(st));
   check(st.title==='登记状态 · 非实时'&&/不探测网络/.test(st.tip),'The registered-status label is always shown: '+st.title);
+  // P on a mounted card lands on its server (focused state); the first Esc goes back to the overview, the second closes.
+  check(await p.evaluate(()=>document.querySelector('.pano-hero')?.dataset.hero)==='demo-s1','P on a mounted card focuses its server');
+  await p.keyboard.press('Escape');await p.waitForTimeout(150);check(await open(),'Esc from the focused state returns to the overview');
   await p.keyboard.press('Escape');await p.waitForTimeout(150);
   check(!(await open())&&await p.evaluate(()=>document.activeElement.closest('[data-asset]')?.dataset.asset==='demo-d2'),'Esc closes and returns focus to the card');
   await p.click('#panorama-button');await p.waitForTimeout(250);check(await open(),'The toolbar icon opens it');
