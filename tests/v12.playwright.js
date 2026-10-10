@@ -24,6 +24,18 @@ async (page) => {
   await p.evaluate(()=>addBlock());
   const hints=await p.evaluate(()=>[...document.querySelectorAll('#modal .category-choice')].map(b=>[b.querySelector('span:nth-child(2)').firstChild.textContent,!!b.querySelector('small')]));
   check(hints.filter(h=>h[1]).map(h=>h[0]).sort().join()==='Apple ID,Google 账号,手机号,银行卡','Only special-rule categories keep a hint: '+JSON.stringify(hints));
+  // B: depth tokens. Canvas gradient, recessed tray without an outer border, raised card with inner highlight, faint text readable in both schemes.
+  const lum=c=>{const v=c.map(x=>{x/=255;return x<=.03928?x/12.92:((x+.055)/1.055)**2.4;});return .2126*v[0]+.7152*v[1]+.0722*v[2];},ratio=(a,b)=>{const [x,y]=[lum(a),lum(b)].sort((m,n)=>n-m);return (x+.05)/(y+.05);};
+  for(const scheme of ['light','dark']){
+   await p.emulateMedia({colorScheme:scheme});await p.waitForTimeout(250);
+   const d=await p.evaluate(()=>{const cs=sel=>getComputedStyle(document.querySelector(sel)),rgb=v=>{const m=document.createElement('i');m.style.color=v.trim();document.body.append(m);const cv=document.createElement('canvas');cv.width=cv.height=1;const x=cv.getContext('2d');x.fillStyle=getComputedStyle(m).color;x.fillRect(0,0,1,1);m.remove();return [...x.getImageData(0,0,1,1).data].slice(0,3);},root=getComputedStyle(document.documentElement);
+    return {bodyImage:cs('body').backgroundImage,trayShadow:cs('.block').boxShadow,trayBg:cs('.block').backgroundColor,trayBorder:cs('.block').borderTopColor,cardShadow:cs('.asset-card').boxShadow,cardImage:cs('.asset-card').backgroundImage,faint:rgb(root.getPropertyValue('--faint')),card:rgb(root.getPropertyValue('--card-bottom')),muted:rgb(root.getPropertyValue('--muted'))};});
+   check(/gradient/.test(d.bodyImage),scheme+' canvas is a gradient');
+   check(/inset/.test(d.trayShadow)&&/rgba\(0, 0, 0, 0\)|transparent/.test(d.trayBorder)&&Number((d.trayBg.match(/[\d.]+/g)||[])[3]??1)<.5,scheme+' tray is recessed, translucent and has no outer border: '+d.trayBg+' '+d.trayBorder);
+   check(/gradient/.test(d.cardImage)&&/inset/.test(d.cardShadow)&&(d.cardShadow.match(/rgba?\(/g)||[]).length>=4,scheme+' card is a gradient with a layered shadow and inner highlight: '+d.cardShadow);
+   check(ratio(d.faint,d.card.slice(0,3))>=4.5,scheme+' faint text on card >= 4.5: '+ratio(d.faint,d.card.slice(0,3)).toFixed(2));
+  }
+  await p.emulateMedia({colorScheme:'light'});
   check(errors.length===0,'No page errors: '+errors.join('; '));
   return 'PASS: demo board plain, origin hoisted to block header, mixed blocks keep sources, lock for private, hidden toggle icon+count, search not hoisted, category hints trimmed';
  }finally{await context.close();}
