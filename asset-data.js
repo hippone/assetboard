@@ -634,13 +634,83 @@ function linkAssets(assets,leftId,rightId){
  for(const [from,to] of [[left,right],[right,left]]){const links=Array.isArray(from.links)?from.links:[];if(!links.includes(to.id)){from.links=[...links,to.id];changed=true;}}
  return changed;
 }
+function dropLinkMeta(asset,id){if(asset?.linkMeta&&id in asset.linkMeta){delete asset.linkMeta[id];if(!Object.keys(asset.linkMeta).length)delete asset.linkMeta;}}
 function unlinkAssets(assets,leftId,rightId){
  let changed=false;
- for(const [from,to] of [[leftId,rightId],[rightId,leftId]]){const asset=assets.find(item=>item.id===from);if(Array.isArray(asset?.links)&&asset.links.includes(to)){asset.links=asset.links.filter(id=>id!==to);changed=true;}}
+ for(const [from,to] of [[leftId,rightId],[rightId,leftId]]){const asset=assets.find(item=>item.id===from);if(Array.isArray(asset?.links)&&asset.links.includes(to)){asset.links=asset.links.filter(id=>id!==to);changed=true;}dropLinkMeta(asset,to);}
  return changed;
 }
 function linkedAssets(assets,asset){const ids=new Set(Array.isArray(asset?.links)?asset.links:[]);return assets.filter(item=>item.id!==asset?.id&&(ids.has(item.id)||Array.isArray(item.links)&&item.links.includes(asset?.id)));}
-function removeLinksTo(assets,id){for(const asset of assets)if(Array.isArray(asset.links)&&asset.links.includes(id))asset.links=asset.links.filter(item=>item!==id);}
+function removeLinksTo(assets,id){for(const asset of assets){if(Array.isArray(asset.links)&&asset.links.includes(id))asset.links=asset.links.filter(item=>item!==id);dropLinkMeta(asset,id);}}
+
+// Server-centred relations (v13 B). The server is the hub: things are mounted on it (domain, repository, database, licence) and it belongs to
+// an account (a subscription). Direction is never stored; it follows from the pair of types, so `links` stays one symmetric array.
+const MOUNT_TYPES=['domain','repository','database','license'];
+// 'mount' = child on a server, 'own' = server under an account, null = not a server relation.
+function relationKind(left,right){
+ if(!left||!right)return null;
+ const pair=left.type==='server'?right:right.type==='server'?left:null;
+ if(!pair)return null;
+ return MOUNT_TYPES.includes(pair.type)?'mount':pair.type==='subscription'?'own':null;
+}
+// Pairs that may be linked. Anything touching a server must be a legal server relation; same-type pairs of server, domain and repository make no sense.
+function linkAllowed(left,right){
+ if(!left||!right||left.id===right.id)return false;
+ if(left.type==='server'||right.type==='server')return !!relationKind(left,right);
+ return !(left.type===right.type&&['domain','repository'].includes(left.type));
+}
+// The server chain around an asset: servers it sits on, things mounted on it, accounts above or below it.
+function serverChain(assets,asset){
+ const linked=linkedAssets(assets,asset),servers=[],mounts=[],accounts=[],owned=[];
+ for(const item of linked){
+  const kind=relationKind(asset,item);if(!kind)continue;
+  if(asset.type==='server')(kind==='mount'?mounts:accounts).push(item);
+  else if(item.type==='server')(asset.type==='subscription'?owned:servers).push(item);
+ }
+ return {servers,mounts,accounts,owned};
+}
+function serverChainCount(assets,asset){const chain=serverChain(assets,asset);return chain.servers.length+chain.mounts.length+chain.accounts.length+chain.owned.length;}
+// Link with the rules applied: illegal pairs are refused, a server keeps at most one account (the newer one replaces the older).
+function linkRelation(assets,leftId,rightId){
+ const left=assets.find(a=>a.id===leftId),right=assets.find(a=>a.id===rightId);
+ if(!linkAllowed(left,right))return {ok:false,replaced:[]};
+ const replaced=[];
+ if(relationKind(left,right)==='own'){
+  const server=left.type==='server'?left:right,account=server===left?right:left;
+  for(const other of linkedAssets(assets,server))if(other.type==='subscription'&&other.id!==account.id&&relationKind(server,other)==='own'){unlinkAssets(assets,server.id,other.id);replaced.push(other.id);}
+ }
+ const changed=linkAssets(assets,leftId,rightId);
+ return {ok:changed,replaced};
+}
+// Per-link marks live on the child, keyed by server id: role 'b' = standby, proxied = origin reached through a proxy.
+function linkMetaOf(child,serverId){const meta=child?.linkMeta?.[serverId];return {standby:meta?.role==='b',proxied:!!meta?.proxied};}
+function setLinkMeta(assets,childId,serverId,{standby,proxied}={}){
+ const child=assets.find(a=>a.id===childId),server=assets.find(a=>a.id===serverId);
+ if(!child||!server||server.type!=='server'||!MOUNT_TYPES.includes(child.type)||!Array.isArray(child.links)||!child.links.includes(serverId))return false;
+ const meta={...(child.linkMeta?.[serverId]||{})};
+ if(standby!==undefined){if(standby)meta.role='b';else delete meta.role;}
+ if(proxied!==undefined&&child.type==='domain'){if(proxied)meta.proxied=true;else delete meta.proxied;}
+ child.linkMeta={...(child.linkMeta||{})};
+ if(Object.keys(meta).length)child.linkMeta[serverId]=meta;else delete child.linkMeta[serverId];
+ if(!Object.keys(child.linkMeta).length)delete child.linkMeta;
+ return true;
+}
+// Colour a mounted card's marker takes from its servers: the worst visible primary server, standbys only when nothing else is left. Colour only, never order.
+function serverTone(assets,child,now=new Date()){
+ const servers=serverChain(assets,child).servers.filter(server=>!server.hiddenAt);
+ if(!servers.length)return '';
+ const primary=servers.filter(server=>!linkMetaOf(child,server.id).standby),pool=primary.length?primary:servers;
+ const levels=pool.map(server=>assetDateStatus(server,now).level);
+ return levels.includes('overdue')?'red':levels.includes('soon')?'amber':'';
+}
+// Cards that stay at full strength while one card is hovered or focused: its chain, one step further for a child (its servers' accounts) and an account (its servers' mounts).
+function peekSet(assets,asset){
+ const ids=new Set(),chain=serverChain(assets,asset);
+ if(!(chain.servers.length+chain.mounts.length+chain.accounts.length+chain.owned.length))return ids;
+ for(const item of [...chain.servers,...chain.mounts,...chain.accounts,...chain.owned])ids.add(item.id);
+ for(const server of [...chain.servers,...chain.owned]){const inner=serverChain(assets,server);for(const item of asset.type==='subscription'?inner.mounts:inner.accounts)ids.add(item.id);}
+ ids.delete(asset.id);return ids;
+}
 
 // Icon sources (DESIGN-PRINCIPLES §9 rule 16). Every host here is a vendor's public homepage, checked by hand on 2026-10-09;
 // `tried` notes hosts that did not give a usable icon. A person's own names (domains, repositories, servers) never become a host.
@@ -1187,4 +1257,4 @@ function demoImportSampleCsv(){
  return ['名称,类别,平台,到期日,费用,备注','sample-studio.com,域名,Namecheap,2026-10-21,$10.98 / 年,演示用域名','demo-box-tokyo,服务器,Example VPS,2026-11-04,$6.00 / 月,演示用服务器','Example Notes Pro,订阅与工具,Example Notes,2026-11-06,$8.00 / 月,演示用订阅'].join('\n');
 }
 
-if(typeof module!=='undefined')module.exports={IP_LIMIT,normalizeIp,parseIps,assetIps,primaryIp,maskIp,validIpList,ACTION_FIELDS,QUICK_LIMIT,validActionField,sshCommand,cloneUrl,quickActions,recencyTime,recentFirst,arrangeAssets,touchedPrefix,swapInOrder,bringToFront,DISPLAY_LIMITS,formatCount,rowLimit,wholeRows,strongDateIds,blockDensity,setBlockDensity,ensureBlock,iconHost,iconVendor,iconVendors,vendorForHost,iconPlan,guessAssetType,regionList,regionName,regionFlag,phoneParts,regionFromPhone,maskPhone,maskEmail,cardExpiry,expiryText,looksLikeCardNumber,linkAssets,unlinkAssets,linkedAssets,removeLinksTo,assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset,dateKinds,billingCycles,dayNumber,localDay,isoDay,addMonths,nextOccurrence,assetDateStatus,upcomingEvents,syncKey,assetSyncKey,isBlacklisted,findByExternal,findNameCollision,mergeCloudflare,mergeGitHub,applyCollision,parseSender,registrableDomain,cleanMerchant,findAmounts,findDates,findDomains,evidenceFacts,inferCycle,formatCost,matchAsset,buildCandidates,evidencePayload,parseAiItems,applyAiItem,IMPORT_ROW_LIMIT,parseDelimitedText,importHeaderField,rowsToImportItems,classifyImportPayload,planImport,applyImport,parseBoardBackup,planBoardBackup,applyBoardBackup,demoImportSampleCsv,csvSyncKey,VENDOR_CSV_PRESETS,cloudflareTokenTemplateUrl,githubTokenTemplateUrl,CLOUDFLARE_TOKEN_PERMISSIONS,parseSshConfig,mergeSshConfig,parseEml};
+if(typeof module!=='undefined')module.exports={MOUNT_TYPES,relationKind,linkAllowed,serverChain,serverChainCount,linkRelation,linkMetaOf,setLinkMeta,serverTone,peekSet,dropLinkMeta,IP_LIMIT,normalizeIp,parseIps,assetIps,primaryIp,maskIp,validIpList,ACTION_FIELDS,QUICK_LIMIT,validActionField,sshCommand,cloneUrl,quickActions,recencyTime,recentFirst,arrangeAssets,touchedPrefix,swapInOrder,bringToFront,DISPLAY_LIMITS,formatCount,rowLimit,wholeRows,strongDateIds,blockDensity,setBlockDensity,ensureBlock,iconHost,iconVendor,iconVendors,vendorForHost,iconPlan,guessAssetType,regionList,regionName,regionFlag,phoneParts,regionFromPhone,maskPhone,maskEmail,cardExpiry,expiryText,looksLikeCardNumber,linkAssets,unlinkAssets,linkedAssets,removeLinksTo,assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset,dateKinds,billingCycles,dayNumber,localDay,isoDay,addMonths,nextOccurrence,assetDateStatus,upcomingEvents,syncKey,assetSyncKey,isBlacklisted,findByExternal,findNameCollision,mergeCloudflare,mergeGitHub,applyCollision,parseSender,registrableDomain,cleanMerchant,findAmounts,findDates,findDomains,evidenceFacts,inferCycle,formatCost,matchAsset,buildCandidates,evidencePayload,parseAiItems,applyAiItem,IMPORT_ROW_LIMIT,parseDelimitedText,importHeaderField,rowsToImportItems,classifyImportPayload,planImport,applyImport,parseBoardBackup,planBoardBackup,applyBoardBackup,demoImportSampleCsv,csvSyncKey,VENDOR_CSV_PRESETS,cloudflareTokenTemplateUrl,githubTokenTemplateUrl,CLOUDFLARE_TOKEN_PERMISSIONS,parseSshConfig,mergeSshConfig,parseEml};

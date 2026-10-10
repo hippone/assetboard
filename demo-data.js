@@ -14,10 +14,16 @@ window.assetboardDemoBoard=function(){
   {...base,id:'demo-s3',updatedAt:ago(30),type:'server',name:'home-nas',provider:'自建',purpose:'照片备份',ips:['192.168.1.20']},
   {...base,id:'demo-u1',updatedAt:ago(6),type:'subscription',name:'Notes Pro',provider:'Acme',purpose:'写作',date:day(5),dateKind:'renew',cycle:'monthly',cost:'$8/月'},
   {...base,id:'demo-u2',updatedAt:ago(15),type:'subscription',name:'Design Studio',provider:'Acme',purpose:'界面设计',date:day(48),dateKind:'renew',cycle:'yearly'},
+  {...base,id:'demo-u3',updatedAt:ago(7),type:'subscription',name:'Acme Cloud',provider:'Acme',purpose:'云账号',date:day(70),dateKind:'renew',cycle:'monthly',cost:'$12/月'},
   {...base,id:'demo-a1',updatedAt:ago(4),type:'ai',name:'AI Pro',provider:'Acme AI',account:'someone@example.net',date:day(9),dateKind:'renew',cycle:'monthly',cost:'$20/月'},
   {...base,id:'demo-db1',updatedAt:ago(12),type:'database',name:'postgres-main',provider:'ManagedDB',purpose:'主库',date:day(70),dateKind:'renew',cycle:'yearly'},
   ...repos.map((name,i)=>({...base,id:'demo-r'+i,type:'repository',name:'acme-labs/'+name,provider:'GitHub',account:'acme-labs',purpose:'代码仓库',source:'github',externalId:'demo-'+i,syncStatus:i%3?'私有仓库':'公开仓库',event:i%3?'私有仓库':'公开仓库',updatedAt:new Date(Date.now()-i*86400000*3).toISOString()}))
  ];
+ // Server relations: two VPS, one account, domains and repositories mounted on them, two orphans (v13).
+ const wire=(child,server,meta)=>{const c=assets.find(a=>a.id===child),s=assets.find(a=>a.id===server);c.links=[...(c.links||[]),server];s.links=[...(s.links||[]),child];if(meta)c.linkMeta={...(c.linkMeta||{}),[server]:meta};};
+ wire('demo-d1','demo-s1');wire('demo-d1','demo-s2',{role:'b'});wire('demo-d2','demo-s1',{proxied:true});wire('demo-d3','demo-s2');wire('demo-d4','demo-s1');
+ wire('demo-r0','demo-s1');wire('demo-r1','demo-s1');wire('demo-r1','demo-s2');wire('demo-db1','demo-s1');
+ wire('demo-u3','demo-s1');wire('demo-u3','demo-s2');
  const block=(id,width,extra={})=>({id,width,height:null,density:'full',folded:false,...extra});
  return {blocks:[block('domain',50),block('server',50),block('repository',70),block('subscription',30),block('ai',30,{density:'compact'}),block('database',35),block('license',35)],assets,deletedExternalIds:[],cardOrder:{domain:['demo-d1']},featuredRepositoryIds:[],evidenceDecisions:{}};
 };

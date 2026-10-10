@@ -557,3 +557,58 @@ test('SSH config import keeps an address literal in ips and does not overwrite s
  const again=mergeSshConfig(first,hosts).board;
  assert.deepEqual(again.assets.find(a=>a.name==='tokyo').ips,['198.51.100.24'],'a later import keeps the stored address');
 });
+
+test('server relations: legal pairs, one account per server, per-link marks, tone and peek sets',()=>{
+ const D=require('../asset-data.js');
+ const day=n=>{const d=new Date();d.setDate(d.getDate()+n);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+ const mk=()=>[
+  {id:'s1',type:'server',name:'s1',date:day(-3),dateKind:'renew'},{id:'s2',type:'server',name:'s2',date:day(5),dateKind:'renew'},{id:'s3',type:'server',name:'s3',date:day(200),dateKind:'renew'},
+  {id:'d1',type:'domain',name:'d1'},{id:'d2',type:'domain',name:'d2'},{id:'r1',type:'repository',name:'r1'},{id:'db',type:'database',name:'db'},{id:'li',type:'license',name:'li'},
+  {id:'u1',type:'subscription',name:'u1'},{id:'u2',type:'subscription',name:'u2'},{id:'b1',type:'bankcard',name:'card'},{id:'ai',type:'ai',name:'ai'}
+ ];
+ const by=(list,id)=>list.find(a=>a.id===id);
+ let a=mk();
+ // Legal and illegal pairs.
+ for(const [x,y,kind] of [['s1','d1','mount'],['s1','r1','mount'],['s1','db','mount'],['s1','li','mount'],['s1','u1','own'],['d1','s1','mount']])assert.equal(D.relationKind(by(a,x),by(a,y)),kind,x+y);
+ assert.equal(D.relationKind(by(a,'d1'),by(a,'u1')),null);assert.equal(D.relationKind(by(a,'s1'),by(a,'ai')),null);
+ assert.equal(D.linkAllowed(by(a,'s1'),by(a,'s2')),false);assert.equal(D.linkAllowed(by(a,'d1'),by(a,'d2')),false);assert.equal(D.linkAllowed(by(a,'r1'),by(a,'r1')),false);
+ assert.equal(D.linkAllowed(by(a,'s1'),by(a,'b1')),false,'a server never links to a bank card');
+ assert.equal(D.linkAllowed(by(a,'d1'),by(a,'r1')),true,'domain and repository without a server stay linkable');
+ assert.equal(D.linkAllowed(by(a,'b1'),by(a,'ai')),true,'priority types keep their symmetric links');
+ // Linking: refused pairs change nothing; a second account replaces the first.
+ assert.deepEqual(D.linkRelation(a,'s1','s2'),{ok:false,replaced:[]});assert.ok(!by(a,'s1').links);
+ assert.equal(D.linkRelation(a,'d1','s1').ok,true);assert.equal(D.linkRelation(a,'d1','s2').ok,true);assert.equal(D.linkRelation(a,'r1','s1').ok,true);assert.equal(D.linkRelation(a,'d2','s2').ok,true);
+ assert.equal(D.linkRelation(a,'u1','s1').ok,true);
+ assert.deepEqual(D.linkRelation(a,'s1','u2'),{ok:true,replaced:['u1']});
+ assert.deepEqual(D.serverChain(a,by(a,'s1')).accounts.map(x=>x.id),['u2'],'one account per server');
+ assert.ok(!(by(a,'u1').links||[]).includes('s1'),'the old account lost the link');
+ assert.equal(D.linkRelation(a,'s2','u2').ok,true,'one account may own several servers');
+ assert.deepEqual(D.serverChain(a,by(a,'u2')).owned.map(x=>x.id).sort(),['s1','s2']);
+ // Chain shape per type.
+ const c=D.serverChain(a,by(a,'s1'));assert.deepEqual([c.mounts.map(x=>x.id).sort(),c.servers.length],[['d1','r1'],0]);
+ assert.deepEqual(D.serverChain(a,by(a,'d1')).servers.map(x=>x.id).sort(),['s1','s2']);
+ assert.equal(D.serverChainCount(a,by(a,'d1')),2);assert.equal(D.serverChainCount(a,by(a,'db')),0);
+ // Marks: standby and proxied live on the child, keyed by server; only domains take proxied; cleaned up with the link.
+ assert.equal(D.setLinkMeta(a,'d1','s2',{standby:true}),true);assert.deepEqual(by(a,'d1').linkMeta,{s2:{role:'b'}});
+ assert.deepEqual(D.linkMetaOf(by(a,'d1'),'s2'),{standby:true,proxied:false});assert.deepEqual(D.linkMetaOf(by(a,'d1'),'s1'),{standby:false,proxied:false});
+ D.setLinkMeta(a,'d1','s1',{proxied:true});assert.deepEqual(by(a,'d1').linkMeta.s1,{proxied:true});
+ D.setLinkMeta(a,'r1','s1',{proxied:true});assert.ok(!by(a,'r1').linkMeta,'repositories are never proxied');
+ assert.equal(D.setLinkMeta(a,'d1','s3',{standby:true}),false,'no mark without a link');assert.equal(D.setLinkMeta(a,'s1','d1',{standby:true}),false,'marks sit on the child only');
+ D.setLinkMeta(a,'d1','s2',{standby:false});assert.ok(!by(a,'d1').linkMeta.s2,'a cleared mark leaves nothing behind');
+ D.setLinkMeta(a,'d1','s2',{standby:true});D.unlinkAssets(a,'d1','s2');assert.ok(!by(a,'d1').linkMeta?.s2,'unlinking drops the mark');
+ D.linkRelation(a,'d1','s2');D.setLinkMeta(a,'d1','s2',{standby:true});D.removeLinksTo(a,'s2');assert.ok(!by(a,'d1').linkMeta?.s2&&!by(a,'d1').links.includes('s2'),'deleting the server drops links and marks');
+ // Tone: worst primary server; standby ignored while a primary remains; hidden servers ignored.
+ a=mk();D.linkRelation(a,'d1','s1');D.linkRelation(a,'d1','s2');D.linkRelation(a,'d2','s3');D.linkRelation(a,'r1','s2');
+ assert.equal(D.serverTone(a,by(a,'d1')),'red','expired primary colours the marker red');
+ D.setLinkMeta(a,'d1','s1',{standby:true});assert.equal(D.serverTone(a,by(a,'d1')),'amber','an expired standby does not colour it');
+ D.setLinkMeta(a,'d1','s2',{standby:true});assert.equal(D.serverTone(a,by(a,'d1')),'red','all standby: the standbys decide');
+ assert.equal(D.serverTone(a,by(a,'d2')),'','a healthy server leaves it neutral');assert.equal(D.serverTone(a,by(a,'r1')),'amber');
+ by(a,'s2').hiddenAt='2026-01-01';assert.equal(D.serverTone(a,by(a,'r1')),'','hidden servers do not colour');
+ assert.equal(D.serverTone(a,by(a,'db')),'','no server, no tone');
+ // Peek: chain plus one step through the server.
+ a=mk();D.linkRelation(a,'d1','s1');D.linkRelation(a,'r1','s1');D.linkRelation(a,'s1','u1');D.linkRelation(a,'d2','s2');D.linkRelation(a,'s2','u1');
+ assert.deepEqual([...D.peekSet(a,by(a,'s1'))].sort(),['d1','r1','u1']);
+ assert.deepEqual([...D.peekSet(a,by(a,'d1'))].sort(),['s1','u1'],'a child reaches its servers and their account');
+ assert.deepEqual([...D.peekSet(a,by(a,'u1'))].sort(),['d1','d2','r1','s1','s2'],'an account reaches its servers and what is on them');
+ assert.equal(D.peekSet(a,by(a,'db')).size,0);assert.equal(D.peekSet(a,by(a,'b1')).size,0);
+});

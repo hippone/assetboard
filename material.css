@@ -836,3 +836,23 @@ dialog[open]::backdrop{animation:v12-fade .15s var(--ease) both}
 .ip-pill{display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:12px;font-variant-numeric:tabular-nums;color:var(--ink);padding:2px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface-card);cursor:pointer}
 .ip-pill:hover{background:var(--hover);border-color:var(--border-strong)}
 .field-row.action-fields{flex-wrap:wrap}
+
+/* v13 B · server relations: marker instead of name capsules, Peek (related cards keep their strength), grouped detail */
+.asset-card.has-rel .card-name{padding-right:34px}
+.rel-mark{position:absolute;top:11px;right:12px;z-index:2;display:inline-flex;align-items:center;gap:4px;height:16px;font-size:11px;line-height:16px;font-variant-numeric:tabular-nums;color:var(--muted);pointer-events:auto}
+.rel-mark svg{width:13px;height:13px;stroke-width:1.6}
+.rel-mark b{font-weight:600;color:var(--muted)}
+.rel-dot{width:6px;height:6px;border-radius:50%;background:var(--muted)}
+.rel-mark.red .rel-dot{background:var(--dot-red)}.rel-mark.amber .rel-dot{background:var(--dot-amber)}
+:root .asset-card{transition:background .2s ease,opacity .15s ease}
+#board.peeking .asset-card:not(.link-source):not(.link-peer){opacity:.38}
+@media(prefers-reduced-motion:reduce){:root .asset-card{transition:none}}
+.link-group+.link-group{margin-top:8px}
+.link-group-title{display:flex;align-items:baseline;gap:6px;padding:2px 8px;font-size:11px;color:var(--faint)}
+.link-group-title i{font-style:normal;font-variant-numeric:tabular-nums}
+.link-row.is-hidden .link-open{opacity:.6}
+.link-tag{flex:none;font:inherit;font-size:11px;line-height:16px;padding:0 6px;border-radius:5px;border:1px solid var(--border);background:none;color:var(--muted);cursor:pointer}
+.link-tag[aria-pressed="true"],.link-tag.on{border-color:rgb(var(--tone-primary));color:rgb(var(--tone-primary))}
+span.link-tag{cursor:default}
+.link-rest summary{list-style:none;cursor:pointer;display:inline-block;margin:2px 8px;font-size:11px;color:var(--muted)}
+.link-rest summary::-webkit-details-marker{display:none}
