@@ -357,7 +357,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         let image = NSImage(systemSymbolName: symbol, accessibilityDescription: label) ?? NSImage()
         let button = NSButton(image: image, target: self, action: action)
         button.bezelStyle = .rounded
-        button.imagePosition = .imageLeading
+        button.title = ""
+        button.imagePosition = .imageOnly
         button.toolTip = label
         button.setAccessibilityLabel(label)
         return button
@@ -734,6 +735,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             // The count sits beside the tray icon; the full name stays in the tooltip and accessibility label.
             let label = pending > 0 ? "待确认 \(pending)" : "待确认"
             inboxButton?.title = pending > 0 ? "\(pending)" : ""
+            inboxButton?.imagePosition = pending > 0 ? .imageLeading : .imageOnly
             inboxButton?.toolTip = label
             inboxButton?.setAccessibilityLabel(label)
             searchField.stringValue = body["query"] as? String ?? ""
