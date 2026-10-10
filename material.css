@@ -824,3 +824,15 @@ dialog[open]::backdrop{animation:v12-fade .15s var(--ease) both}
 /* v12 · native: the strip under the system toolbar shows the window glass like the toolbar does (no canvas layer behind it), so the two read as one bar */
 .native-app .appbar{background:transparent}
 .native-app body::before{top:44px}
+
+/* v13 A · a server's address: second card line, copy pills in the detail */
+.ip-sub{display:flex;align-items:baseline;gap:5px;min-width:0;overflow:hidden;white-space:nowrap;font-variant-numeric:tabular-nums}
+.ip-sub .ip-text{flex:none;color:var(--muted)}
+.ip-sub em{font-style:normal;flex:none}
+.ip-sub .ip-more{color:var(--faint);font-size:11px}
+.ip-sub .ip-inner,.ip-pill em{font-style:normal;font-size:11px;line-height:14px;padding:0 3px;border:1px solid var(--border-strong);border-radius:4px;color:var(--muted)}
+.ip-sub .ip-prov{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--faint)}
+.ip-pills{display:flex;flex-wrap:wrap;gap:6px}
+.ip-pill{display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:12px;font-variant-numeric:tabular-nums;color:var(--ink);padding:2px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface-card);cursor:pointer}
+.ip-pill:hover{background:var(--hover);border-color:var(--border-strong)}
+.field-row.action-fields{flex-wrap:wrap}

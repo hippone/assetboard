@@ -36,11 +36,89 @@ function swapInOrder(ids,first,second){const next=[...ids],a=next.indexOf(first)
 function bringToFront(ids,id){return [id,...(Array.isArray(ids)?ids:[]).filter(other=>other!==id)];}
 
 // Category quick actions (DESIGN-PRINCIPLES §5): read-only, local actions only — open a link, copy a value, open an existing local folder.
-const ACTION_FIELDS={server:[['host','主机或 IP','例如 203.0.113.10'],['sshUser','SSH 用户','例如 deploy'],['sshPort','SSH 端口','22']],repository:[['localPath','本机目录','例如 ~/code/my-project']]};
+const ACTION_FIELDS={server:[['host','SSH 主机','例如 203.0.113.10'],['ips','IP','203.0.113.10, 2001:db8::10'],['sshUser','SSH 用户','例如 deploy'],['sshPort','SSH 端口','22']],repository:[['localPath','本机目录','例如 ~/code/my-project']]};
 const QUICK_LIMIT=2;
+// IP addresses of a server (v13 A). `ips` holds up to IP_LIMIT literals (public v4/v6, or inner addresses); `host` stays the SSH target.
+// Parsing is literal only: nothing here resolves a name or touches the network.
+const IP_LIMIT=4;
+function parseIPv4(text){
+ const m=/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(text);if(!m)return null;
+ const parts=m.slice(1);if(parts.some(part=>part.length>1&&part[0]==='0'))return null;
+ const octets=parts.map(Number);return octets.every(n=>n<=255)?octets:null;
+}
+function parseIPv6(text){
+ if(!/^[0-9a-fA-F:]+$/.test(text)||text.length<2||text.length>39)return null;
+ const halves=text.split('::');if(halves.length>2)return null;
+ const side=part=>part===''?[]:part.split(':');
+ const head=side(halves[0]),tail=halves.length===2?side(halves[1]):[];
+ if([...head,...tail].some(group=>!/^[0-9a-fA-F]{1,4}$/.test(group)))return null;
+ const missing=8-head.length-tail.length;
+ if(halves.length===1?missing!==0:missing<1)return null;
+ return [...head,...Array(halves.length===2?missing:0).fill('0'),...tail].map(group=>parseInt(group,16));
+}
+function compressIPv6(groups){
+ let best=-1,bestLength=0;
+ for(let i=0;i<8;){if(groups[i]!==0){i++;continue;}let j=i;while(j<8&&groups[j]===0)j++;if(j-i>bestLength){best=i;bestLength=j-i;}i=j;}
+ const hex=groups.map(group=>group.toString(16));
+ if(bestLength<2)return hex.join(':');
+ return `${hex.slice(0,best).join(':')}::${hex.slice(best+bestLength).join(':')}`;
+}
+// → {ip, version, inner} for a usable address, or null. Loopback, unspecified, link-local, multicast and reserved ranges are refused.
+function normalizeIp(text){
+ const raw=String(text??'').trim().replace(/^\[|\]$/g,'');if(!raw)return null;
+ const v4=parseIPv4(raw);
+ if(v4){
+  const [a,b]=v4;
+  if(a===0||a===127||a>=224||(a===169&&b===254))return null;
+  const inner=a===10||(a===172&&b>=16&&b<=31)||(a===192&&b===168)||(a===100&&b>=64&&b<=127);
+  return {ip:v4.join('.'),version:4,inner};
+ }
+ const v6=parseIPv6(raw);
+ if(v6){
+  if(v6.every((group,i)=>group===0||(i===7&&group===1)))return null;
+  if((v6[0]&0xffc0)===0xfe80||(v6[0]&0xff00)===0xff00)return null;
+  return {ip:compressIPv6(v6),version:6,inner:(v6[0]&0xfe00)===0xfc00};
+ }
+ return null;
+}
+// Free text → {ips, invalid, tooMany}; commas, semicolons and whitespace separate; duplicates collapse.
+function parseIps(text){
+ const ips=[],invalid=[];let tooMany=false;
+ for(const part of String(text??'').split(/[\s,;]+/).filter(Boolean)){
+  const found=normalizeIp(part);
+  if(!found){invalid.push(part);continue;}
+  if(ips.some(item=>item.ip===found.ip))continue;
+  if(ips.length>=IP_LIMIT){tooMany=true;continue;}
+  ips.push(found);
+ }
+ return {ips,invalid,tooMany};
+}
+// Stored addresses, or the host when it is an address literal and none are stored (no migration needed).
+function assetIps(asset){
+ const stored=Array.isArray(asset?.ips)?asset.ips:[],list=[];
+ for(const item of stored){const found=normalizeIp(item);if(found&&!list.some(x=>x.ip===found.ip)&&list.length<IP_LIMIT)list.push(found);}
+ if(!list.length&&asset?.host){const found=normalizeIp(asset.host);if(found)list.push(found);}
+ return list;
+}
+// What a card shows: first public v4, else first public v6, else the first inner address; `more` marks a second public family.
+function primaryIp(asset){
+ const list=assetIps(asset);if(!list.length)return null;
+ const publicV4=list.find(x=>x.version===4&&!x.inner),publicV6=list.find(x=>x.version===6&&!x.inner);
+ const main=publicV4||publicV6||list[0];
+ return {ip:main.ip,inner:main.inner,version:main.version,more:publicV4&&publicV6?'v6':'',count:list.length};
+}
+// Presentation mode hides the middle of an address (203.0.•••.•••, 2001:db8:••••).
+function maskIp(ip){
+ const found=normalizeIp(ip);if(!found)return '';
+ if(found.version===4){const [a,b]=found.ip.split('.');return `${a}.${b}.•••.•••`;}
+ const groups=parseIPv6(found.ip);return `${groups.slice(0,2).map(group=>group.toString(16)).join(':')}:••••`;
+}
+function validIpList(text){const parsed=parseIps(text);return !parsed.invalid.length&&!parsed.tooMany;}
+
 function validActionField(key,value){
  const v=String(value??'').trim();if(!v)return true;
  if(key==='host')return /^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$|^\[?[0-9A-Fa-f:]{2,39}\]?$/.test(v);
+ if(key==='ips')return validIpList(v);
  if(key==='sshUser')return /^[A-Za-z_][A-Za-z0-9_.-]{0,31}$/.test(v);
  if(key==='sshPort')return /^\d{1,5}$/.test(v)&&+v>=1&&+v<=65535;
  if(key==='localPath')return v.length<=1000&&/^(\/|~\/)/.test(v)&&!v.includes('\0')&&!v.split('/').includes('..');
@@ -54,7 +132,7 @@ function quickActions(asset,{link='',native=false}={}){
  const open=label=>link?{id:'open',kind:'open',label,value:link}:null,copy=(id,label,value,done)=>value?{id,kind:'copy',label,value,done}:null;
  const local=native&&asset.localPath&&validActionField('localPath',asset.localPath)?{id:'editor',kind:'local',label:'用本机编辑器打开',value:String(asset.localPath).trim()}:null;
  const list=asset.type==='domain'?[open('打开管理页'),copy('copy-name','复制域名',String(asset.name||'').trim(),'域名')]
-  :asset.type==='server'?[copy('copy-ssh','复制 SSH 命令',sshCommand(asset),'SSH 命令'),open('打开控制台'),copy('copy-host','复制主机',validActionField('host',asset.host)?String(asset.host||'').trim():'','主机地址')]
+  :asset.type==='server'?[copy('copy-ssh','复制 SSH 命令',sshCommand(asset),'SSH 命令'),open('打开控制台'),(()=>{const ip=primaryIp(asset);return ip?copy('copy-ip','复制 IP',ip.ip,' IP'):copy('copy-host','复制主机',validActionField('host',asset.host)?String(asset.host||'').trim():'','主机地址');})()]
   :asset.type==='repository'?[open('在浏览器打开'),copy('copy-clone','复制克隆地址',cloneUrl(link),'克隆地址'),local]
   :[open('打开管理页')];
  return list.filter(Boolean);
@@ -882,7 +960,7 @@ function parseSshConfig(text){
  flush();
  return hosts.filter(h=>h.host||h.name).map(h=>{
   const host=h.host||h.name,externalId=h.name.toLowerCase();
-  return {name:h.name,type:'server',provider:'SSH',account:h.sshUser||'',host,sshUser:h.sshUser||'',sshPort:h.sshPort||'22',purpose:'本机 SSH 配置',event:'来自 ~/.ssh/config',date:'',cost:'未知',notes:`从 ~/.ssh/config 的 Host「${h.name}」读取；不读取私钥。`,url:'',source:'ssh',externalId,art:'generic'};
+  return {name:h.name,type:'server',provider:'SSH',account:h.sshUser||'',host,...(normalizeIp(host)?{ips:[normalizeIp(host).ip]}:{}),sshUser:h.sshUser||'',sshPort:h.sshPort||'22',purpose:'本机 SSH 配置',event:'来自 ~/.ssh/config',date:'',cost:'未知',notes:`从 ~/.ssh/config 的 Host「${h.name}」读取；不读取私钥。`,url:'',source:'ssh',externalId,art:'generic'};
  });
 }
 function mergeSshConfig(board,hosts,syncedAt=new Date().toISOString()){
@@ -891,7 +969,7 @@ function mergeSshConfig(board,hosts,syncedAt=new Date().toISOString()){
  for(const item of hosts||[]){
   const id='ssh-host-'+item.externalId;seen.add(id);
   if(isBlacklisted(next,syncKey('ssh',item.externalId))||isBlacklisted(next,id))continue;
-  const fields={name:item.name,account:item.account,host:item.host,sshUser:item.sshUser,sshPort:item.sshPort,syncedAt,externalId:item.externalId,source:'ssh',provider:'SSH',event:item.event||'来自 ~/.ssh/config'};
+  const fields={name:item.name,account:item.account,host:item.host,...(item.ips&&!(next.assets.find(a=>a.id===id)?.ips?.length)?{ips:item.ips}:{}),sshUser:item.sshUser,sshPort:item.sshPort,syncedAt,externalId:item.externalId,source:'ssh',provider:'SSH',event:item.event||'来自 ~/.ssh/config'};
   const existing=next.assets.find(a=>a.id===id)||findByExternal(next,'ssh',item.externalId);
   if(existing){applySyncedFields(existing,fields);seen.add(existing.id);}
   else{
@@ -1109,4 +1187,4 @@ function demoImportSampleCsv(){
  return ['名称,类别,平台,到期日,费用,备注','sample-studio.com,域名,Namecheap,2026-10-21,$10.98 / 年,演示用域名','demo-box-tokyo,服务器,Example VPS,2026-11-04,$6.00 / 月,演示用服务器','Example Notes Pro,订阅与工具,Example Notes,2026-11-06,$8.00 / 月,演示用订阅'].join('\n');
 }
 
-if(typeof module!=='undefined')module.exports={ACTION_FIELDS,QUICK_LIMIT,validActionField,sshCommand,cloneUrl,quickActions,recencyTime,recentFirst,arrangeAssets,touchedPrefix,swapInOrder,bringToFront,DISPLAY_LIMITS,formatCount,rowLimit,wholeRows,strongDateIds,blockDensity,setBlockDensity,ensureBlock,iconHost,iconVendor,iconVendors,vendorForHost,iconPlan,guessAssetType,regionList,regionName,regionFlag,phoneParts,regionFromPhone,maskPhone,maskEmail,cardExpiry,expiryText,looksLikeCardNumber,linkAssets,unlinkAssets,linkedAssets,removeLinksTo,assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset,dateKinds,billingCycles,dayNumber,localDay,isoDay,addMonths,nextOccurrence,assetDateStatus,upcomingEvents,syncKey,assetSyncKey,isBlacklisted,findByExternal,findNameCollision,mergeCloudflare,mergeGitHub,applyCollision,parseSender,registrableDomain,cleanMerchant,findAmounts,findDates,findDomains,evidenceFacts,inferCycle,formatCost,matchAsset,buildCandidates,evidencePayload,parseAiItems,applyAiItem,IMPORT_ROW_LIMIT,parseDelimitedText,importHeaderField,rowsToImportItems,classifyImportPayload,planImport,applyImport,parseBoardBackup,planBoardBackup,applyBoardBackup,demoImportSampleCsv,csvSyncKey,VENDOR_CSV_PRESETS,cloudflareTokenTemplateUrl,githubTokenTemplateUrl,CLOUDFLARE_TOKEN_PERMISSIONS,parseSshConfig,mergeSshConfig,parseEml};
+if(typeof module!=='undefined')module.exports={IP_LIMIT,normalizeIp,parseIps,assetIps,primaryIp,maskIp,validIpList,ACTION_FIELDS,QUICK_LIMIT,validActionField,sshCommand,cloneUrl,quickActions,recencyTime,recentFirst,arrangeAssets,touchedPrefix,swapInOrder,bringToFront,DISPLAY_LIMITS,formatCount,rowLimit,wholeRows,strongDateIds,blockDensity,setBlockDensity,ensureBlock,iconHost,iconVendor,iconVendors,vendorForHost,iconPlan,guessAssetType,regionList,regionName,regionFlag,phoneParts,regionFromPhone,maskPhone,maskEmail,cardExpiry,expiryText,looksLikeCardNumber,linkAssets,unlinkAssets,linkedAssets,removeLinksTo,assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset,dateKinds,billingCycles,dayNumber,localDay,isoDay,addMonths,nextOccurrence,assetDateStatus,upcomingEvents,syncKey,assetSyncKey,isBlacklisted,findByExternal,findNameCollision,mergeCloudflare,mergeGitHub,applyCollision,parseSender,registrableDomain,cleanMerchant,findAmounts,findDates,findDomains,evidenceFacts,inferCycle,formatCost,matchAsset,buildCandidates,evidencePayload,parseAiItems,applyAiItem,IMPORT_ROW_LIMIT,parseDelimitedText,importHeaderField,rowsToImportItems,classifyImportPayload,planImport,applyImport,parseBoardBackup,planBoardBackup,applyBoardBackup,demoImportSampleCsv,csvSyncKey,VENDOR_CSV_PRESETS,cloudflareTokenTemplateUrl,githubTokenTemplateUrl,CLOUDFLARE_TOKEN_PERMISSIONS,parseSshConfig,mergeSshConfig,parseEml};

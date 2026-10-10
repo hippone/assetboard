@@ -51,7 +51,7 @@ async (page) => {
   // Enter opens the detail, Esc closes it and returns focus.
   await p.focus('.block.server [data-asset="s0"] .card-open');
   await key('Enter');check(await p.locator('#detail').isVisible(),'Enter opens the detail');
-  check(await p.locator('#detail .quick-row [data-quick="copy-host"]').count()===1,'Detail lists the quick actions beyond the card');
+  check(await p.locator('#detail .quick-row [data-quick="copy-ip"]').count()===1,'Detail lists the quick actions beyond the card');
   await key('Escape');check(await p.locator('#detail').isHidden(),'Esc closes the detail');
   f=await focused();check(f.id==='s0','Focus returns to the card');
 

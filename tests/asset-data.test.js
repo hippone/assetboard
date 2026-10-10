@@ -389,7 +389,7 @@ test('repositories feature the most recently updated, falling back to import tim
 test('category quick actions are open/copy only, local folders only in the app',()=>{
  const {quickActions,validActionField,sshCommand,cloneUrl,QUICK_LIMIT}=require('../asset-data.js');
  assert.equal(QUICK_LIMIT,2);
- assert.deepEqual(quickActions({type:'server',host:'203.0.113.10',sshUser:'deploy',sshPort:'2222'},{link:'https://console.example.org'}).map(q=>q.id),['copy-ssh','open','copy-host']);
+ assert.deepEqual(quickActions({type:'server',host:'203.0.113.10',sshUser:'deploy',sshPort:'2222'},{link:'https://console.example.org'}).map(q=>q.id),['copy-ssh','open','copy-ip']);
  assert.equal(sshCommand({host:'203.0.113.10',sshUser:'deploy',sshPort:'22'}),'ssh deploy@203.0.113.10');
  assert.equal(sshCommand({host:'bad host'}),'');
  assert.equal(cloneUrl('https://github.com/demo-org/site'),'https://github.com/demo-org/site.git');
@@ -514,4 +514,46 @@ test('mergeCloudflare applies registrar expiry onto matching domain',()=>{
  assert.equal(asset.date,'2027-05-18');
  assert.equal(asset.cycle,'yearly');
  assert.equal(asset.account,'Personal');
+});
+
+test('server addresses: literals only, normalised, capped, masked',()=>{
+ const {normalizeIp,parseIps,assetIps,primaryIp,maskIp,validIpList,validActionField,quickActions,IP_LIMIT}=require('../asset-data.js');
+ assert.equal(IP_LIMIT,4);
+ assert.deepEqual(normalizeIp('203.0.113.10'),{ip:'203.0.113.10',version:4,inner:false});
+ assert.equal(normalizeIp('2001:DB8:0:0:0:0:0:10').ip,'2001:db8::10');
+ assert.equal(normalizeIp('[2001:db8::1]').ip,'2001:db8::1');
+ assert.equal(normalizeIp('2001:db8:0:0:1:0:0:1').ip,'2001:db8::1:0:0:1','the longest zero run is the one compressed');
+ for(const text of ['10.0.0.5','172.16.0.1','192.168.1.20','100.64.0.9','fd00::1'])assert.equal(normalizeIp(text).inner,true,text);
+ for(const text of ['8.8.8.8','203.0.113.10','2001:db8::1'])assert.equal(normalizeIp(text).inner,false,text);
+ for(const text of ['','127.0.0.1','0.0.0.0','::1','::','fe80::1','224.0.0.1','169.254.1.1','256.1.1.1','01.2.3.4','1.2.3','example.org','2001:db8::1::2','::ffff:1.2.3.4','1.2.3.4/24'])assert.equal(normalizeIp(text),null,'refused: '+text);
+ const parsed=parseIps('203.0.113.10, 2001:db8::10;203.0.113.10 10.0.0.1 192.168.1.2 8.8.8.8 bad');
+ assert.deepEqual(parsed.ips.map(x=>x.ip),['203.0.113.10','2001:db8::10','10.0.0.1','192.168.1.2'],'duplicates collapse, four at most');
+ assert.deepEqual(parsed.invalid,['bad']);assert.equal(parsed.tooMany,true);
+ assert.equal(validIpList('203.0.113.10 2001:db8::10'),true);assert.equal(validIpList('203.0.113.10 nope'),false);assert.equal(validIpList(''),true);
+ assert.equal(validActionField('ips','1.2.3.4, 5.6.7.8'),true);assert.equal(validActionField('ips','1.2.3.4, x'),false);
+ // host doubles as the address only when it is a literal and nothing is stored; no migration.
+ assert.deepEqual(assetIps({host:'203.0.113.10'}).map(x=>x.ip),['203.0.113.10']);
+ assert.deepEqual(assetIps({host:'example.org'}),[]);
+ assert.deepEqual(assetIps({host:'203.0.113.10',ips:['198.51.100.24']}).map(x=>x.ip),['198.51.100.24'],'stored addresses win');
+ assert.deepEqual(assetIps({ips:['x','198.51.100.24','198.51.100.24']}).map(x=>x.ip),['198.51.100.24']);
+ // Card pick: public v4, else public v6, else inner; both public families mark +v6.
+ assert.deepEqual(primaryIp({ips:['10.0.0.2','2001:db8::10','203.0.113.10']}),{ip:'203.0.113.10',inner:false,version:4,more:'v6',count:3});
+ assert.equal(primaryIp({ips:['2001:db8::10']}).ip,'2001:db8::10');
+ assert.deepEqual([primaryIp({ips:['192.168.1.20']}).inner,primaryIp({ips:['192.168.1.20']}).more],[true,'']);
+ assert.equal(primaryIp({name:'x'}),null);
+ assert.equal(maskIp('203.0.113.10'),'203.0.•••.•••');assert.equal(maskIp('2001:db8::10'),'2001:db8:••••');assert.equal(maskIp('nope'),'');
+ // Quick action copies the address when one is known, the host name otherwise.
+ assert.deepEqual(quickActions({type:'server',ips:['203.0.113.10'],host:'vps.example.org'},{}).map(q=>q.id),['copy-ssh','copy-ip']);
+ assert.equal(quickActions({type:'server',ips:['203.0.113.10']},{})[0].value,'203.0.113.10');
+ assert.deepEqual(quickActions({type:'server',host:'vps.example.org'},{}).map(q=>q.id),['copy-ssh','copy-host']);
+});
+test('SSH config import keeps an address literal in ips and does not overwrite stored ones',()=>{
+ const {parseSshConfig,mergeSshConfig}=require('../asset-data.js');
+ const hosts=parseSshConfig('Host tokyo\n  HostName 203.0.113.10\n  User deploy\nHost named\n  HostName vps.example.org\n');
+ assert.deepEqual(hosts.map(h=>h.ips||null),[['203.0.113.10'],null]);
+ const first=mergeSshConfig({blocks:[],assets:[]},hosts).board;
+ assert.deepEqual(first.assets.find(a=>a.name==='tokyo').ips,['203.0.113.10']);
+ first.assets.find(a=>a.name==='tokyo').ips=['198.51.100.24'];
+ const again=mergeSshConfig(first,hosts).board;
+ assert.deepEqual(again.assets.find(a=>a.name==='tokyo').ips,['198.51.100.24'],'a later import keeps the stored address');
 });
