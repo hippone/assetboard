@@ -79,6 +79,12 @@ SIGNING_IDENTITY='Developer ID Application: Name (TEAMID)' ./desktop/package.sh
 - Demo: `import-demo-sample` loads `demoImportSampleCsv()` into memory; `save()` stays a no-op; CLI/OCR bridges refused.
 - Tests: `tests/asset-data.test.js` (parse/plan/apply + eml/ssh/CF URL/registrar merge) , `tests/import.playwright.js`, `tests/import-phase2.playwright.js`.
 
+### Copy trim (2026-10-10)
+- Rule (DESIGN-PRINCIPLES §四.9, §七乙): one text focus per area; hints go to `title`/`<details>`; icon-only buttons need `title` + `aria-label`; delete/permission/privacy/network warnings keep one clear sentence.
+- `ui(name)` in `app.js` returns small stroke glyphs from `uiGlyphs` (download, file, plus, mail, image, terminal, refresh, cloud, github, back, info, lock, warn, check, gear, spark) for buttons and chips; styles in the "v11" block at the end of `material.css` (`.ui-icon`, `.fmt`, `.chip.warn/.ok/.bad`, `.count`, `.platform-bar/.platform-note`, `.import-group.add|update|hold|quiet|bad`).
+- Hub, preview, inbox/review, detail, form, icon batch, platform dialogs, keys overlay and toasts were shortened. Hidden facts: empty values are not rendered. Review shows 名称/类别/金额/日期 and folds 来源/依据 in `.review-basis` (`.basis-list`, not `.facts`).
+- Tests: `tests/copy-trim.playwright.js` (no prose in welcome/hub/detail, named icon buttons, warnings kept, 390px light/dark). Other Playwright tests assert behaviour via selectors, not copy; where they read text (e.g. `icon-batch` skipped counts, `ai` host, `reminders` amounts) the phrases are unchanged.
+
 ### Platform imports (Mac only, read-only)
 - **Cloudflare / GitHub:** Swift fetches every page of the list endpoints, and JS merges the results into `state`:
   - Identity comes from `syncKey(source, externalId, kind)`, and asset ids look like `cloudflare-<kind>-<id>`, `github-repo-<id>`, and `ssh-host-<host>`.
