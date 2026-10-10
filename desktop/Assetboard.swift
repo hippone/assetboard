@@ -288,6 +288,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
                 webView.bottomAnchor.constraint(equalTo: glass.bottomAnchor)
             ])
             window.delegate = self
+            for (name, flag) in [(NSWindow.didEnterFullScreenNotification, "true"), (NSWindow.didExitFullScreenNotification, "false")] {
+                NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                    self?.webView.evaluateJavaScript("typeof panoramaNative==='function'&&panoramaNative(\(flag))", completionHandler: nil)
+                }
+            }
             window.isReleasedWhenClosed = false
             window.setFrameAutosaveName("AssetboardMainWindow")
             if !window.setFrameUsingName("AssetboardMainWindow") { window.center() }

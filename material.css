@@ -993,3 +993,10 @@ body.pano-open main{visibility:hidden}
 .stop-ring{display:inline-block;flex:none;width:7px;height:7px;margin-left:6px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--muted);vertical-align:middle}
 :root .asset-card.stopped .card-name,:root .compact-repo.stopped .compact-repo-open>span:not(.tile){color:var(--muted)}
 :root .asset-card.stopped .tile,:root .compact-repo.stopped .tile{filter:grayscale(1);opacity:.7}
+
+/* v13b P6 · presentation: bar fades when idle (the registered-status tag stays), addresses masked, body scaled on big screens */
+.pano-show{flex:none}.pano-show[aria-pressed="true"]{background:var(--hover)}
+.panorama.show.idle .pano-bar{background:transparent;border-bottom-color:transparent;-webkit-backdrop-filter:none;backdrop-filter:none}
+.panorama.show.idle .pano-bar>:not(.pano-tag):not(.pano-spacer){opacity:0;pointer-events:none}
+.panorama.show .pano-bar{transition:none}
+@media(prefers-reduced-motion:no-preference){.panorama.show .pano-bar,.panorama.show .pano-bar>*{transition:opacity .25s ease-out,background-color .25s ease-out}}

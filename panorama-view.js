@@ -1,10 +1,14 @@
 // Panorama view (v13b P2): the read-only whole-board overview. Everything is derived from `state` by panorama.js; this file only draws it.
 // Status here is the registered status (expiry, manual stop), never a live probe, and the view says so (DESIGN-PRINCIPLES: no probing, not real-time).
 uiGlyphs.grid='<rect x="4" y="4" width="7" height="7" rx="1.8"/><rect x="13" y="4" width="7" height="7" rx="1.8"/><rect x="4" y="13" width="7" height="7" rx="1.8"/><rect x="13" y="13" width="7" height="7" rx="1.8"/>';
+uiGlyphs.expand='<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>';
 uiGlyphs.eyeOff='<path d="M3.5 12s3-5.5 8.5-5.5c1.2 0 2.3.3 3.2.7M20.5 12s-1.1 2-3.2 3.6M9.9 9.9a3 3 0 0 0 4.2 4.2M4 4l16 16"/>';
-let panoFocus=null,panoOrigin=null,panoOpen=false,panoReturn=null,panoFrame=0,panoObserver=null,panoKey='',panoLooseOpen=false;
+let panoNative=false,panoShow=false,panoAlt=false,panoIdleTimer=0,panoFocus=null,panoOrigin=null,panoOpen=false,panoReturn=null,panoFrame=0,panoObserver=null,panoKey='',panoLooseOpen=false;
 const panoExpanded=new Set();
 const PANO_FOCUS_CAP=6;
+// Presentation (v13b P6): addresses lose their middle (hover or ⌥ shows them), the bar fades after 3 s, the body scales up to 1.5× on big screens.
+const pIp=ip=>panoShow&&!panoAlt?maskIp(ip):ip;
+const panoZoom=()=>panoShow&&innerWidth>=1500?Math.min(1.5,innerWidth/1200):1;
 const PANO_TYPE_LABEL={domain:'域名',repository:'仓库',database:'数据库'};
 const panoDot=(tone,stopped)=>`<i class="pd${tone?' '+tone:''}${stopped?' off':''}" aria-hidden="true"></i>`;
 function panoSyncTime(){const times=state.assets.map(a=>Date.parse(a.syncedAt)).filter(Boolean);if(!times.length)return '';return new Date(Math.max(...times)).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false});}
@@ -20,8 +24,8 @@ function panoChip(chip,laneId,extra=''){
 let panoShared=null;
 function panoLaneHead(lane,view){
  const a=lane.server,ip=lane.ip,status=panoStatus(a),provider=a.provider&&a.provider!=='SSH'?a.provider:'';
- const ipLine=ip?`<span class="pl-ip">${ip.inner?'<em class="ip-inner" title="内网地址">内</em>':''}<span class="ip-text">${esc(ip.ip)}</span>${ip.more?`<em class="ip-more" aria-label="另有 IPv6">+${ip.more}</em>`:''}</span>`:'';
- const label=[a.name,ip?.ip,`挂载 ${lane.total} 项`,status.text].filter(Boolean).join('，');
+ const ipLine=ip?`<span class="pl-ip">${ip.inner?'<em class="ip-inner" title="内网地址">内</em>':''}<span class="ip-text" data-full="${esc(ip.ip)}">${esc(pIp(ip.ip))}</span>${ip.more?`<em class="ip-more" aria-label="另有 IPv6">+${ip.more}</em>`:''}</span>`:'';
+ const label=[a.name,ip&&pIp(ip.ip),`挂载 ${lane.total} 项`,status.text].filter(Boolean).join('，');
  return `<button class="pano-lane-head" data-nav data-lane-head="${esc(lane.id)}" aria-label="${esc(label)}" title="${esc(label)}">${cardTile(a,'sm')}<span class="pl-tx"><b class="pl-nm">${esc(displayName(a))}</b>${ip||provider?`<span class="pl-sub">${ipLine}${provider?`<span class="pl-prov">${esc(provider)}</span>`:''}</span>`:''}</span></button>`;
 }
 function panoCounts(lane,groups){
@@ -57,15 +61,15 @@ function panoTotals(t){return [['server','服务器',t.server],['domain','域名
 
 // Focused state (v13b P3): one server is the protagonist. Left rail = every server, centre = the hero card with its addresses, three columns of what sits on it.
 function panoRail(model,id){
- return `<nav class="pano-rail" aria-label="服务器">${model.lanes.map(l=>{const st=panoStatus(l.server),ip=l.ip;return `<button class="pf-srv${l.id===id?' on':''}" data-nav data-pick="${esc(l.id)}" ${l.id===id?'aria-current="true"':''} aria-label="${esc([l.server.name,ip?.ip,`挂载 ${l.total} 项`,st.text].filter(Boolean).join('，'))}" title="${esc(l.server.name)}">${panoDot(st.tone,l.stopped)}<span class="pf-tx"><b>${esc(displayName(l.server))}</b>${ip?`<small>${esc(ip.ip)}</small>`:''}</span><em>${l.total}</em></button>`;}).join('')}</nav>`;
+ return `<nav class="pano-rail" aria-label="服务器">${model.lanes.map(l=>{const st=panoStatus(l.server),ip=l.ip;return `<button class="pf-srv${l.id===id?' on':''}" data-nav data-pick="${esc(l.id)}" ${l.id===id?'aria-current="true"':''} aria-label="${esc([l.server.name,ip&&pIp(ip.ip),`挂载 ${l.total} 项`,st.text].filter(Boolean).join('，'))}" title="${esc(l.server.name)}">${panoDot(st.tone,l.stopped)}<span class="pf-tx"><b>${esc(displayName(l.server))}</b>${ip?`<small class="ip-text" data-full="${esc(ip.ip)}">${esc(pIp(ip.ip))}</small>`:''}</span><em>${l.total}</em></button>`;}).join('')}</nav>`;
 }
 function panoHero(lane,model){
  const a=lane.server,status=panoStatus(a),provider=a.provider&&a.provider!=='SSH'?a.provider:'',ips=assetIps(a);
  const account=lane.account?model.accounts.find(x=>x.id===lane.account)?.asset:null;
- const label=[a.name,ips.map(x=>x.ip).join('、'),`挂载 ${lane.total} 项`,status.text].filter(Boolean).join('，');
+ const label=[a.name,ips.map(x=>pIp(x.ip)).join('、'),`挂载 ${lane.total} 项`,status.text].filter(Boolean).join('，');
  return `${account?`<button class="pf-acct" data-nav data-open="${esc(account.id)}" aria-label="账号 ${esc(displayName(account))}" title="${esc(displayName(account))}">${icon('subscription')}<span>${esc(displayName(account))}</span></button>`:''}
  <article class="pano-hero${lane.stopped?' stopped':''}" data-hero="${esc(lane.id)}"><button class="ph-head" data-nav data-hero-head aria-label="${esc(label)}" title="${esc(label)}">${cardTile(a,'sm')}<span class="pl-tx"><b class="ph-nm">${esc(displayName(a))}</b>${provider?`<span class="pl-prov">${esc(provider)}</span>`:''}</span></button>
- ${ips.length?`<div class="ip-pills ph-ips">${ips.map(x=>`<button class="ip-pill" data-action="copy-ip" data-ip="${esc(x.ip)}" title="复制 IP" aria-label="复制 IP ${esc(x.ip)}">${x.inner?'<em>内</em>':''}${esc(x.ip)}</button>`).join('')}</div>`:''}
+ ${ips.length?`<div class="ip-pills ph-ips">${ips.map(x=>`<button class="ip-pill" data-action="copy-ip" data-ip="${esc(x.ip)}" title="复制 IP" aria-label="复制 IP ${esc(pIp(x.ip))}">${x.inner?'<em>内</em>':''}<span class="ip-text" data-full="${esc(x.ip)}">${esc(pIp(x.ip))}</span></button>`).join('')}</div>`:''}
  <div class="ph-st"><span class="pl-state ${status.tone}">${panoDot(status.tone,lane.stopped)}${esc(status.text)}</span>${panoCounts(lane,lane.groups)}</div></article>`;
 }
 function panoFocusColumns(lane){
@@ -99,15 +103,15 @@ function panoramaHtml(model,fit){
  const sync=panoSyncTime(),tag=`登记状态 · 非实时${sync?' · 同步 '+sync:''}`;
  const body=model.lanes.length?`<div class="pano-trays">${model.accounts.map(acc=>panoTray(acc,fit,model.accounts.length===1)).join('')}</div>`:`<div class="pano-empty"><p>还没有服务器</p><button class="button icon-only" data-action="pano-add" aria-label="添加服务器" title="添加服务器">${ui('plus')}</button></div>`;
  const focusLane=panoFocus&&model.lanes.find(l=>l.id===panoFocus);if(panoFocus&&!focusLane)panoFocus=null;
- return `<header class="pano-bar"><h2 class="pano-title">${ui('grid')}全景</h2><div class="pano-totals">${panoTotals(model.totals)}</div><span class="pano-spacer"></span><div class="pano-legend" aria-hidden="true"><span>${panoDot('red')}已过期</span><span>${panoDot('amber')}即将到期</span><span>${panoDot('')}登记中</span><span>${panoDot('',true)}已停用</span></div><span class="pano-tag" title="只显示你登记和同步的数据，不探测网络">${tag}</span><button class="button icon-only pano-close" data-action="pano-close" aria-label="关闭全景" title="关闭全景（Esc）">×</button></header>${focusLane?panoFocusHtml(model,focusLane,fit):`<div class="pano-body" data-level="${fit.level}" data-layout="${fit.layout}">${body}${panoLoose(model)}</div>`}`;
+ return `<header class="pano-bar"><h2 class="pano-title">${ui('grid')}全景</h2><div class="pano-totals">${panoTotals(model.totals)}</div><span class="pano-spacer"></span><div class="pano-legend" aria-hidden="true"><span>${panoDot('red')}已过期</span><span>${panoDot('amber')}即将到期</span><span>${panoDot('')}登记中</span><span>${panoDot('',true)}已停用</span></div><span class="pano-tag" title="只显示你登记和同步的数据，不探测网络">${tag}</span><button class="button icon-only pano-show" data-action="pano-show" aria-pressed="${panoShow}" aria-label="展示模式" title="展示模式：遮住地址中间两段，顶栏自动淡出">${ui('expand')}</button><button class="button icon-only pano-close" data-action="pano-close" aria-label="关闭全景" title="关闭全景（Esc）">×</button></header>${focusLane?panoFocusHtml(model,focusLane,fit):`<div class="pano-body" data-level="${fit.level}" data-layout="${fit.layout}">${body}${panoLoose(model)}</div>`}`;
 }
 function panoramaRender(){
  const root=$('#panorama');if(!panoOpen||!root)return;
  if(panoDrag)panoDragEnd(true);if(panoLink)panoLinkEnd();
  const model=buildPanorama(state.assets,{cardOrder:state.cardOrder||{}});panoShared=model.shared;
- const fit=panoramaFit({lanes:model.lanes.length,accounts:model.accounts.length,width:innerWidth,height:innerHeight});
+ const fit=panoramaFit({lanes:model.lanes.length,accounts:model.accounts.length,width:innerWidth/panoZoom(),height:innerHeight/panoZoom()});
  const keep=document.activeElement?.closest?.('#panorama')?document.activeElement:null,saved=keep&&{pick:keep.dataset.pick,hero:'heroHead' in keep.dataset,open:keep.dataset.open,chip:keep.dataset.chip,lane:keep.dataset.laneHead,more:keep.dataset.more,loose:'looseMore' in keep.dataset,close:keep.classList.contains('pano-close')};
- root.innerHTML=panoramaHtml(model,fit);root.dataset.level=fit.level;
+ root.innerHTML=panoramaHtml(model,fit);root.dataset.level=fit.level;root.classList.toggle('show',panoShow);const z=panoZoom(),body=root.querySelector('.pano-body');if(body&&z!==1)body.style.zoom=z;
  if(saved){const sel=saved.pick?`[data-pick="${CSS.escape(saved.pick)}"]`:saved.hero?'[data-hero-head]':saved.open?`[data-open="${CSS.escape(saved.open)}"]`:saved.chip?`[data-chip="${CSS.escape(saved.chip)}"]`:saved.lane?`[data-lane-head="${CSS.escape(saved.lane)}"]`:saved.more?`[data-more="${CSS.escape(saved.more)}"]`:saved.loose?'[data-loose-more]':saved.close?'.pano-close':'';(sel&&root.querySelector(sel)||root.querySelector('[data-nav]')||root.querySelector('.pano-close'))?.focus({preventScroll:true});}
 }
 function panoramaOpen(show=!panoOpen,serverId=null){
@@ -115,18 +119,27 @@ function panoramaOpen(show=!panoOpen,serverId=null){
  if(show){
   if($('#modal').open||!$('#keys-help').hidden)return;
   if(!$('#detail').hidden)closeDetail();
-  panoReturn=document.activeElement;panoOpen=true;panoFocus=serverId&&state.assets.some(a=>a.id===serverId&&a.type==='server'&&!a.hiddenAt)?serverId:null;panoLooseOpen=false;panoExpanded.clear();
+  panoReturn=document.activeElement;panoOpen=true;panoShow=panoNative;panoFocus=serverId&&state.assets.some(a=>a.id===serverId&&a.type==='server'&&!a.hiddenAt)?serverId:null;panoLooseOpen=false;panoExpanded.clear();
   root.hidden=false;document.body.classList.add('pano-open');$('main').inert=true;
   panoramaRender();(root.querySelector(panoFocus?'.ph-head':'[data-nav]')||root.querySelector('.pano-close')).focus({preventScroll:true});
   panoObserver||=new ResizeObserver(()=>{if(!panoOpen||panoFrame)return;panoFrame=requestAnimationFrame(()=>{panoFrame=0;const key=innerWidth+'x'+innerHeight;if(key===panoKey)return;panoKey=key;panoramaRender();});});
   panoKey=innerWidth+'x'+innerHeight;panoObserver.observe(root);
  }else{
-  panoOpen=false;panoFocus=null;panoObserver?.disconnect();cancelAnimationFrame(panoFrame);panoFrame=0;
+  panoOpen=false;panoFocus=null;panoShow=panoNative;panoAlt=false;clearTimeout(panoIdleTimer);root.classList.remove('show','idle');panoObserver?.disconnect();cancelAnimationFrame(panoFrame);panoFrame=0;
   root.hidden=true;root.innerHTML='';document.body.classList.remove('pano-open');$('main').inert=false;
   if(panoReturn?.isConnected)panoReturn.focus({preventScroll:true});panoReturn=null;
  }
 }
 const togglePanorama=show=>panoramaOpen(show);
+function panoWake(){const root=$('#panorama');if(!root)return;root.classList.remove('idle');clearTimeout(panoIdleTimer);if(panoShow&&panoOpen)panoIdleTimer=setTimeout(()=>root.classList.add('idle'),3000);}
+// Native full screen drives the same mode: entering it turns presentation on, leaving turns it off.
+function panoramaNative(on){panoNative=!!on;panoramaPresent(!!on);}
+function panoramaPresent(on=!panoShow){
+ if(on===panoShow)return;panoShow=on;panoAlt=false;
+ if(panoOpen)panoramaRender();
+ const root=$('#panorama');root?.classList.toggle('show',panoShow);
+ if(panoShow)panoWake();else{clearTimeout(panoIdleTimer);root?.classList.remove('idle');}
+}
 // Keep the overview in step with the board while it is open.
 {const boardRender=render;render=function(){boardRender.apply(this,arguments);if(panoOpen)panoramaRender();};}
 // Keyboard: P toggles, Esc closes (but lets an open detail or dialog take it first), arrows move between lanes and chips, board letter keys sit still.
@@ -160,13 +173,14 @@ function panoMove(from,key){
  (others[Math.min(row,others.length-1)]||target).focus();
 }
 document.addEventListener('keydown',e=>{
+ if(panoOpen&&panoShow){panoWake();if(e.key==='Alt'&&!panoAlt){panoAlt=true;panoramaRender();}}
  const key=e.key.length===1?e.key.toLowerCase():e.key,mod=e.metaKey||e.ctrlKey;
  const dialogs=$('#modal').open||!$('#keys-help').hidden;
  if(key==='p'&&!mod&&!e.altKey&&!e.shiftKey&&!dialogs&&!typing(e)&&!e.target.closest?.('#detail')){e.preventDefault();e.stopImmediatePropagation();if(panoOpen){panoramaOpen(false);return;}const card=document.activeElement?.closest?.('#board [data-asset]'),a=card&&state.assets.find(x=>x.id===card.dataset.asset),server=a&&(a.type==='server'?a:serverChain(state.assets,a).servers.find(x=>!x.hiddenAt));panoramaOpen(true,server?.id||null);return;}
  if(!panoOpen)return;
  if(panoDrag||panoLink){if(panoKeys(e,key))return;}
  if(mod&&key==='k'){panoramaOpen(false);return;}
- if(key==='Escape'){if(dialogs||!$('#detail').hidden)return;e.preventDefault();e.stopImmediatePropagation();if(panoFocus)panoramaUnfocus();else panoramaOpen(false);return;}
+ if(key==='Escape'){if(dialogs||!$('#detail').hidden)return;e.preventDefault();e.stopImmediatePropagation();if(panoFocus)panoramaUnfocus();else if(panoShow)panoramaPresent(false);else panoramaOpen(false);return;}
  if(dialogs||typing(e)||e.target.closest?.('#detail'))return;
  if(key==='s'&&!mod&&!e.altKey&&!e.shiftKey){const n=e.target.closest?.('#panorama [data-chip],#panorama [data-lane-head],#panorama [data-hero-head]');e.preventDefault();e.stopImmediatePropagation();const id=n?.dataset.chip||n?.dataset.laneHead||(n&&'heroHead' in n.dataset?panoFocus:'');if(id&&!toggleStopped(id))toast('这类不用标停用');return;}
  if(key==='l'&&!mod&&!e.altKey&&!e.shiftKey){const chip=e.target.closest?.('#panorama .pano-chip[data-chip]');e.preventDefault();e.stopImmediatePropagation();if(chip)panoLinkStart(chip);return;}
@@ -180,6 +194,7 @@ document.addEventListener('keydown',e=>{
 document.addEventListener('click',e=>{
  const open=e.target.closest?.('[data-action="panorama"]');if(open){panoramaOpen(true);return;}
  if(!panoOpen||!e.target.closest?.('#panorama'))return;
+ if(e.target.closest('[data-action="pano-show"]')){panoramaPresent();return;}
  const close=e.target.closest('[data-action="pano-close"]');if(close){panoramaOpen(false);return;}
  if(e.target.closest('[data-action="pano-add"]')){panoramaOpen(false);assetForm('server');return;}
  const more=e.target.closest('[data-more]');if(more){const k=more.dataset.more;panoExpanded.has(k)?panoExpanded.delete(k):panoExpanded.add(k);panoramaRender();return;}
@@ -304,3 +319,11 @@ function panoKeys(e,key){
  if(key==='Enter'){const t=l.targets[l.i];panoLinkEnd();panoRelink(l.id,{from:l.from,to:t.id,keep:e.altKey});return true;}
  return true;
 }
+
+// Presentation listeners: pointer wakes the bar, ⌥ release re-masks, hovering an address shows it.
+document.addEventListener('keyup',e=>{if(panoOpen&&panoShow&&e.key==='Alt'&&panoAlt){panoAlt=false;panoramaRender();}},true);
+document.addEventListener('pointermove',()=>{if(panoOpen&&panoShow)panoWake();},true);
+let panoRevealed=null;
+const panoCover=()=>{if(panoRevealed?.isConnected&&!panoAlt)panoRevealed.textContent=maskIp(panoRevealed.dataset.full);panoRevealed=null;};
+document.addEventListener('pointerover',e=>{if(!panoOpen||!panoShow||e.pointerType!=='mouse')return;const n=e.target.closest?.('#panorama .ip-text[data-full]');if(n===panoRevealed)return;panoCover();if(n){n.textContent=n.dataset.full;panoRevealed=n;}},true);
+document.addEventListener('pointerleave',()=>panoCover(),true);
