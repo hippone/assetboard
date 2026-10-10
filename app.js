@@ -58,6 +58,9 @@ function confirmDialog(title,message,confirmLabel,danger=false){return new Promi
 function isHidden(a){return !!(a&&a.hiddenAt);}
 function rememberDeleted(a){const key=assetSyncKey(a);if(!key)return;if(!Array.isArray(state.deletedExternalIds))state.deletedExternalIds=[];if(!state.deletedExternalIds.includes(key))state.deletedExternalIds.push(key);if(a.id&&!state.deletedExternalIds.includes(a.id))state.deletedExternalIds.push(a.id);}
 function icon(type){return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[type]||icons.storage}</svg>`;}
+// Small UI glyphs for buttons and chips; every icon-only button must carry title and aria-label.
+const uiGlyphs={download:'<path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14"/>',file:'<path d="M7 3.5h6.5L18 8v12.5H7z"/><path d="M13.5 3.5V8H18"/>',plus:'<path d="M12 5v14M5 12h14"/>',mail:'<path d="M4 6h16v12H4zM4 6l8 7 8-7"/>',image:'<rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="m5 17 4.5-4.5L13 16l2.5-2.5L19 17"/>',terminal:'<rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="m7.5 10 3 2.5-3 2.5M13 15h3.5"/>',refresh:'<path d="M19.5 9.5A8 8 0 0 0 5.2 7.8M4.5 14.5a8 8 0 0 0 14.3 1.7"/><path d="M5 4v4h4M19 20v-4h-4"/>',cloud:'<path d="M3.5 15.5h12a4 4 0 0 0 .4-8 6 6 0 0 0-11.5 1.8A3.5 3.5 0 0 0 3.5 15.5Z"/>',github:'<path d="M9 19c-4 1.5-4-2-7-2m14 5v-3.9a3.4 3.4 0 0 0-1-2.6c3.2-.3 6.5-1.5 6.5-7A5.2 5.2 0 0 0 19 4.6 4.8 4.8 0 0 0 18.9 1S17.7.7 15 2.5a10.4 10.4 0 0 0-6 0C6.3.7 5.1 1 5.1 1A4.8 4.8 0 0 0 5 4.6 5.2 5.2 0 0 0 3.5 8.5c0 5.4 3.3 6.7 6.5 7a3.4 3.4 0 0 0-1 2.6V22"/>',back:'<path d="M10 6 4 12l6 6M4 12h16"/>',info:'<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/>',lock:'<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3"/>',warn:'<path d="M12 4 3 19.5h18z"/><path d="M12 10v4.5M12 17h.01"/>',check:'<path d="m5 12.5 4.5 4.5L19 7.5"/>'};
+function ui(name){return `<svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${uiGlyphs[name]||''}</svg>`;}
 // One rounded tile per asset (DESIGN-PRINCIPLES §9): a real icon (custom iconData, then a fetched siteIcon) wins; the category line icon only fills in when there is none.
 function customIconSrc(a){return typeof a?.iconData==='string'&&a.iconData.length<400000&&/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(a.iconData)?a.iconData:'';}
 function tile(a,size=''){const custom=customIconSrc(a),src=custom||siteIconSrc(a),tone=src?markTone(src):'';return `<span class="tile${size?' '+size:''} ${custom?'custom-art':src?'custom-art site-art':'type-art'}${tone?' '+tone:''}" aria-hidden="true">${src?`<img src="${src}" alt="" draggable="false">`:icon(a.type)}</span>`;}
@@ -161,9 +164,9 @@ function render(){
  $('#board').innerHTML=blocks.map(renderBlock).join('');
  renderAgenda();
  $('#empty').hidden=welcome||blocks.length>0;
- $('#empty-title').textContent=query?'没有找到这项资产':'资产还没摆上大板';
- $('#empty-note').textContent=query?'试试名称、平台或用途，收起区块中的资产也会被搜索。':'添加一个类别区块，就能看到已录入的资产。';
- $('#clear-search').textContent=query?'清除搜索':'添加区块';
+ $('#empty-title').textContent=query?'没有结果':'还没有区块';
+ $('#empty-note').hidden=true;
+ $('#clear-search').textContent=query?'清除':'添加区块';
  layoutFrame=requestAnimationFrame(()=>{
   layoutFrame=0;updateOverflow();
   if(!animateLayout||matchMedia('(prefers-reduced-motion: reduce)').matches)return;
@@ -367,41 +370,49 @@ function importHub(){
  const native=!!nativeStore;
  const cli=window.__localCli||{};
  const ghAccounts=cli.ghAccounts||[];
- const ghLine=cli.gh?`<button class="button primary" data-action="github-local-sync">${ghAccounts.length?`用本机 gh 同步（${esc(ghAccounts.join('、'))}）`:'用本机 gh 同步'}</button>`:`<button class="button" data-action="github-import">GitHub 令牌…</button>`;
- const sshLine=cli.sshConfig?`<button class="button primary" data-action="ssh-import">导入 ~/.ssh/config</button>`:`<button class="button" data-action="ssh-import" disabled title="未找到配置文件">未检测到 ~/.ssh/config</button>`;
+ const tags=ghAccounts.map(n=>`<span class="account-tag">${esc(n)}</span>`).join('');
+ const cliTitle='本机已登录：只调用 gh 等命令读公开元数据，不读它们自存的凭据；SSH 只读 Host、HostName、User、Port';
+ const ghButton=cli.gh?`<button class="button primary" data-action="github-local-sync" title="用本机 gh 同步仓库${ghAccounts.length?'：'+esc(ghAccounts.join('、')):''}">${ui('github')}gh${tags}</button>`:`<button class="button" data-action="github-import" title="gh 不可用，改用 GitHub 令牌">${ui('github')}令牌</button>`;
+ const sshButton=cli.sshConfig?`<button class="button primary" data-action="ssh-import" title="从 ~/.ssh/config 读取服务器">${ui('terminal')}~/.ssh/config</button>`:'';
+ const cliRow=native?`<div class="import-cli" title="${esc(cliTitle)}">${ghButton}${sshButton}<button class="icon-button" data-action="local-cli-refresh" title="重新检测" aria-label="重新检测本机 gh 和 SSH 配置">${ui('refresh')}</button></div>`:'';
+ const chip=name=>`<span class="fmt">${name}</span>`;
+ const source=(action,glyph,label,title)=>`<button class="button source" data-action="${action}" title="${esc(title||label)}">${ui(glyph)}${label}</button>`;
  modal('导入',`<div class="form import-hub">
-  <div class="import-drop" id="import-drop" tabindex="0" role="button" aria-label="拖入文件或点击选择"><strong>拖入文件到这里</strong><span>CSV / 表格、JSON 备份、.eml 邮件${native?'、截图或 PDF':''}；也可 ⌘V 粘贴</span><input id="import-file" type="file" accept=".csv,.tsv,.json,.eml,text/csv,application/json,message/rfc822${native?',image/png,image/jpeg,image/webp,application/pdf':''}" hidden multiple></div>
-  ${native?`<div class="import-cli"><strong>本机已登录</strong><div class="import-actions">${ghLine}${sshLine}<button class="button" data-action="local-cli-refresh">重新检测</button></div><p class="form-note">只调用 gh 等命令读取公开元数据，不读取它们自存的凭据文件；SSH 只读 Host/HostName/User/Port。</p></div>`:''}
+  <div class="import-drop" id="import-drop" tabindex="0" role="button" aria-label="拖入或点击选择文件，也可 ⌘V 粘贴" title="无冲突直接写入，⌘Z 整批撤销；表格最多 ${IMPORT_ROW_LIMIT} 行，同名跳过，疑似密钥列丢弃"><span class="drop-mark" aria-hidden="true">${ui('download')}</span><strong>拖入或粘贴</strong><span class="fmts">${chip('CSV')}${chip('JSON')}${chip('EML')}${native?chip('图片')+chip('PDF'):''}</span><input id="import-file" type="file" accept=".csv,.tsv,.json,.eml,text/csv,application/json,message/rfc822${native?',image/png,image/jpeg,image/webp,application/pdf':''}" hidden multiple></div>
+  ${cliRow}
   <div class="import-actions">
-   <button class="button" data-action="import-pick-file">选择文件</button>
-   <button class="button" data-action="manual-import">手动录入</button>
-   <button class="button" data-action="inbox">粘贴续费通知</button>
-   ${native?`<button class="button" data-action="cloudflare-import">Cloudflare</button><button class="button" data-action="gmail-import">Gmail</button><button class="button" data-action="ocr-import">截图/PDF</button>`:''}
-   ${demoMode?`<button class="button primary" data-action="import-demo-sample">试用示例 CSV</button>`:''}
+   ${source('import-pick-file','file','文件','选择文件')}
+   ${source('manual-import','plus','手动')}
+   ${source('inbox','mail','通知','粘贴续费通知')}
+   ${native?source('cloudflare-import','cloud','Cloudflare')+source('gmail-import','mail','Gmail')+source('ocr-import','image','截图','选择截图或 PDF'):''}
+   ${demoMode?`<button class="button primary" data-action="import-demo-sample">试用示例</button>`:''}
   </div>
-  <p class="form-note">无冲突时直接写入资产板，可用 ⌘Z 整批撤销；同名、已删除或读不懂时会先预览。表格一次最多 ${IMPORT_ROW_LIMIT} 行，同名默认跳过。疑似密钥列会当场丢弃。</p>
-  ${deleted?`<details class="import-deleted"><summary>已删除的同步项 · ${formatCount(deleted)}</summary><p class="form-note">这些项再次导入时默认跳过。在导入预览里勾选「恢复」可重新加入。</p><ul class="import-deleted-list">${(state.deletedExternalIds||[]).slice(0,40).map(key=>`<li><code>${esc(key)}</code></li>`).join('')}${(state.deletedExternalIds||[]).length>40?`<li>…共 ${state.deletedExternalIds.length} 项</li>`:''}</ul></details>`:''}
+  ${deleted?`<details class="import-deleted"><summary>已删除的同步项 · ${formatCount(deleted)}</summary><p class="form-note">再次导入会跳过，预览里勾选可恢复。</p><ul class="import-deleted-list">${(state.deletedExternalIds||[]).slice(0,40).map(key=>`<li><code>${esc(key)}</code></li>`).join('')}${(state.deletedExternalIds||[]).length>40?`<li>…共 ${state.deletedExternalIds.length} 项</li>`:''}</ul></details>`:''}
  </div>`,'import');
  $('#import-drop')?.addEventListener('click',()=>$('#import-file')?.click());
+ $('#import-drop')?.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();$('#import-file')?.click();}});
  $('#import-file')?.addEventListener('change',e=>{const files=[...e.target.files||[]];e.target.value='';if(files.length)handleImportFiles(files);});
  if(native&&!demoMode)requestLocalCliDetect();
 }
 function importPreviewHtml(plan,meta={}){
- const group=(title,rows,render)=>rows.length?`<section class="import-group"><h3>${title} · ${rows.length}</h3><div class="import-rows">${rows.map(render).join('')}</div></section>`:'';
+ const group=(tone,title,rows,render,hint='')=>rows.length?`<section class="import-group ${tone}"><h3><i class="dot" aria-hidden="true"></i>${title}<b class="count">${rows.length}</b>${hint?`<span class="hint">${hint}</span>`:''}</h3><div class="import-rows">${rows.map(render).join('')}</div></section>`:'';
  const name=row=>esc(row.item?.name||row.name||'未命名');
- const type=row=>esc(cats[row.item?.type||row.type]?.name||row.item?.type||'');
+ const type=row=>`<span class="chip">${esc(cats[row.item?.type||row.type]?.name||row.item?.type||'')}</span>`;
+ const notes=[
+  meta.note&&`<span class="chip">${ui('file')}${esc(meta.note)}</span>`,
+  meta.preset&&`<span class="chip">${esc(meta.preset.label)}</span>`,
+  meta.truncated&&`<span class="chip warn" title="表格一次最多读 ${IMPORT_ROW_LIMIT} 行">${ui('warn')}前 ${IMPORT_ROW_LIMIT} / ${meta.totalRows} 行</span>`,
+  meta.droppedSecrets?.length&&`<span class="chip warn" title="疑似密钥的列不会导入">${ui('lock')}已丢弃密钥列：${esc(meta.droppedSecrets.join('、'))}</span>`
+ ].filter(Boolean).join('');
  return `<div class="form import-preview" id="import-preview">
-  ${meta.note?`<p class="form-note">${esc(meta.note)}</p>`:''}
-  ${meta.truncated?`<p class="form-note">只读取前 ${IMPORT_ROW_LIMIT} 行（共 ${meta.totalRows} 行）。</p>`:''}
-  ${meta.droppedSecrets?.length?`<p class="form-note">已丢弃疑似密钥列：${esc(meta.droppedSecrets.join('、'))}</p>`:''}
-  ${meta.preset?`<p class="form-note">识别为 ${esc(meta.preset.label)} 导出格式。</p>`:''}
-  ${group('新增',plan.added||[],row=>`<div class="import-row"><strong>${name(row)}</strong><span>${type(row)}</span></div>`)}
-  ${group('更新',plan.updated||[],row=>`<div class="import-row"><strong>${name(row)}</strong><span>${type(row)} · 将更新已有记录</span></div>`)}
-  ${group('同名待定',[...(plan.collisions||[]),...(plan.skippedSame||[])],(row,i)=>`<label class="check-label import-row"><input type="checkbox" name="import-same" value="${esc(row.assetId)}"><span><strong>${name(row)}</strong><small>已有同名记录，默认跳过；勾选则用导入内容更新</small></span></label>`)}
-  ${group('已删除跳过',plan.skippedDeleted||[],row=>`<label class="check-label import-row"><input type="checkbox" name="import-restore" value="${esc(row.key)}"><span><strong>${name(row)}</strong><small>曾删除，默认跳过；勾选可恢复并导入</small></span></label>`)}
-  ${group('已隐藏',plan.hidden||[],row=>`<div class="import-row"><strong>${name(row)}</strong><span>会更新资料，但仍保持隐藏</span></div>`)}
-  ${group('没读懂',meta.unreadable||[],row=>`<div class="import-row"><strong>${esc(row.reason||'无法识别')}</strong><span>${row.line?`第 ${row.line} 行`:''}</span></div>`)}
-  <div class="confirm-actions"><button class="button primary" data-action="import-apply">导入所选</button><button class="button" data-action="import-hub">返回</button></div>
+  ${notes?`<div class="chips import-notes">${notes}</div>`:''}
+  ${group('add','新增',plan.added||[],row=>`<div class="import-row"><strong>${name(row)}</strong>${type(row)}</div>`)}
+  ${group('update','更新',plan.updated||[],row=>`<div class="import-row"><strong>${name(row)}</strong>${type(row)}</div>`)}
+  ${group('hold','同名',[...(plan.collisions||[]),...(plan.skippedSame||[])],(row,i)=>`<label class="check-label import-row"><input type="checkbox" name="import-same" value="${esc(row.assetId)}"><strong>${name(row)}</strong>${type(row)}</label>`,'默认跳过，勾选则覆盖')}
+  ${group('hold','已删除',plan.skippedDeleted||[],row=>`<label class="check-label import-row"><input type="checkbox" name="import-restore" value="${esc(row.key)}"><strong>${name(row)}</strong>${type(row)}</label>`,'默认跳过，勾选则恢复')}
+  ${group('quiet','已隐藏',plan.hidden||[],row=>`<div class="import-row"><strong>${name(row)}</strong>${type(row)}</div>`,'更新后仍隐藏')}
+  ${group('bad','没读懂',meta.unreadable||[],row=>`<div class="import-row"><strong>${esc(row.reason||'无法识别')}</strong>${row.line?`<span class="chip">第 ${row.line} 行</span>`:''}</div>`)}
+  <div class="confirm-actions"><button class="button primary" data-action="import-apply">导入</button><button class="button" data-action="import-hub" title="返回导入" aria-label="返回导入">${ui('back')}</button></div>
  </div>`;
 }
 function commitImportPlan(plan,meta={},opts={}){
@@ -416,18 +427,18 @@ function commitImportPlan(plan,meta={},opts={}){
  save();render();
  const added=state.assets.length-beforeCount;
  const updated=(plan.updated||[]).length+(plan.hidden||[]).length+applySame.length+applyCollisions.length;
- const skipped=(plan.skippedSame||[]).length;const parts=[added?`新增 ${added}`:'',updated?`更新 ${updated}`:'',restoreKeys.length?`恢复 ${restoreKeys.length}`:'',skipped?`同名跳过 ${skipped}`:''].filter(Boolean);
+ const skipped=(plan.skippedSame||[]).length;const parts=[added?`新增 ${added}`:'',updated?`更新 ${updated}`:'',restoreKeys.length?`恢复 ${restoreKeys.length}`:'',skipped?`跳过 ${skipped}`:''].filter(Boolean);
  $('#modal').close();
- toast(parts.length?`已导入：${parts.join(' · ')}`:'没有写入新内容',true);
+ toast(parts.length?parts.join(' · '):'没有写入新内容',true);
  importPlan=null;importKind=null;
 }
 function runImportPlan(plan,meta={}){
  importPlan=plan;
  const skipped=plan.skippedSame?.length||0;const needsPreview=!!(plan.conflicts||(meta.unreadable||[]).length||meta.truncated||plan.mode==='replace');
- if(!needsPreview&&skipped)meta.note=((meta.note?meta.note+' · ':'')+`同名已跳过 ${skipped} 项`);
+ 
  if(!needsPreview){
   const empty=!(plan.added||[]).length&&!(plan.updated||[]).length&&!(plan.hidden||[]).length;
-  if(empty){toast(skipped?`同名已全部跳过（${skipped} 项）`:meta.unreadable?.length?'没有可导入的行':'没有可导入的内容');return;}
+  if(empty){toast(skipped?`同名全部跳过（${skipped}）`:meta.unreadable?.length?'没有可导入的行':'没有可导入的内容');return;}
   commitImportPlan(plan,meta);
   return;
  }
@@ -439,7 +450,7 @@ function importCsvText(text,{filename=''}={}){
  const {items,unreadable,preset,droppedSecrets,truncated,totalRows}=rowsToImportItems(parsed,{types:Object.keys(cats)});
  const plan=planImport(state,items,{sameName:'skip'});
  if(unreadable.length)plan.conflicts=true;
- runImportPlan(plan,{unreadable,preset,droppedSecrets,truncated,totalRows,note:filename?`来自 ${filename}`:''});
+ runImportPlan(plan,{unreadable,preset,droppedSecrets,truncated,totalRows,note:filename});
 }
 function importJsonText(text,{filename='',mode}={}){
  const backup=parseBoardBackup(text);
@@ -451,8 +462,8 @@ function importJsonText(text,{filename='',mode}={}){
   // Offer replace when merge would change nothing meaningful but user dropped a backup — still show preview with mode choice.
  }
  importKind='json';
- const modeNote=chosen==='replace'?'将用备份整体替换当前资产板（可撤销）。':'默认合并同 id 记录；需要整体替换请勾选下方选项。';
- const extra=chosen==='merge'?`<label class="check-label"><input type="checkbox" id="import-replace">整体替换当前资产板</label>`:'';
+ const modeNote=chosen==='replace'?'整体替换':'合并';
+ const extra=chosen==='merge'?`<label class="check-label"><input type="checkbox" id="import-replace">替换整个资产板（可撤销）</label>`:'';
  runImportPlan(plan,{note:`${filename?filename+' · ':''}${modeNote}`,unreadable:[]});
  // If preview opened, inject replace checkbox
  if($('#import-preview')&&chosen==='merge'){
@@ -465,7 +476,7 @@ function importEmlText(raw,{filename=''}={}){
  if(!parsed.ok){toast(parsed.error||'无法解析邮件');return;}
  pasteRow={id:'eml-'+Date.now(),kind:'paste',source:parsed.from||'',title:(parsed.subject||filename||'邮件').slice(0,80),body:`From: ${parsed.from}\nSubject: ${parsed.subject}\nDate: ${parsed.date}\n\n${parsed.body}`,importedAt:new Date().toISOString()};
  pasteRecorded=new Set();candidateReview(buildPasteCandidate());
- toast(filename?`已识别邮件 ${filename}`:'已识别拖入的邮件');
+ 
 }
 function requestLocalCliDetect(){
  if(!nativeStore||demoMode){window.__localCli={gh:false,ghAccounts:[],sshConfig:false};return;}
@@ -479,13 +490,13 @@ window.assetboardSshResult=result=>{
   return;
  }
  const hosts=parseSshConfig(result.text||'');
- if(!hosts.length){toast('~/.ssh/config 里没有可导入的 Host');return;}
+ if(!hosts.length){toast('~/.ssh/config 里没有 Host');return;}
  // Convert to planImport-compatible items via mergeSshConfig under checkpoint path similar to platform sync
  checkpoint();
  const merge=mergeSshConfig(state,hosts);
  state=merge.board;save();render();
  $('#modal')?.close();
- toast(`SSH 配置：读取 ${merge.read} 项，新增 ${merge.added} 项`,true);
+ toast(`SSH：读 ${merge.read}，新增 ${merge.added}`,true);
  syncFollowUp('SSH',merge,[]);
 };
 
@@ -510,8 +521,8 @@ async function handleImportFiles(files){
   else docs.push(file);
  }
  if(images.length){
-  if(!nativeStore){toast('截图与 PDF 识别仅在 macOS App 中可用');}
-  else if(demoMode){toast('演示模式不读写本机文件；可用「试用示例 CSV」体验导入');}
+  if(!nativeStore){toast('截图和 PDF 只在 Mac App 里可用');}
+  else if(demoMode){toast('演示模式不读本机文件，可试用示例');}
   else{
    for(const file of images.slice(0,5)){
     const buffer=await file.arrayBuffer();

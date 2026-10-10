@@ -28,7 +28,7 @@ async (page) => {
   await p.evaluate(()=>{state.assets=[];state.blocks=[];render();});
   check(await p.locator('#welcome:not([hidden])').count()===1,'Empty board shows welcome');
   const welcome=await p.locator('#welcome').textContent();
-  check(welcome.includes('Cloudflare 资源')&&!welcome.includes('Cloudflare Zone'),'Welcome no longer says Zone-only');
+  check(welcome.includes('Cloudflare')&&!welcome.includes('Zone'),'Welcome names Cloudflare without detail copy');
   await p.locator('#welcome [data-action="import-hub"]').click();
   check(await p.locator('#modal[data-view="import"]').count()===1,'Import hub opens from welcome');
   check(await p.locator('#import-drop').count()===1,'Drop zone is present');
@@ -50,7 +50,7 @@ async (page) => {
   await p.evaluate(text=>routeImportText(text,{filename:'list.csv'}),csv);
   check(await p.locator('#modal[data-view="import-preview"]').count()===1,'Blacklist forces preview');
   const preview=await p.locator('#import-preview').textContent();
-  check(preview.includes('已删除跳过')&&preview.includes('新增'),'Preview lists deleted-skipped and new rows');
+  check(preview.includes('已删除')&&preview.includes('新增'),'Preview lists deleted-skipped and new rows');
   await p.locator('input[name="import-restore"]').check();
   await p.locator('[data-action="import-apply"]').click();
   const names=await p.evaluate(()=>state.assets.map(a=>a.name).sort());

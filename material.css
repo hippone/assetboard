@@ -597,3 +597,49 @@ body.import-drag::after{content:'松开以导入';position:fixed;inset:12px;bord
 .account-tag{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;border:1px solid var(--border);background:var(--surface-panel);font-size:11px;font-weight:500;color:var(--muted);vertical-align:middle;max-width:9em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .import-cli{display:grid;gap:8px;padding:12px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface-card)}
 .import-cli strong{font-size:12px;font-weight:600}
+
+/* v11: fewer words, one focus per area */
+.ui-icon{width:16px;height:16px;flex:none}
+.button:has(.ui-icon){display:inline-flex;align-items:center;gap:6px}
+.icon-button .ui-icon{width:15px;height:15px}
+.import-cli{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 10px}
+.import-cli-mark{color:var(--muted);display:inline-flex}
+.import-cli .account-tag{margin-left:0;background:var(--surface-panel);color:var(--ink)}
+.import-cli .icon-button{margin-left:auto;border:0;background:none;padding:6px;border-radius:var(--radius-sm);cursor:pointer}
+.import-cli .icon-button:hover{background:var(--hover)}
+.import-drop{padding:26px 16px;gap:8px;justify-items:center}
+.import-drop .drop-mark{display:inline-flex;color:rgb(var(--tone-primary))}
+.import-drop .drop-mark .ui-icon{width:22px;height:22px}
+.import-drop strong{font-size:15px}
+.import-drop .fmts{display:flex;flex-wrap:wrap;gap:4px;justify-content:center}
+.fmt{padding:1px 7px;border:1px solid var(--border);border-radius:6px;font-size:10px;letter-spacing:.3px;color:var(--muted)}
+.import-actions .button.source{padding:0 12px}
+.import-group h3{display:flex;align-items:center;gap:6px;font-size:12px}
+.import-group .dot{width:7px;height:7px;border-radius:50%;background:var(--muted);flex:none}
+.import-group.add .dot,.import-group.update .dot{background:rgb(var(--tone-primary))}
+.import-group.hold .dot{background:var(--warning)}
+.import-group.bad .dot{background:var(--danger)}
+.import-group .count{font-weight:600;color:var(--ink)}
+.import-group .hint{margin-left:auto;font-weight:400;font-size:11px}
+.import-row{align-items:center}
+.import-row .chip{margin-left:auto;flex:none}
+.check-label.import-row strong{flex:1;min-width:0;overflow-wrap:anywhere}
+.import-notes{margin-bottom:2px}
+.import-notes .chip{display:inline-flex;align-items:center;gap:4px}
+.import-notes .chip .ui-icon{width:12px;height:12px}
+.chip.warn{color:var(--warning);border-color:var(--warning)}
+.welcome{gap:0}
+.welcome-choices{margin:26px 0 0;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.welcome-choice{min-height:0;padding:14px 16px}
+.welcome-choice.primary{border-color:rgba(var(--tone-primary),.55);box-shadow:inset 0 0 0 1px rgba(var(--tone-primary),.35),var(--elevation-1)}
+.welcome-choice.primary .tile{background:rgb(var(--tone-primary));color:var(--on-primary)}
+@media(max-width:760px){.welcome-choice{min-height:0;padding:12px 14px}}
+.check-label.import-row strong{color:var(--ink)}
+.import-preview .confirm-actions{display:flex;gap:8px}
+.import-preview .confirm-actions .button.primary{flex:1}
+.import-preview .confirm-actions .button:not(.primary){flex:none;width:44px;justify-content:center}
+.import-hub .import-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr))}
+.import-hub .import-actions .button{justify-content:center}
+.welcome-choices{grid-template-columns:repeat(3,minmax(0,1fr));max-width:560px}
+@media(max-width:560px){.welcome-choices{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.import-hub .import-actions{grid-template-columns:repeat(3,minmax(0,1fr))}
