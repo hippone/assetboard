@@ -104,3 +104,30 @@ test('keyboard order walks accounts, lanes, then each lane\'s chips, then the un
  const laneIds=order.filter(x=>x.kind==='lane').map(x=>x.id);assert.deepEqual(laneIds,['s1','s4','s2','s3']);
  assert.deepEqual(order.slice(-2).map(x=>x.id+'@'+x.group),['lone@unmounted','lonerepo@unmounted']);
 });
+
+test('moveMount: move here, also here, unlink, and the refusals',()=>{
+ const servers=(a,id)=>D.serverChain(a,a.find(x=>x.id===id)).servers.map(s=>s.id).sort();
+ // Move: d1 sits on s1 only; the link to s1 goes, s2 appears, the proxied mark of the old link goes with it.
+ let a=board();
+ let r=P.moveMount(a,'d1',{from:'s1',to:'s2'});
+ assert.deepEqual([r.ok,r.kind,r.server.id],[true,'move','s2']);assert.deepEqual(servers(a,'d1'),['s2']);assert.equal(D.linkMetaOf(a.find(x=>x.id==='d1'),'s1').proxied,false);
+ // Also: d2 keeps s1 and gains s2.
+ a=board();r=P.moveMount(a,'d2',{from:'s1',to:'s2',keep:true});
+ assert.deepEqual([r.ok,r.kind],[true,'also']);assert.deepEqual(servers(a,'d2'),['s1','s2']);
+ // Move onto a server it already sits on: only the old link goes (no duplicate), and the old one is the only change.
+ a=board();r=P.moveMount(a,'d0',{from:'s1',to:'s2'});
+ assert.equal(r.ok,true);assert.deepEqual(servers(a,'d0'),['s2']);assert.equal(a.find(x=>x.id==='d0').links.filter(x=>x==='s2').length,1);
+ // Same lane: nothing happens.
+ a=board();const before=JSON.stringify(a);r=P.moveMount(a,'d1',{from:'s1',to:'s1'});
+ assert.deepEqual([r.ok,r.kind],[false,'same']);assert.equal(JSON.stringify(a),before);
+ // From the unmounted strip: a plain attach, with or without the modifier.
+ a=board();r=P.moveMount(a,'lone',{from:'',to:'s3'});assert.deepEqual([r.ok,r.kind],[true,'also']);assert.deepEqual(servers(a,'lone'),['s3']);
+ // Unmounted strip as the target: only the lane it came out of is unlinked; another server keeps it.
+ a=board();r=P.moveMount(a,'d0',{from:'s1',to:null});
+ assert.deepEqual([r.ok,r.kind,r.server.id],[true,'detach','s1']);assert.deepEqual(servers(a,'d0'),['s2']);
+ a=board();r=P.moveMount(a,'lone',{from:'',to:null});assert.deepEqual([r.ok,r.kind],[false,'none']);
+ // Refusals: servers and accounts do not move, a domain cannot hang on a subscription or a domain.
+ a=board();const before2=JSON.stringify(a);
+ for(const args of [['s1',{from:'',to:'s2'}],['u1',{from:'',to:'s2'}],['d1',{from:'s1',to:'u2'}],['d1',{from:'s1',to:'d2'}],['d1',{from:'s1',to:'missing'}]]){const out=P.moveMount(a,args[0],args[1]);assert.deepEqual([out.ok,out.kind],[false,'illegal'],JSON.stringify(args));}
+ assert.equal(JSON.stringify(a),before2);
+});

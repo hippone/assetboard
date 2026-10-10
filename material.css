@@ -974,6 +974,17 @@ body.pano-open main{visibility:hidden}
 .pano-body[data-layout="stack"] .pf-srv{width:170px}
 .pano-body[data-layout="stack"] .pf-stage{flex:none;overflow:visible}
 .pano-body[data-layout="stack"] .pf-cols{grid-template-columns:1fr}
+/* v13b P4 · drag to re-hang: the lifted chip is a layer-2 element, the old place keeps a dashed hole, the legal servers stay bright, the rest drop to 55% */
+.pano-ghost{position:fixed;left:0;top:0;z-index:60;margin:0;pointer-events:none;box-shadow:var(--shadow-pop);background:var(--surface-card);will-change:transform}
+.pano-chip.drag-hole{border-style:dashed;background:none;box-shadow:none}.pano-chip.drag-hole>*{visibility:hidden}
+.panorama.dragging{cursor:grabbing;-webkit-user-select:none;user-select:none}
+.panorama.dragging .pano-lane,.panorama.dragging .pf-srv:not(.on),.panorama.dragging .pano-hero,.panorama.dragging .pano-loose{opacity:.55}
+.panorama.dragging .drop-ok,.panorama.dragging .drop-on{opacity:1}
+.panorama .drop-on{outline:1.5px solid rgb(var(--tone-primary));outline-offset:2px}
+.panorama .pano-loose.drop-on{outline-style:dashed}
+.pano-slot{flex:none;height:28px;border:1.5px dashed rgb(var(--tone-primary));border-radius:7px;opacity:.7}
+.pano-loose-temp{min-height:46px}
+@media(prefers-reduced-motion:no-preference){.panorama .pano-lane,.panorama .pf-srv,.panorama .pano-hero,.panorama .pano-loose{transition:opacity .12s ease-out}}
 @media(max-width:760px){.pano-legend,.pano-totals{display:none}.pano-bar{padding:0 14px;gap:10px}.pano-body{padding:12px 14px}}
 @media(max-width:900px){.pano-legend{display:none}}
 @media(prefers-reduced-motion:no-preference){.panorama:not([hidden]){animation:v12-fade .15s ease-out}}

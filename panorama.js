@@ -92,6 +92,22 @@
   return out;
  }
 
- const api={PANORAMA_GROUPS:GROUPS,PANORAMA_UNMOUNTED_CAP:UNMOUNTED_CAP,PANORAMA_DOT_CAP:DOT_CAP,buildPanorama,capChips,capUnmounted,panoramaFit,laneView,panoramaOrder};
+ // The one write the panorama allows: re-hang a thing. `from` = the server it was dragged out of ('' when it came from the unmounted strip), `to` = the target server or null for the unmounted strip.
+ //   default  = move here (the link to `from` goes, a link to `to` appears); keep = also here (the old link stays); to null = unlink from `from`.
+ // → {ok, changed, kind:'move'|'also'|'detach'|'same'|'illegal'|'none', server}
+ function moveMount(assets,assetId,{from='',to=null,keep=false}={}){
+  const asset=assets.find(a=>a.id===assetId),target=to?assets.find(a=>a.id===to):null,origin=from?assets.find(a=>a.id===from):null;
+  if(!asset||asset.type==='server'||asset.type==='subscription')return {ok:false,changed:false,kind:'illegal'};
+  if(!to){if(!origin)return {ok:false,changed:false,kind:'none'};const changed=D.unlinkAssets(assets,assetId,from);return {ok:changed,changed,kind:'detach',server:origin};}
+  if(!target||target.type!=='server'||!D.linkAllowed(asset,target))return {ok:false,changed:false,kind:'illegal'};
+  if(from===to)return {ok:false,changed:false,kind:'same',server:target};
+  const had=D.serverChain(assets,asset).servers.some(x=>x.id===to);
+  let changed=false;
+  if(origin&&!keep)changed=D.unlinkAssets(assets,assetId,from)||changed;
+  if(!had)changed=D.linkRelation(assets,assetId,to).ok||changed;
+  return {ok:changed,changed,kind:keep||!origin?'also':'move',server:target};
+ }
+
+ const api={moveMount,PANORAMA_GROUPS:GROUPS,PANORAMA_UNMOUNTED_CAP:UNMOUNTED_CAP,PANORAMA_DOT_CAP:DOT_CAP,buildPanorama,capChips,capUnmounted,panoramaFit,laneView,panoramaOrder};
  if(typeof module!=='undefined'&&module.exports)module.exports=api;else Object.assign(window,api);
 })();

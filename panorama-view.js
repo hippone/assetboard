@@ -103,6 +103,7 @@ function panoramaHtml(model,fit){
 }
 function panoramaRender(){
  const root=$('#panorama');if(!panoOpen||!root)return;
+ if(panoDrag)panoDragEnd(true);if(panoLink)panoLinkEnd();
  const model=buildPanorama(state.assets,{cardOrder:state.cardOrder||{}});panoShared=model.shared;
  const fit=panoramaFit({lanes:model.lanes.length,accounts:model.accounts.length,width:innerWidth,height:innerHeight});
  const keep=document.activeElement?.closest?.('#panorama')?document.activeElement:null,saved=keep&&{pick:keep.dataset.pick,hero:'heroHead' in keep.dataset,open:keep.dataset.open,chip:keep.dataset.chip,lane:keep.dataset.laneHead,more:keep.dataset.more,loose:'looseMore' in keep.dataset,close:keep.classList.contains('pano-close')};
@@ -163,9 +164,11 @@ document.addEventListener('keydown',e=>{
  const dialogs=$('#modal').open||!$('#keys-help').hidden;
  if(key==='p'&&!mod&&!e.altKey&&!e.shiftKey&&!dialogs&&!typing(e)&&!e.target.closest?.('#detail')){e.preventDefault();e.stopImmediatePropagation();if(panoOpen){panoramaOpen(false);return;}const card=document.activeElement?.closest?.('#board [data-asset]'),a=card&&state.assets.find(x=>x.id===card.dataset.asset),server=a&&(a.type==='server'?a:serverChain(state.assets,a).servers.find(x=>!x.hiddenAt));panoramaOpen(true,server?.id||null);return;}
  if(!panoOpen)return;
+ if(panoDrag||panoLink){if(panoKeys(e,key))return;}
  if(mod&&key==='k'){panoramaOpen(false);return;}
  if(key==='Escape'){if(dialogs||!$('#detail').hidden)return;e.preventDefault();e.stopImmediatePropagation();if(panoFocus)panoramaUnfocus();else panoramaOpen(false);return;}
  if(dialogs||typing(e)||e.target.closest?.('#detail'))return;
+ if(key==='l'&&!mod&&!e.altKey&&!e.shiftKey){const chip=e.target.closest?.('#panorama .pano-chip[data-chip]');e.preventDefault();e.stopImmediatePropagation();if(chip)panoLinkStart(chip);return;}
  if(!mod&&!e.altKey&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(key)){
   const from=e.target.closest?.('#panorama [data-nav]');e.preventDefault();e.stopImmediatePropagation();
   if(from)panoMove(from,key);else panoNavItems()[0]?.focus();return;
@@ -193,3 +196,110 @@ document.addEventListener('pointerout',e=>{if(panoOpen&&e.target.closest?.('#pan
 document.addEventListener('focusin',e=>{if(panoOpen)panoRing(e.target.closest?.('#panorama .pano-chip[data-shared]')?.dataset.chip);});
 document.addEventListener('focusout',()=>{if(panoOpen)panoRing(null);});
 setIconButton($('#panorama-button'),'grid','全景（P）');
+
+// ---- P4: drag a chip onto another server (the one write the panorama allows) -------------------------------------------------------------
+// Default drop = move here, ⌥ = also here, onto the unmounted strip = unlink from the server it came out of. Esc or a drop on empty space cancels. One drag = one undo step.
+let panoPress=null,panoDrag=null,panoLink=null,panoSuppress=false;
+const PANO_SNAP=40,PANO_MOVE_PX=4,PANO_TOUCH_HOLD=400;
+const panoSay=text=>{const n=$('#pano-live');if(n)n.textContent=text;};
+const panoReduced=()=>matchMedia('(prefers-reduced-motion:reduce)').matches;
+function panoTargets(id,from){
+ const asset=state.assets.find(x=>x.id===id),out=[];if(!asset)return out;
+ const add=(el,sid)=>{const server=state.assets.find(x=>x.id===sid);if(el&&server&&sid!==from&&linkAllowed(asset,server))out.push({el,id:sid,name:displayName(server)});};
+ if(panoFocus){document.querySelectorAll('#panorama .pf-srv[data-pick]:not(.on)').forEach(el=>add(el,el.dataset.pick));add($('#panorama .pano-hero'),panoFocus);}
+ else document.querySelectorAll('#panorama .pano-lane[data-lane]').forEach(el=>add(el,el.dataset.lane));
+ if(from){let loose=$('#panorama .pano-loose');if(!loose){loose=document.createElement('aside');loose.className='pano-loose pano-loose-temp';loose.setAttribute('aria-hidden','true');loose.innerHTML=`<div class="pano-loose-head">${icon('server')}<span>未挂载</span></div>`;$('#panorama .pano-body')?.append(loose);}out.push({el:loose,id:null,name:'未挂载'});}
+ return out;
+}
+function panoMark(targets,on){for(const t of targets){t.el.classList.toggle('drop-ok',!!on);if(!on)t.el.classList.remove('drop-on');}}
+function panoSlot(t,asset){
+ document.querySelectorAll('#panorama .pano-slot').forEach(n=>n.remove());
+ if(!t||!t.id||!t.el.classList.contains('pano-lane')||!t.el.classList.contains('l1'))return;
+ const key=asset.type==='domain'?'domain':asset.type==='repository'?'repository':'database',kids=t.el.querySelector('.pl-kids');if(!kids)return;
+ let group=kids.querySelector(`.pl-grp[data-group="${key}"]`);if(!group){group=document.createElement('div');group.className='pl-grp';group.dataset.group=key;kids.append(group);}
+ const slot=document.createElement('div');slot.className='pano-slot';slot.setAttribute('aria-hidden','true');group.append(slot);
+}
+function panoPick(x,y){
+ let best=null,bd=1e9;
+ for(const t of panoDrag.targets){const r=t.el.getBoundingClientRect(),d=Math.hypot(Math.max(r.left-x,0,x-r.right),Math.max(r.top-y,0,y-r.bottom));if(d<=PANO_SNAP&&d<bd){best=t;bd=d;}}
+ return best;
+}
+function panoSetOver(t){
+ if(panoDrag.over===t)return;
+ panoDrag.over?.el.classList.remove('drop-on');panoDrag.over=t;
+ if(t){t.el.classList.add('drop-on');panoSay(t.id?`移到 ${t.name}，⌥ 也挂到`:'解除关联');}
+ panoSlot(t,panoDrag.asset);
+}
+function panoDragStart(press,e){
+ const asset=state.assets.find(x=>x.id===press.id);if(!asset)return;
+ clearTimeout(press.timer);
+ const r=press.el.getBoundingClientRect(),ghost=press.el.cloneNode(true);
+ ghost.classList.add('pano-ghost');['data-nav','data-chip','data-lane','data-shared','title','aria-label'].forEach(a=>ghost.removeAttribute(a));ghost.setAttribute('aria-hidden','true');ghost.tabIndex=-1;
+ ghost.style.cssText=`width:${r.width}px;height:${r.height}px`;$('#panorama').append(ghost);
+ press.el.classList.add('drag-hole');$('#panorama').classList.add('dragging');
+ const targets=panoTargets(press.id,press.from);panoMark(targets,true);
+ panoDrag={id:press.id,asset,from:press.from,el:press.el,ghost,off:{x:press.x-r.left,y:press.y-r.top},home:r,targets,over:null};
+ panoDragMove(e);panoSay('拖动中，Esc 取消');
+}
+function panoDragMove(e){
+ const d=panoDrag;d.ghost.style.transform=`translate(${e.clientX-d.off.x}px,${e.clientY-d.off.y}px) scale(1.04)`;
+ panoSetOver(panoPick(e.clientX,e.clientY));
+}
+// Finish a drag. `drop` commits onto the snapped target; otherwise (Esc, empty space, a re-render) the chip glides home.
+function panoDragEnd(abort,e){
+ const d=panoDrag;if(!d)return;panoDrag=null;
+ const target=!abort&&e?d.over:null;
+ d.targets.forEach(t=>t.el.classList.remove('drop-ok','drop-on'));document.querySelectorAll('#panorama .pano-slot,#panorama .pano-loose-temp').forEach(n=>n.remove());
+ $('#panorama')?.classList.remove('dragging');d.el.classList.remove('drag-hole');
+ panoSuppress=true;setTimeout(()=>{panoSuppress=false;},80);
+ if(target){d.ghost.remove();panoRelink(d.id,{from:d.from,to:target.id,keep:!!e.altKey});return;}
+ const home=d.el.isConnected?d.el.getBoundingClientRect():null;
+ if(home&&!abort&&!panoReduced()&&d.ghost.animate){const a=d.ghost.animate([{transform:d.ghost.style.transform},{transform:`translate(${home.left}px,${home.top}px) scale(1)`}],{duration:150,easing:'ease-out'});a.onfinish=a.oncancel=()=>d.ghost.remove();}else d.ghost.remove();
+ panoSay('已取消');
+}
+function panoRelink(id,{from,to,keep}){
+ checkpoint();const r=moveMount(state.assets,id,{from,to,keep});
+ if(!r.ok){history.pop();panoSay('没有变化');return r;}
+ save();render();
+ const text=r.kind==='detach'?'已解除关联':r.kind==='also'?`也挂到 ${r.server.name}`:`已移到 ${r.server.name}`;
+ toast(text,true);panoSay(text);
+ const keepFocus=document.querySelector(`#panorama [data-chip="${CSS.escape(id)}"]`)||document.querySelector(`#panorama [data-lane-head="${CSS.escape(to||'')}"],#panorama [data-pick="${CSS.escape(to||'')}"]`)||document.querySelector('#panorama [data-nav]');
+ keepFocus?.focus({preventScroll:true});return r;
+}
+document.addEventListener('pointerdown',e=>{
+ if(!panoOpen||e.button>0||panoDrag)return;
+ const el=e.target.closest?.('#panorama .pano-chip[data-chip]');if(!el)return;
+ const press={id:el.dataset.chip,from:el.dataset.lane||'',el,x:e.clientX,y:e.clientY,type:e.pointerType,timer:0};
+ if(e.pointerType==='touch')press.timer=setTimeout(()=>{if(panoPress===press)panoDragStart(press,{clientX:press.x,clientY:press.y});},PANO_TOUCH_HOLD);
+ panoPress=press;
+},true);
+document.addEventListener('pointermove',e=>{
+ if(panoDrag){e.preventDefault();panoDragMove(e);return;}
+ if(!panoPress)return;
+ const moved=Math.hypot(e.clientX-panoPress.x,e.clientY-panoPress.y);
+ if(panoPress.type==='touch'){if(moved>8){clearTimeout(panoPress.timer);panoPress=null;}return;}
+ if(moved>=PANO_MOVE_PX){const press=panoPress;panoPress=null;panoDragStart(press,e);}
+},true);
+document.addEventListener('pointerup',e=>{clearTimeout(panoPress?.timer);panoPress=null;if(panoDrag)panoDragEnd(false,e);},true);
+document.addEventListener('pointercancel',()=>{clearTimeout(panoPress?.timer);panoPress=null;if(panoDrag)panoDragEnd(true);},true);
+document.addEventListener('touchmove',e=>{if(panoDrag&&e.cancelable)e.preventDefault();},{passive:false,capture:true});
+document.addEventListener('click',e=>{if(panoSuppress&&e.target.closest?.('#panorama')){e.preventDefault();e.stopImmediatePropagation();}},true);
+document.addEventListener('dragstart',e=>{if(panoOpen&&e.target.closest?.('#panorama'))e.preventDefault();},true);
+// Keyboard twin of the drag: L on a chip outlines the legal servers, ←→ choose, Enter moves here, ⌥Enter also hangs it here, Esc cancels.
+function panoLinkStart(chip){
+ const id=chip.dataset.chip,from=chip.dataset.lane||'',targets=panoTargets(id,from);
+ if(!targets.length){panoSay('没有可挂的服务器');return;}
+ panoLink={id,from,asset:state.assets.find(x=>x.id===id),targets,i:0,chip};panoMark(targets,true);panoLinkShow();
+}
+function panoLinkShow(){const l=panoLink;l.targets.forEach((t,i)=>t.el.classList.toggle('drop-on',i===l.i));const t=l.targets[l.i];panoSay(t.id?`移到 ${t.name}，⌥ 回车为也挂到`:'解除关联');t.el.scrollIntoView?.({block:'nearest',inline:'nearest'});panoSlot(t,l.asset);}
+function panoLinkEnd(){const l=panoLink;if(!l)return;panoLink=null;l.targets.forEach(t=>t.el.classList.remove('drop-ok','drop-on'));document.querySelectorAll('#panorama .pano-slot,#panorama .pano-loose-temp').forEach(n=>n.remove());}
+// Returns true when the key was consumed by an active drag or link mode.
+function panoKeys(e,key){
+ if(panoDrag){if(key==='Escape'){e.preventDefault();e.stopImmediatePropagation();panoDragEnd(true);return true;}return false;}
+ const l=panoLink;e.preventDefault();e.stopImmediatePropagation();
+ if(key==='Escape'){panoLinkEnd();panoSay('已取消');l.chip.isConnected&&l.chip.focus();return true;}
+ if(key==='ArrowRight'||key==='ArrowDown'){l.i=(l.i+1)%l.targets.length;panoLinkShow();return true;}
+ if(key==='ArrowLeft'||key==='ArrowUp'){l.i=(l.i-1+l.targets.length)%l.targets.length;panoLinkShow();return true;}
+ if(key==='Enter'){const t=l.targets[l.i];panoLinkEnd();panoRelink(l.id,{from:l.from,to:t.id,keep:e.altKey});return true;}
+ return true;
+}

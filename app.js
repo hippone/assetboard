@@ -949,7 +949,7 @@ function markSwap(el){
 }
 function keysHelpHtml(){
  const row=(keys,label)=>`<li><span>${label}</span><span class="keys">${keys.map(k=>`<kbd>${k}</kbd>`).join('')}</span></li>`;
- const groups=[['浏览',[[['⌘K','/'],'搜索'],[['←','→','↑','↓'],'移动'],[['↩'],'详情'],[['P'],'全景'],[['esc'],'返回']]],['整理',[[['I'],'导入'],[['N'],'新建'],[['E'],'编辑'],[['H'],'隐藏'],[['F'],'置前'],[['⌥','← →'],'交换'],[['X'],'选两张交换']]],['快捷',[[['O'],'打开'],[['⌘C'],'复制']]],['编辑',[[['⌘Z'],'撤销'],[['⇧⌘Z'],'重做'],[['⌘↩'],'保存'],[['tab'],'换字段']]]];
+ const groups=[['浏览',[[['⌘K','/'],'搜索'],[['←','→','↑','↓'],'移动'],[['↩'],'详情'],[['P'],'全景'],[['esc'],'返回']]],['整理',[[['I'],'导入'],[['N'],'新建'],[['E'],'编辑'],[['H'],'隐藏'],[['F'],'置前'],[['⌥','← →'],'交换'],[['X'],'选两张交换'],[['L'],'关联']]],['快捷',[[['O'],'打开'],[['⌘C'],'复制']]],['编辑',[[['⌘Z'],'撤销'],[['⇧⌘Z'],'重做'],[['⌘↩'],'保存'],[['tab'],'换字段']]]];
  return `<div class="keys-card" role="document" tabindex="-1"><div class="keys-head"><h2 id="keys-help-title" title="在输入框里打字时，字母键不生效">快捷键</h2><button class="close" data-action="keys-help" aria-label="关闭快捷键说明">×</button></div><div class="keys-grid">${groups.map(([title,rows])=>`<section><h3>${title}</h3><ul>${rows.map(([k,l])=>row(k,l)).join('')}</ul></section>`).join('')}</div></div>`;
 }
 function toggleKeysHelp(show){
@@ -984,6 +984,7 @@ document.addEventListener('keydown',e=>{
  if(key==='n'){e.preventDefault();const type=e.target.closest?.('#board .block')?.dataset.block||(e.target.closest?.('#detail')&&state.assets.find(a=>a.id===activeAsset)?.type)||focusCategory;if(cats[type])assetForm(type);else manualImport();return;}
  const id=keyAsset(e),a=id&&state.assets.find(x=>x.id===id);if(!a)return;
  if(key==='e'){e.preventDefault();assetForm(a.type,id);}
+ else if(key==='l'){e.preventDefault();if(a.hiddenAt){toast('先恢复显示，再关联');return;}linkPicker(id);}
  else if(key==='o'){e.preventDefault();if(!runQuick(id,null,'open'))toast('没有可打开的链接或目录');}
  else if(key==='f'){e.preventDefault();if(a.hiddenAt){toast('先恢复显示，再放到前面');return;}pinFront(id);if(!e.target.closest('#detail'))focusAsset(id);}
  else if(key==='h'){
