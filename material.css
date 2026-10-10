@@ -704,9 +704,12 @@ body.import-drag::after{content:'松开以导入';position:fixed;inset:12px;bord
  --shadow-pop:0 1px 2px rgba(0,0,0,.4),0 10px 20px -4px rgba(0,0,0,.5),0 30px 70px -18px rgba(0,0,0,.75);
  --shadow-pin:0 2px 3px rgba(0,0,0,.35),0 10px 16px -4px rgba(0,0,0,.45),0 26px 36px -18px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.09);
 }
-body,.native-app body{background:radial-gradient(900px 420px at 18% -8%,var(--canvas-glow),transparent 70%) fixed,linear-gradient(180deg,var(--canvas-top),var(--canvas-bottom)) fixed;background-color:rgb(var(--tone-canvas));color:var(--ink)}
+body,.native-app body{background-color:rgb(var(--tone-canvas));color:var(--ink)}
+/* The gradient lives on a fixed layer behind the page: a `background-attachment:fixed` body repaints on every scroll frame. */
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(900px 420px at 18% -8%,var(--canvas-glow),transparent 70%),linear-gradient(180deg,var(--canvas-top),var(--canvas-bottom))}
 /* Native: the page is a translucent tint over the window's glass; blocks and cards stay opaque. */
-.native-app body{background-color:transparent;background-image:radial-gradient(900px 420px at 18% -8%,var(--canvas-glow),transparent 70%),linear-gradient(180deg,color-mix(in srgb,var(--canvas-top) 86%,transparent),color-mix(in srgb,var(--canvas-bottom) 86%,transparent));background-attachment:fixed}
+.native-app body{background-color:transparent}
+.native-app body::before{background:radial-gradient(900px 420px at 18% -8%,var(--canvas-glow),transparent 70%),linear-gradient(180deg,color-mix(in srgb,var(--canvas-top) 86%,transparent),color-mix(in srgb,var(--canvas-bottom) 86%,transparent))}
 :root .block:not(.drop-into,.drop-refused,.resizing,.is-dragging),.native-app .block:not(.drop-into,.drop-refused,.resizing,.is-dragging){background:var(--surface-tray);border-color:transparent;box-shadow:var(--tray-inset),var(--tray-edge)}
 .block.is-dragging{background:var(--surface-panel)}
 :root .asset-card:not(.flip-card){background:linear-gradient(var(--card-top),var(--card-bottom));border-color:var(--card-ring);box-shadow:var(--shadow-card)}
