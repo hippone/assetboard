@@ -67,6 +67,23 @@ async (page) => {
   check(d.listBg==='rgba(0, 0, 0, 0)'&&d.listShadow==='none','List rows have no card chrome');
   check(d.slot&&d.slotBorder==='dashed'&&d.slotName==='软件授权'&&/添加/.test(d.slotAdd),'Empty block is a dashed slot with name and plus: '+JSON.stringify([d.slot,d.slotBorder,d.slotName,d.slotAdd]));
   check(d.cardTiles===0&&d.aligned,'Demo cards draw no category tile and keep their text inset');
+  // E: keyboard focus reveals the quiet controls, dialogs settle (opacity only under reduced motion), narrow windows keep everything inside.
+  await p.mouse.move(2,300);await p.keyboard.press('Escape');
+  await p.focus('.block.server .card-open');await p.waitForTimeout(250);
+  const focus=await p.evaluate(()=>{const block=document.querySelector('.block.server'),card=document.querySelector('.block.server .asset-card'),ring=getComputedStyle(card).outlineStyle+' '+getComputedStyle(card).outlineWidth;return {plus:getComputedStyle(block.querySelector('.block-actions .icon-button')).opacity,ring};});
+  check(focus.plus==='1'&&/solid 2px/.test(focus.ring),'Keyboard focus draws the ring on the whole card and reveals add/more: '+JSON.stringify(focus));
+  await p.evaluate(()=>addBlock());
+  const settle=await p.evaluate(()=>getComputedStyle(document.querySelector('#modal')).animationName);
+  check(/v12-settle/.test(settle),'Dialogs settle in: '+settle);
+  await p.evaluate(()=>document.querySelector('#modal').close());
+  await p.emulateMedia({reducedMotion:'reduce'});await p.waitForTimeout(150);
+  await p.evaluate(()=>addBlock());
+  check(await p.evaluate(()=>getComputedStyle(document.querySelector('#modal')).animationName)==='none','Reduced motion: no animation at all (global rule)');
+  await p.evaluate(()=>document.querySelector('#modal').close());await p.emulateMedia({reducedMotion:'no-preference'});
+  await p.setViewportSize({width:390,height:800});await p.waitForTimeout(300);
+  const narrow=await p.evaluate(()=>({over:document.documentElement.scrollWidth-innerWidth,bar:[...document.querySelectorAll('#topbar .button.icon-only')].every(b=>{const r=b.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.width>0;}),slot:Math.round(document.querySelector('.block.empty-slot').getBoundingClientRect().width)}));
+  check(narrow.over<=0&&narrow.bar&&narrow.slot>=340,'Narrow window: no overflow, bar buttons inside, empty slot full width: '+JSON.stringify(narrow));
+  await p.setViewportSize({width:1320,height:822});
   check(errors.length===0,'No page errors: '+errors.join('; '));
   return 'PASS: demo board plain, origin hoisted to block header, mixed blocks keep sources, lock for private, hidden toggle icon+count, search not hoisted, category hints trimmed';
  }finally{await context.close();}

@@ -714,13 +714,13 @@ body,.native-app body{background:radial-gradient(900px 420px at 18% -8%,var(--ca
 
 /* v12 · C: one glass top bar (the only blur layer besides overlays): next dates on the left, icon actions on the right */
 :root{--bar:rgba(var(--tone-canvas),.66);--bar-edge:rgba(var(--tone-ink),.07)}
-:root .topbar{position:sticky;top:0;z-index:12;display:flex;align-items:center;gap:12px;min-height:56px;padding:0 20px;background:var(--bar);backdrop-filter:blur(24px) saturate(1.6);-webkit-backdrop-filter:blur(24px) saturate(1.6);box-shadow:0 1px 0 var(--bar-edge)}
-.native-app .topbar{min-height:44px;padding:0 16px}
-.native-app .topbar:has(>#agenda[hidden]):not(:has(>.demo-badge)){display:none}
-:root .topbar .toolbar{order:2;position:static;height:auto;padding:0;margin:0;background:none;border:0;backdrop-filter:none;-webkit-backdrop-filter:none}
-:root .topbar .agenda{order:0;flex:1;min-width:0;min-height:0;padding:0;border:0;background:none;gap:8px;color:var(--ink)}
-.topbar .agenda[hidden]{display:none}
-.topbar:has(>.agenda[hidden]) .toolbar{margin-left:auto}
+:root .appbar{position:sticky;top:0;z-index:12;flex:none;display:flex;align-items:center;gap:12px;min-height:56px;padding:0 20px;background:var(--bar);backdrop-filter:blur(24px) saturate(1.6);-webkit-backdrop-filter:blur(24px) saturate(1.6);box-shadow:0 1px 0 var(--bar-edge)}
+.native-app .appbar{min-height:44px;padding:0 16px}
+.native-app .appbar:has(>#agenda[hidden]):not(:has(>.demo-badge)){display:none}
+:root .appbar .toolbar{order:2;position:static;height:auto;padding:0;margin:0;background:none;border:0;backdrop-filter:none;-webkit-backdrop-filter:none}
+:root .appbar .agenda{order:0;flex:1;min-width:0;min-height:0;padding:0;border:0;background:none;gap:8px;color:var(--ink)}
+.appbar .agenda[hidden]{display:none}
+.appbar:has(>.agenda[hidden]) .toolbar{margin-left:auto}
 .agenda-label{display:inline-grid;place-items:center;color:var(--faint)}
 .agenda-label .ui-icon{width:16px;height:16px}
 .agenda-items{flex-wrap:nowrap;overflow:hidden;gap:6px}
@@ -736,13 +736,13 @@ body,.native-app body{background:radial-gradient(900px 420px at 18% -8%,var(--ca
 .agenda-more{flex:none;font-size:12px;color:var(--faint);font-variant-numeric:tabular-nums}
 .agenda-list .agenda-item{height:auto;min-height:32px;max-width:none;padding:6px 10px}
 .agenda-list .agenda-item strong{max-width:none}
-.topbar .demo-badge{order:1;position:static;padding:2px 8px;border:0;border-radius:999px;background:var(--hover);color:var(--muted);font-size:11px;box-shadow:none;pointer-events:auto}
+.appbar .demo-badge{order:1;position:static;padding:2px 8px;border:0;border-radius:999px;background:var(--hover);color:var(--muted);font-size:11px;box-shadow:none;pointer-events:auto}
 :root .search{width:230px;height:30px;border-radius:8px;background:var(--hover);border-color:transparent}
 .button.icon-only{position:relative;display:inline-grid;place-items:center;width:30px;height:30px;padding:0;border-color:transparent;border-radius:50%;background:transparent;color:var(--muted)}
 .button.icon-only:hover{background:var(--hover);color:var(--ink)}
 .button.icon-only .ui-icon{width:17px;height:17px}
 .count-badge{position:absolute;top:-2px;right:-4px;min-width:15px;height:15px;padding:0 4px;border-radius:8px;background:rgb(var(--tone-primary));color:var(--on-primary);font:600 10px/15px -apple-system,sans-serif;font-style:normal;text-align:center;font-variant-numeric:tabular-nums;box-shadow:0 0 0 2px var(--canvas-top)}
-@media(max-width:760px){:root .topbar{flex-wrap:wrap;gap:8px;padding:8px 12px}:root .topbar .toolbar{order:0;width:100%;height:auto;padding:0}.topbar .actions{width:100%}:root .search{flex:1;width:auto}:root .topbar .agenda{order:1;flex-basis:100%}.agenda-item .agenda-cost,.agenda-item small{display:none}.agenda-item:nth-of-type(n+3){display:none}}
+@media(max-width:760px){:root .appbar{flex-wrap:wrap;gap:8px;padding:8px 12px}:root .appbar .toolbar{order:0;width:100%;height:auto;padding:0}.appbar .actions{width:100%}:root .search{flex:1;width:auto}:root .appbar .agenda{order:1;flex-basis:100%}.agenda-item .agenda-cost,.agenda-item small{display:none}.agenda-item:nth-of-type(n+3){display:none}}
 
 /* v12 · D: quiet block head, one big card, plain list rows, empty slot, aligned rows */
 :root .block-head{display:flex;align-items:center;gap:8px;min-height:28px;padding:0 4px}
@@ -797,3 +797,23 @@ body,.native-app body{background:radial-gradient(900px 420px at 18% -8%,var(--ca
 :root .asset-card:not(:has(.card-head .tile)) .card-head{padding-left:16px;padding-right:16px}
 :root .asset-card.pinned:not(:has(.card-head .tile)) .card-foot{padding-left:16px}
 @media(max-width:760px){:root .asset-card:not(:has(.card-head .tile)) .card-foot{padding-left:14px}:root .asset-card:not(:has(.card-head .tile)) .card-head{padding-left:14px}}
+
+/* v12 · E: light motion. Fade-in on first paint, dialogs settle from 98%. Reduced motion keeps opacity only. */
+@keyframes v12-fade{from{opacity:0}}
+@keyframes v12-settle{from{opacity:0;transform:scale(.98)}}
+body.first-paint .block,body.first-paint .appbar{animation:v12-fade .15s var(--ease) both}
+dialog[open]{animation:v12-settle .18s var(--ease) both}
+dialog[open]::backdrop{animation:v12-fade .15s var(--ease) both}
+.toast.show,#toast.show,#toast>*{animation:v12-fade .15s var(--ease) both}
+@media(prefers-reduced-motion:reduce){
+ dialog[open]{animation:v12-fade .15s linear both}
+ body.first-paint .block,body.first-paint .appbar{animation:v12-fade .15s linear both}
+ .block-head .chevron,.block-head .block-actions .icon-button{transition:none}
+}
+/* narrow window: one column, the bar stacks, empty slots go full width */
+@media(max-width:760px){
+ :root .block.empty-slot{width:100%!important;min-width:0}
+ .appbar .agenda-item strong{max-width:110px}
+ .block-origin{max-width:45%}
+ :root .appbar .demo-badge{order:-1}
+}

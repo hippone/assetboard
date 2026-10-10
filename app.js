@@ -1237,3 +1237,5 @@ installImportDropPaste();
 if(nativeStore){document.documentElement.classList.add('native-app');if(!demoMode)requestEvidence();document.querySelectorAll('.form-note').forEach(el=>{el.textContent=el.textContent.replaceAll('当前浏览器','此 Mac').replaceAll('此浏览器','此 Mac');});if(!nativeStore.data||migratedLegacyData)save();}
 else if(migratedLegacyData)save();
 if(demoMode){document.documentElement.classList.add('demo-mode');const badge=document.createElement('span');badge.className='demo-badge';badge.setAttribute('role','note');badge.setAttribute('aria-label','演示模式：全部为虚构数据，不会保存');badge.title='演示模式：全部为虚构数据，不会保存';badge.textContent='演示';document.querySelector('#topbar').append(badge);}
+
+document.body.classList.add('first-paint');setTimeout(()=>document.body.classList.remove('first-paint'),600);
