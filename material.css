@@ -820,3 +820,7 @@ dialog[open]::backdrop{animation:v12-fade .15s var(--ease) both}
  .block-origin{max-width:45%}
  :root .appbar .demo-badge{order:-1}
 }
+
+/* v12 · native: the strip under the system toolbar shows the window glass like the toolbar does (no canvas layer behind it), so the two read as one bar */
+.native-app .appbar{background:transparent}
+.native-app body::before{top:44px}
