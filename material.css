@@ -643,3 +643,15 @@ body.import-drag::after{content:'松开以导入';position:fixed;inset:12px;bord
 .welcome-choices{grid-template-columns:repeat(3,minmax(0,1fr));max-width:560px}
 @media(max-width:560px){.welcome-choices{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .import-hub .import-actions{grid-template-columns:repeat(3,minmax(0,1fr))}
+.paste-bar{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.paste-bar .chip{display:inline-flex;align-items:center;gap:4px;color:var(--muted)}
+.paste-bar .chip .ui-icon{width:12px;height:12px}
+.paste-bar .button{margin:0;min-width:96px}
+.inbox-head .count,.import-group .count{display:inline-block;margin-left:6px;padding:0 7px;border-radius:999px;background:var(--surface-panel);font-size:11px;font-weight:600}
+.inbox-head .icon-button{border:0;background:none;padding:5px;border-radius:var(--radius-sm);cursor:pointer;color:var(--muted)}
+.inbox-head .icon-button:hover{background:var(--hover);color:var(--ink)}
+.ai-send{display:flex;align-items:center;gap:4px}
+.ai-send .ui-icon{width:12px;height:12px}
+.inbox-back{justify-self:start;border:0;background:none;padding:5px;border-radius:var(--radius-sm);cursor:pointer}
+.inbox-head .count{color:var(--ink)}
+.review-basis{margin:-4px 0 0}.review-basis .basis-list{margin-top:4px}.review-basis .fact{padding:6px 0;font-size:12px}.review-basis summary{padding:4px 0}
