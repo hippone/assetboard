@@ -1351,10 +1351,10 @@ func testWebView() {
         precondition(reading == "[\"Figma Professional\",\"$15 / 月\",\"ai\"]", "AI reading must parse in WebKit: " + reading)
         webView.appearance = NSAppearance(named: .aqua)
         wait { run("document.documentElement.dataset.scheme") == "light" }
-        let lightCanvas = run("getComputedStyle(document.body).backgroundColor+getComputedStyle(document.body).backgroundImage")
+        let lightCanvas = run("getComputedStyle(document.body).backgroundColor+getComputedStyle(document.body,'::before').backgroundImage")
         webView.appearance = NSAppearance(named: .darkAqua)
         wait { run("document.documentElement.dataset.scheme") == "dark" }
-        let darkCanvas = run("getComputedStyle(document.body).backgroundColor+getComputedStyle(document.body).backgroundImage")
+        let darkCanvas = run("getComputedStyle(document.body).backgroundColor+getComputedStyle(document.body,'::before').backgroundImage")
         precondition(lightCanvas != darkCanvas && handler.actions.filter { $0 == "themeColor" }.count >= 2, "Page must follow the system appearance: \(lightCanvas) / \(darkCanvas)")
         // Direct manipulation with synthetic pointer events: card reorder, cross-block move, edge resize.
         let setup = run("""

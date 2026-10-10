@@ -87,6 +87,8 @@ async (page) => {
   // Restoring the last hidden asset returns the block to its normal view.
   await p.evaluate(()=>{state.assets.find(a=>a.id==='d4').hiddenAt='2026-09-01';render();});await settle();
   await p.locator('[data-action="toggle-hidden"][data-id="domain"]').click();
+  // The back face turns on hover; wait for the turn before clicking its button.
+  await p.locator('.block.domain [data-asset="d4"]').hover();await settle();
   await p.locator('.block.domain [data-asset="d4"] [data-action="restore-asset"]').click({force:true});await settle();
   check(await p.locator('.block.domain.showing-hidden').count()===0,'Restoring the last hidden asset must leave the hidden view');
   check(await p.evaluate(()=>document.activeElement?.closest('[data-asset]')?.dataset.asset)==='d4','Focus must move to the restored card');
