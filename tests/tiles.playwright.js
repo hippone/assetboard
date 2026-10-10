@@ -16,7 +16,7 @@ async (page) => {
     {id:'t-card',type:'bankcard',name:'带站点图标的卡',provider:'示例银行',network:'Visa',last4:'4821',siteIcon:png,source:'manual',art:'generic',updatedAt:new Date().toISOString()});
    render();
    const tileOf=id=>document.querySelector(`#board [data-asset="${id}"] .card-head .tile`);
-   const typeTiles=types.map(t=>{const el=tileOf('t-'+t);return {t,ok:!!el&&el.classList.contains('type-art')&&!!el.querySelector('svg')&&!el.querySelector('img'),stroke:el?.querySelector('svg')?.getAttribute('stroke-width'),size:el&&Math.round(el.getBoundingClientRect().width)};});
+   const typeTiles=types.map(t=>{const el=tileOf('t-'+t),head=document.querySelector(`#board .block.${t} .block-title .tile.type-art`);return {t,ok:!el&&!!head&&!!head.querySelector('svg')&&!head.querySelector('img'),stroke:head?.querySelector('svg')?.getAttribute('stroke-width'),size:head&&Math.round(head.getBoundingClientRect().width)};});
    const site=tileOf('t-site'),custom=tileOf('t-custom'),bank=tileOf('t-card');
    const cardsEl=[...document.querySelectorAll('#board .asset-card:not(.flip-card)')];
    const serif=[...document.querySelectorAll('body, #board *, #agenda *')].map(el=>getComputedStyle(el).fontFamily).filter(f=>/Georgia|Times|(^|,\s*)serif|Avenir|Menlo/i.test(f.replace(/sans-serif/gi,'')));
@@ -32,7 +32,7 @@ async (page) => {
   },png);
   check(!result.missing.length,'Categories without an icon: '+result.missing.join(', '));
   check(result.distinct,'Every category icon is distinct');
-  for(const t of result.typeTiles)check(t.ok&&t.stroke==='1.5'&&t.size===32,`Category ${t.t} shows its 1.5px line icon in a 32px tile: `+JSON.stringify(t));
+  for(const t of result.typeTiles)check(t.ok&&t.stroke==='1.5'&&t.size===16,`Category ${t.t} has no card tile without a real icon, and its header glyph is the 1.5px line icon at 16px: `+JSON.stringify(t));
   check(result.site,'A fetched site icon replaces the category icon');
   check(result.custom,'A custom icon wins over a site icon and the category icon');
   check(result.bank,'Priority types use a real icon too when there is one');
@@ -51,9 +51,9 @@ async (page) => {
    const compactTile=document.querySelector('#board .block.server [data-asset="t-custom"] .card-head .tile');out.compact=!!compactTile&&Math.round(compactTile.getBoundingClientRect().width)===20&&!!compactTile.querySelector('img');
    state.blocks.find(b=>b.id==='domain').folded=true;render();out.peek=document.querySelectorAll('#board .block.domain .peek-mark .tile.sm').length===2;
    state.blocks.find(b=>b.id==='domain').folded=false;state.assets.find(x=>x.id==='t-license').hiddenAt=new Date().toISOString();showHiddenBlocks.add('license');render();
-   out.flip=!!document.querySelector('#board .flip-card .flip-face.front .tile.type-art svg');showHiddenBlocks.clear();render();
+   out.flip=!!document.querySelector('#board .flip-card .flip-face.front')&&!document.querySelector('#board .flip-card .flip-face.front .tile.type-art');showHiddenBlocks.clear();render();
    return out;});
-  for(const [k,v] of Object.entries(spots))check(v,'Tile missing in '+k);
+  for(const [k,v] of Object.entries(spots))check(v,'Tile expectation failed in '+k);
   // Hovering a card swaps link chips for actions without changing its height; a hidden card keeps its name readable.
   const card=p.locator('#board [data-asset="t-server"]');const rest=(await card.boundingBox()).height;await card.hover();await p.waitForTimeout(250);
   check(Math.abs((await card.boundingBox()).height-rest)<.5,'Hover must not change the card height');
@@ -62,7 +62,7 @@ async (page) => {
   check(await p.locator('#board .flip-card .flip-face.back strong').evaluate(e=>e.getBoundingClientRect().height>=14&&e.textContent.length>0),'A hidden card shows its name on the back');
   await p.evaluate(()=>{showHiddenBlocks.clear();render();});
   await p.fill('#search','只在悬停');await p.waitForTimeout(250);
-  check(await p.locator('#board .asset-card .card-head .tile').count()>0&&await p.locator('#board .card-hit').count()>0,'Search results show tiles and say when the match is in the purpose');
+  check(await p.locator('#board .asset-card').count()>0&&await p.locator('#board .card-hit').count()>0,'Search results say when the match is in the purpose');
   await p.fill('#search','');
   check(!errors.length,'Page errors: '+errors.join(' | '));
   return 'PASS: every category has a distinct 1.5px icon, real icons win, system sans only, three text layers, compact cards, tiles in header/detail/compact/peek/flip/search, stable hover height, readable hidden card';

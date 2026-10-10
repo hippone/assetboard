@@ -743,3 +743,57 @@ body,.native-app body{background:radial-gradient(900px 420px at 18% -8%,var(--ca
 .button.icon-only .ui-icon{width:17px;height:17px}
 .count-badge{position:absolute;top:-2px;right:-4px;min-width:15px;height:15px;padding:0 4px;border-radius:8px;background:rgb(var(--tone-primary));color:var(--on-primary);font:600 10px/15px -apple-system,sans-serif;font-style:normal;text-align:center;font-variant-numeric:tabular-nums;box-shadow:0 0 0 2px var(--canvas-top)}
 @media(max-width:760px){:root .topbar{flex-wrap:wrap;gap:8px;padding:8px 12px}:root .topbar .toolbar{order:0;width:100%;height:auto;padding:0}.topbar .actions{width:100%}:root .search{flex:1;width:auto}:root .topbar .agenda{order:1;flex-basis:100%}.agenda-item .agenda-cost,.agenda-item small{display:none}.agenda-item:nth-of-type(n+3){display:none}}
+
+/* v12 · D: quiet block head, one big card, plain list rows, empty slot, aligned rows */
+:root .block-head{display:flex;align-items:center;gap:8px;min-height:28px;padding:0 4px}
+:root .block-title{font-size:15px;font-weight:600;gap:8px;padding:2px 4px 2px 0;margin:0}
+.block-title .tile{width:16px;height:16px;border-radius:0;background:none;box-shadow:none;color:var(--faint)}
+.block-title .tile svg{width:16px;height:16px;opacity:1}
+:root .asset-count{padding:0;background:none;font-size:12px;font-weight:400;color:var(--muted);font-variant-numeric:tabular-nums}
+.block-summary{display:inline-flex;align-items:center;gap:10px;margin-left:auto;font-size:12px;font-weight:400;color:var(--muted);font-variant-numeric:tabular-nums}
+.block-summary+.block-actions{margin-left:0}
+.block-actions{margin-left:auto}
+.block-summary .sum-dot{display:inline-flex;align-items:center;gap:5px}
+.block-summary .dot{width:6px;height:6px;border-radius:50%;background:var(--faint)}
+.block-summary .overdue .dot{background:var(--dot-red)}.block-summary .soon .dot{background:var(--dot-amber)}
+:root .block-summary,:root .block-summary.overdue{color:var(--muted);font-weight:400}
+.block-origin{margin-right:auto;max-width:none}
+.block-summary~.block-actions{margin-left:0}
+/* chevron, add and more appear on hover or focus; touch screens keep them */
+@media(hover:hover){
+ .block:not(.folded) .block-head .chevron,.block-head .block-actions .icon-button{opacity:0;transition:opacity var(--motion-base) var(--ease)}
+ .block:hover .block-head .chevron,.block:hover .block-head .block-actions .icon-button,.block:focus-within .block-head .chevron,.block:focus-within .block-head .block-actions .icon-button{opacity:1}
+}
+/* one card per block may be big: the one the person fronted */
+:root .asset-card.pinned:not(.flip-card){box-shadow:var(--shadow-pin)}
+.asset-card.pinned .card-name{font-size:15px}
+.asset-card.pinned .card-head{padding-top:6px;padding-bottom:2px}
+.card-event.big{display:inline-flex;align-items:baseline;gap:4px;font-size:12px;overflow:visible}
+.card-event.big b{font-size:22px;line-height:1.1;font-weight:600;font-variant-numeric:tabular-nums}
+.card-event.big.warn:not(.overdue),.card-event.big.warn:not(.overdue) b{color:var(--warning)}
+.card-event.big.overdue,.card-event.big.overdue b{color:var(--danger)}
+.card-event.big::before{display:none!important}
+/* status dot in front of amber and red card lines */
+.card-event.warn::before,.card-glance.warn::before{content:"";display:inline-block;width:6px;height:6px;margin-right:6px;border-radius:50%;background:var(--dot-amber);vertical-align:1px}
+.card-event.overdue::before,.card-glance.overdue::before{background:var(--dot-red)}
+/* list rows: no card chrome */
+:root .compact-repo{min-height:30px;padding:0 2px;border-color:transparent;background:transparent;box-shadow:none}
+:root .compact-repo:hover{background:var(--hover)}
+:root .compact-repositories{border-top:0;padding:12px 4px 4px;position:relative}
+.compact-repositories::before{content:"";position:absolute;left:8px;right:8px;top:0;height:1px;background:linear-gradient(90deg,transparent,var(--bar-edge) 12%,var(--bar-edge) 88%,transparent)}
+.compact-repositories-grid{gap:2px 8px}
+:root .compact-repo-open{padding:4px 8px;font-size:13px}
+/* empty block: same-height dashed slot, name and plus only */
+:root .block.empty-slot:not(.drop-into,.drop-refused){background:transparent;box-shadow:none;border:1px dashed var(--border-strong);min-width:200px}
+.block.empty-slot .block-title{color:var(--muted);font-weight:500;font-size:13px}
+.block.empty-slot .asset-count,.block.empty-slot .chevron,.block.empty-slot .block-summary{display:none}
+:root .block.empty-slot .cards{display:grid;place-items:center;min-height:0}
+:root .block.empty-slot button.block-empty{width:auto;display:inline-grid;place-items:center;width:32px;height:32px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--faint)}
+.block.empty-slot button.block-empty:hover{background:var(--hover);color:var(--ink)}
+.block.empty-slot button.block-empty .ui-icon{width:18px;height:18px}
+/* rows share one height: auto-height blocks stretch to the tallest neighbour (fixed heights keep theirs) */
+@media(min-width:761px){:root .block:not(.fixed){align-self:stretch}}
+:root .asset-card:not(:has(.card-head .tile)) .card-foot{padding-left:16px}
+:root .asset-card:not(:has(.card-head .tile)) .card-head{padding-left:16px;padding-right:16px}
+:root .asset-card.pinned:not(:has(.card-head .tile)) .card-foot{padding-left:16px}
+@media(max-width:760px){:root .asset-card:not(:has(.card-head .tile)) .card-foot{padding-left:14px}:root .asset-card:not(:has(.card-head .tile)) .card-head{padding-left:14px}}

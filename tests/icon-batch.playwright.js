@@ -55,7 +55,7 @@ async (page) => {
   check(result.d1==='cloudflare.com'&&result.p1==='cloudflare.com'&&result.s1==='vultr.com'&&result.s2==='vultr.com'&&result.d2==='aliyun.com','Shared icons reach every asset of the vendor: '+JSON.stringify(result));
   check(result.s3==='hetzner.com'&&!result.d3&&!result.s5&&!result.s6,'Existing, unknown, failed and hidden assets are untouched');
   check((await p.locator('#icon-batch-done').textContent()).includes('bandwagonhost.com')&&(await p.locator('#icon-batch-done').textContent()).includes('官网没有可下载的图标'),'Failures are reported with a reason');
-  check(await p.locator('#board [data-asset="s5"] .tile.type-art svg').count()===1,'A failed vendor keeps the category icon');
+  check(await p.locator('#board [data-asset="s5"] .tile').count()===0,'A failed vendor stays without a card tile (the header carries the category icon)');
   await p.locator('#icon-batch-done [data-action="icon-batch-cancel"]').click();
   await p.locator('#toast .toast-undo').click();
   check(await p.evaluate(()=>state.assets.filter(a=>a.siteIcon).map(a=>a.id).join())==='s3','One undo removes every icon from the run');

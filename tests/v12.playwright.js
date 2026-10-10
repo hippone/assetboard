@@ -50,6 +50,23 @@ async (page) => {
   await p.evaluate(()=>{window.pendingCount=()=>3;syncToolbar();});
   const inbox=await p.evaluate(()=>{const b=document.querySelector('#inbox-button');return {badge:b.querySelector('.count-badge')?.textContent,label:b.getAttribute('aria-label'),title:b.title};});
   check(inbox.badge==='3'&&inbox.label==='待确认 3'&&inbox.title==='待确认 3','Inbox count badge: '+JSON.stringify(inbox));
+  await p.evaluate(()=>document.querySelector('#modal').close());
+  // D: quiet block heads, one big fronted card, plain list rows, empty slot, rows of equal height.
+  await p.mouse.move(2,300);await p.waitForTimeout(200);
+  const d=await p.evaluate(()=>{const cs=(el,prop)=>getComputedStyle(el)[prop],head=document.querySelector('.block.domain .block-head'),count=head.querySelector('.asset-count'),pins=[...document.querySelectorAll('#board .asset-card.pinned')],rows=[...document.querySelectorAll('.block.domain,.block.server')].map(b=>Math.round(b.getBoundingClientRect().height)),listRow=document.querySelector('.compact-repo'),slot=document.querySelector('.block.empty-slot'),ch=head.querySelector('.chevron'),sum=head.querySelector('.block-summary');
+   return {titleSize:cs(head.querySelector('.block-title'),'fontSize'),countBg:cs(count,'backgroundColor'),chevron:cs(ch,'opacity'),plus:cs(head.querySelector('.icon-button'),'opacity'),pins:pins.map(el=>({id:el.dataset.asset,big:el.querySelector('.card-event.big b')?.textContent,text:el.querySelector('.card-event')?.textContent.trim(),name:cs(el.querySelector('.card-name'),'fontSize')})),sumLabel:sum.getAttribute('aria-label'),sumText:sum.textContent.trim(),dots:sum.querySelectorAll('.dot').length,rows,
+    listBg:cs(listRow,'backgroundColor'),listShadow:cs(listRow,'boxShadow'),listBorder:cs(listRow,'borderTopColor'),slot:!!slot&&slot.classList.contains('license'),slotBorder:slot&&cs(slot,'borderTopStyle'),slotName:slot?.querySelector('.block-title > span:nth-child(2)')?.textContent.trim(),slotAdd:slot?.querySelector('.block-empty')?.getAttribute('title'),
+    cardTiles:document.querySelectorAll('#board .asset-card .card-head .tile').length,aligned:[...document.querySelectorAll('#board .asset-card:not(.pinned) .card-name')].filter(n=>n.getClientRects().length).every(n=>n.getBoundingClientRect().left>=n.closest('.asset-card').getBoundingClientRect().left+10)};});
+  check(d.titleSize==='15px'&&d.countBg==='rgba(0, 0, 0, 0)','Block title 15px, count has no pill: '+d.titleSize+' '+d.countBg);
+  check(d.chevron==='0'&&d.plus==='0','Chevron and add stay hidden until hover or focus');
+  await p.hover('.block.domain');await p.waitForTimeout(250);
+  check(await p.evaluate(()=>getComputedStyle(document.querySelector('.block.domain .chevron')).opacity==='1'&&getComputedStyle(document.querySelector('.block.domain .block-actions .icon-button')).opacity==='1'),'They appear on hover');
+  check(d.pins.length===1&&d.pins[0].id==='demo-d1'&&/^\d+$/.test(d.pins[0].big)&&/天后到期/.test(d.pins[0].text)&&d.pins[0].name==='15px','Only the fronted card is big, with a big day count: '+JSON.stringify(d.pins));
+  check(d.sumLabel==='1 项已过期 · 1 项即将到期'&&d.dots===2&&!/项/.test(d.sumText),'Block summary is two dots with counts, sentence in the label: '+d.sumText);
+  check(new Set(d.rows).size===1,'Blocks in one row share a height: '+d.rows);
+  check(d.listBg==='rgba(0, 0, 0, 0)'&&d.listShadow==='none','List rows have no card chrome');
+  check(d.slot&&d.slotBorder==='dashed'&&d.slotName==='软件授权'&&/添加/.test(d.slotAdd),'Empty block is a dashed slot with name and plus: '+JSON.stringify([d.slot,d.slotBorder,d.slotName,d.slotAdd]));
+  check(d.cardTiles===0&&d.aligned,'Demo cards draw no category tile and keep their text inset');
   check(errors.length===0,'No page errors: '+errors.join('; '));
   return 'PASS: demo board plain, origin hoisted to block header, mixed blocks keep sources, lock for private, hidden toggle icon+count, search not hoisted, category hints trimmed';
  }finally{await context.close();}

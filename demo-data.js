@@ -19,5 +19,5 @@ window.assetboardDemoBoard=function(){
   ...repos.map((name,i)=>({...base,id:'demo-r'+i,type:'repository',name:'acme-labs/'+name,provider:'GitHub',account:'acme-labs',purpose:'代码仓库',source:'github',externalId:'demo-'+i,syncStatus:i%3?'私有仓库':'公开仓库',event:i%3?'私有仓库':'公开仓库',updatedAt:new Date(Date.now()-i*86400000*3).toISOString()}))
  ];
  const block=(id,width,extra={})=>({id,width,height:null,density:'full',folded:false,...extra});
- return {blocks:[block('domain',50),block('server',50),block('repository',70),block('subscription',30),block('ai',30,{density:'compact'}),block('database',35),block('license',35,{folded:true})],assets,deletedExternalIds:[],cardOrder:{domain:['demo-d1']},featuredRepositoryIds:[],evidenceDecisions:{}};
+ return {blocks:[block('domain',50),block('server',50),block('repository',70),block('subscription',30),block('ai',30,{density:'compact'}),block('database',35),block('license',35)],assets,deletedExternalIds:[],cardOrder:{domain:['demo-d1']},featuredRepositoryIds:[],evidenceDecisions:{}};
 };
