@@ -42,7 +42,7 @@ async (page) => {
     sticky=cs.position==='sticky',label=bar.querySelector('.agenda-label');
    return {blurred,buttons,chips,sticky,labelName:label?.getAttribute('aria-label'),more:bar.querySelector('.agenda-more')?.getAttribute('aria-label'),badge:!!bar.querySelector('.demo-badge'),badgeText:bar.querySelector('.demo-badge')?.textContent,bottomPill:!!document.body.querySelector(':scope > .demo-badge')};});
   check(top.sticky&&top.blurred.join()==='topbar','The top bar is the only blur layer on the board: '+top.blurred.join());
-  check(top.buttons.length===4&&top.buttons.every(b=>b.svg&&!b.text.replace(/\d+/g,'')&&b.label&&b.title),'Four named icon buttons: '+JSON.stringify(top.buttons));
+  check(top.buttons.length===5&&top.buttons.every(b=>b.svg&&!b.text.replace(/\d+/g,'')&&b.label&&b.title),'Five named icon buttons: '+JSON.stringify(top.buttons));
   check(top.chips.length===3&&top.chips.every(c=>c.dot&&!c.tile&&c.label&&/^(过期 \d+ 天|今天|明天|\d+ 天)$/.test(c.when)),'Agenda chips are dot, name, bare days: '+JSON.stringify(top.chips));
   check(top.chips[0].label.includes('过期')&&top.labelName==='接下来'&&/全部 \d+ 项/.test(top.more),'Full meaning stays in the accessible names');
   check(top.badge&&top.badgeText==='演示'&&!top.bottomPill,'Demo note is a small badge in the bar, not a bottom pill');

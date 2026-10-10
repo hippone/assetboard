@@ -6,7 +6,7 @@ mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Resources/Board"
 xcrun swiftc "$project_dir/desktop/Assetboard.swift" "$project_dir/desktop/CloudflareInventory.swift" "$project_dir/desktop/LocalDatabase.swift" "$project_dir/desktop/OCRImporter.swift" "$project_dir/desktop/AIRecognizer.swift" "$project_dir/desktop/IconFetcher.swift" "$project_dir/desktop/LocalCLI.swift" -o "$app_dir/Contents/MacOS/Assetboard" -framework Cocoa -framework WebKit -framework PDFKit -framework Vision -lsqlite3 -O
 cp "$project_dir/desktop/Info.plist" "$app_dir/Contents/Info.plist"
 cp "$project_dir/index.html" "$project_dir/styles.css" "$project_dir/material.css" "$project_dir/app.js" "$app_dir/Contents/Resources/Board/"
-cp "$project_dir/theme.js" "$project_dir/asset-data.js" "$project_dir/demo-data.js" "$app_dir/Contents/Resources/Board/"
+cp "$project_dir/theme.js" "$project_dir/asset-data.js" "$project_dir/demo-data.js" "$project_dir/panorama.js" "$project_dir/panorama-view.js" "$app_dir/Contents/Resources/Board/"
 cp "$project_dir/desktop/gmail_local.py" "$app_dir/Contents/Resources/Board/"
 "$app_dir/Contents/MacOS/Assetboard" --make-icon "$project_dir/dist/icon.png"
 icon_dir="$project_dir/dist/AppIcon.iconset"

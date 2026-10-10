@@ -321,7 +321,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, .init("search"), .init("inbox"), .init("theme"), .init("add")]
+        [.flexibleSpace, .init("search"), .init("panorama"), .init("inbox"), .init("theme"), .init("add")]
     }
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         toolbarDefaultItemIdentifiers(toolbar)
@@ -339,6 +339,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             searchField.sendsSearchStringImmediately = true
             item.label = "搜索资产"
             item.view = searchField
+        case "panorama":
+            item.label = "全景"
+            item.toolTip = "全景"
+            item.view = iconButton("square.grid.2x2", "全景", #selector(openPanorama))
         case "inbox":
             inboxButton = iconButton("tray", "待确认", #selector(openInbox))
             item.label = "待确认"
@@ -371,6 +375,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     @objc func addBlock() { webView.evaluateJavaScript("document.querySelector('#add-block').click()") }
     @objc func focusSearch() { window.makeFirstResponder(searchField) }
     @objc func showKeyboardHelp() { webView.evaluateJavaScript("toggleKeysHelp(true)") }
+    @objc func openPanorama() { webView.evaluateJavaScript("togglePanorama()") }
     @objc func openTheme() { webView.evaluateJavaScript("themeDialog()") }
     func demoBlocked() { webView.evaluateJavaScript("window.assetboardDemoBlocked?.()") }
     @objc func openCloudflare() { if demoMode { demoBlocked(); return }; webView.evaluateJavaScript("cloudflareDialog()") }
@@ -937,6 +942,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         editMenu.addItem(keysItem)
         editItem.submenu = editMenu
         menu.addItem(editItem)
+        // No key equivalent on purpose: a plain P belongs to the page (it opens the panorama there), and a menu key would swallow it.
+        let viewItem = NSMenuItem()
+        let viewMenu = NSMenu(title: "显示")
+        let panoramaItem = NSMenuItem(title: "全景", action: #selector(openPanorama), keyEquivalent: "")
+        panoramaItem.target = self
+        viewMenu.addItem(panoramaItem)
+        viewItem.submenu = viewMenu
+        menu.addItem(viewItem)
         NSApplication.shared.mainMenu = menu
     }
 
@@ -1387,8 +1400,14 @@ func testWebView() {
             __fire(edge,'pointerdown',x,y);__fire(edge,'pointermove',x-60,y);__fire(edge,'pointerup',x-60,y);return String(state.blocks.find(b=>b.id==='domain').width<50);})()
             """)
         check(resized == "true", "Edge resize must change the width in WebKit")
+        // Panorama: opens on P, shows a server lane and the registered-status label, closes on Esc.
+        let panorama = run("""
+            (()=>{document.dispatchEvent(new KeyboardEvent('keydown',{key:'p',bubbles:true,cancelable:true}));const opened=!document.querySelector('#panorama').hidden,lane=!!document.querySelector('#panorama .pano-lane'),tag=document.querySelector('.pano-tag')?.textContent||'';
+            document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));return JSON.stringify({opened,lane,tag,closed:document.querySelector('#panorama').hidden});})()
+            """)
+        check(panorama.contains("\"opened\":true") && panorama.contains("\"lane\":true") && panorama.contains("登记状态") && panorama.contains("\"closed\":true"), "Panorama must open on P and close on Esc in WebKit: " + panorama)
         check(run("JSON.stringify(window.__errors)") == "[]", "Page reported script errors: " + run("JSON.stringify(window.__errors)"))
-        print("PASS: WebKit board load, evidence bridge candidates, agenda, in-page delete confirmation, toast undo, AI reply parsing, light/dark appearance, card drag, cross-block move, edge resize")
+        print("PASS: WebKit board load, evidence bridge candidates, agenda, in-page delete confirmation, toast undo, AI reply parsing, light/dark appearance, card drag, cross-block move, edge resize, panorama open and close")
     } catch { fputs("WebView test failed: \(error)\n", stderr); exit(1) }
 }
 

@@ -63,6 +63,11 @@ async (page) => {
    await p.locator('[data-asset="apple"] .card-open').click();await audit(scheme+' linked detail');
    await p.locator('#detail [data-action="link-picker"]').click();await audit(scheme+' link picker');
    await p.evaluate(()=>{$('#modal').close();closeDetail();assetForm('bankcard');});await audit(scheme+' bank card form');
+   // Panorama (v13b): lanes, chips, stopped chip, tray heads and the unmounted strip. The dimmed non-focus state is intentionally excluded.
+   await p.evaluate(()=>{$('#modal').close();closeDetail();state=window.assetboardDemoBoard();state.assets.find(a=>a.id==='demo-d2').stopped=true;state.assets.find(a=>a.id==='demo-s2').stopped=true;render();panoramaOpen(true);});
+   await audit(scheme+' panorama');
+   await p.locator('[data-loose-more]').click();await audit(scheme+' panorama unmounted open');
+   await p.evaluate(()=>panoramaOpen(false));
   }
   if(failures.length)throw new Error(`${failures.length} low-contrast texts:\n`+failures.join('\n'));
   return 'PASS: text contrast in light and dark — '+counts.join(', ');
