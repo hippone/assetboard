@@ -1,0 +1,29 @@
+// Fictional demo board for `--demo` (Mac app) and `?demo` (browser). No real assets, accounts or tokens; never saved.
+window.assetboardDemoBoard=function(){
+ const pad=n=>String(n).padStart(2,'0'),day=offset=>{const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()+offset);return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;};
+ const base={account:'',source:'manual',art:'generic',cost:'未知',url:'',notes:'演示数据'};
+ const repos=['atlas-ui','notes-api','pixel-kit','studio-site','ledger-cli','orbit-bot','paper-docs','glass-theme','tiny-queue','sample-ml','mock-store','field-guide','plain-auth','zen-timer'];
+ const ago=days=>new Date(Date.now()-days*86400000).toISOString();
+ const assets=[
+  {...base,id:'demo-d1',updatedAt:ago(3),type:'domain',name:'example-studio.com',provider:'Namecheap',purpose:'工作室主站',date:day(12),dateKind:'expire',cycle:'yearly'},
+  {...base,id:'demo-d2',updatedAt:ago(1),type:'domain',name:'notes-lab.dev',provider:'Namecheap',purpose:'笔记站点',date:day(160),dateKind:'expire',cycle:'yearly'},
+  {...base,id:'demo-d3',updatedAt:ago(20),type:'domain',name:'sample-shop.cn',provider:'Cloudflare',purpose:'电商试验',date:day(-2),dateKind:'expire'},
+  {...base,id:'demo-d4',updatedAt:ago(40),type:'domain',name:'old-landing.io',provider:'Namecheap',purpose:'旧落地页',hiddenAt:'2026-01-01T00:00:00Z'},
+  {...base,id:'demo-s1',updatedAt:ago(2),type:'server',name:'tokyo-vps',provider:'Vultr',purpose:'API 服务',host:'203.0.113.10',ips:['203.0.113.10','2001:db8::10'],sshUser:'deploy',date:day(26),dateKind:'renew',cycle:'monthly',cost:'$6/月'},
+  {...base,id:'demo-s2',updatedAt:ago(9),type:'server',name:'frankfurt-vps',provider:'Hetzner',purpose:'备份节点',host:'198.51.100.24',ips:['198.51.100.24'],sshPort:'2222',date:day(90),dateKind:'renew',cycle:'yearly'},
+  {...base,id:'demo-s3',updatedAt:ago(30),type:'server',name:'home-nas',provider:'自建',purpose:'照片备份',ips:['192.168.1.20']},
+  {...base,id:'demo-u1',updatedAt:ago(6),type:'subscription',name:'Notes Pro',provider:'Acme',purpose:'写作',date:day(5),dateKind:'renew',cycle:'monthly',cost:'$8/月'},
+  {...base,id:'demo-u2',updatedAt:ago(15),type:'subscription',name:'Design Studio',provider:'Acme',purpose:'界面设计',date:day(48),dateKind:'renew',cycle:'yearly'},
+  {...base,id:'demo-u3',updatedAt:ago(7),type:'subscription',name:'Acme Cloud',provider:'Acme',purpose:'云账号',date:day(70),dateKind:'renew',cycle:'monthly',cost:'$12/月'},
+  {...base,id:'demo-a1',updatedAt:ago(4),type:'ai',name:'AI Pro',provider:'Acme AI',account:'someone@example.net',date:day(9),dateKind:'renew',cycle:'monthly',cost:'$20/月'},
+  {...base,id:'demo-db1',updatedAt:ago(12),type:'database',name:'postgres-main',provider:'ManagedDB',purpose:'主库',date:day(70),dateKind:'renew',cycle:'yearly'},
+  ...repos.map((name,i)=>({...base,id:'demo-r'+i,type:'repository',name:'acme-labs/'+name,provider:'GitHub',account:'acme-labs',purpose:'代码仓库',source:'github',externalId:'demo-'+i,syncStatus:i%3?'私有仓库':'公开仓库',event:i%3?'私有仓库':'公开仓库',updatedAt:new Date(Date.now()-i*86400000*3).toISOString()}))
+ ];
+ // Server relations: two VPS, one account, domains and repositories mounted on them, two orphans (v13).
+ const wire=(child,server,meta)=>{const c=assets.find(a=>a.id===child),s=assets.find(a=>a.id===server);c.links=[...(c.links||[]),server];s.links=[...(s.links||[]),child];if(meta)c.linkMeta={...(c.linkMeta||{}),[server]:meta};};
+ wire('demo-d1','demo-s1');wire('demo-d1','demo-s2',{role:'b'});wire('demo-d2','demo-s1',{proxied:true});wire('demo-d3','demo-s2');wire('demo-d4','demo-s1');
+ wire('demo-r0','demo-s1');wire('demo-r1','demo-s1');wire('demo-r1','demo-s2');wire('demo-db1','demo-s1');
+ wire('demo-u3','demo-s1');wire('demo-u3','demo-s2');
+ const block=(id,width,extra={})=>({id,width,height:null,density:'full',folded:false,...extra});
+ return {blocks:[block('domain',50),block('server',50),block('repository',70),block('subscription',30),block('ai',30,{density:'compact'}),block('database',35),block('license',35)],assets,deletedExternalIds:[],cardOrder:{domain:['demo-d1']},featuredRepositoryIds:[],evidenceDecisions:{}};
+};
