@@ -1418,28 +1418,9 @@ func testWebView() {
     } catch { fputs("WebView test failed: \(error)\n", stderr); exit(1) }
 }
 
-func makeIcon(at path: String) {
-    let image = NSImage(size: NSSize(width: 1024, height: 1024))
-    image.lockFocus()
-    NSColor(calibratedRed: 0.93, green: 0.95, blue: 0.89, alpha: 1).setFill()
-    NSBezierPath(roundedRect: NSRect(x: 20, y: 20, width: 984, height: 984), xRadius: 220, yRadius: 220).fill()
-    let tiles: [(NSRect, NSColor)] = [
-        (NSRect(x: 176, y: 532, width: 390, height: 300), NSColor(calibratedRed: 0.35, green: 0.50, blue: 0.37, alpha: 1)),
-        (NSRect(x: 598, y: 532, width: 250, height: 300), NSColor(calibratedRed: 0.64, green: 0.73, blue: 0.56, alpha: 1)),
-        (NSRect(x: 176, y: 192, width: 250, height: 308), NSColor(calibratedRed: 0.74, green: 0.80, blue: 0.67, alpha: 1)),
-        (NSRect(x: 458, y: 192, width: 390, height: 308), NSColor(calibratedRed: 0.49, green: 0.63, blue: 0.47, alpha: 1))
-    ]
-    for (rect, color) in tiles { color.setFill(); NSBezierPath(roundedRect: rect, xRadius: 50, yRadius: 50).fill() }
-    image.unlockFocus()
-    guard let tiff = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff), let png = bitmap.representation(using: .png, properties: [:]) else { return }
-    try? png.write(to: URL(fileURLWithPath: path))
-}
-
 @main struct AssetboardMain {
 static func main() {
-if CommandLine.arguments.contains("--make-icon"), let target = CommandLine.arguments.last {
-    makeIcon(at: target)
-} else if CommandLine.arguments.contains("--test-store") {
+if CommandLine.arguments.contains("--test-store") {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
     do {

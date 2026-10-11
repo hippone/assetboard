@@ -8,13 +8,15 @@ cp "$project_dir/desktop/Info.plist" "$app_dir/Contents/Info.plist"
 cp "$project_dir/index.html" "$project_dir/styles.css" "$project_dir/material.css" "$project_dir/app.js" "$app_dir/Contents/Resources/Board/"
 cp "$project_dir/theme.js" "$project_dir/asset-data.js" "$project_dir/demo-data.js" "$project_dir/panorama.js" "$project_dir/panorama-view.js" "$app_dir/Contents/Resources/Board/"
 cp "$project_dir/desktop/gmail_local.py" "$app_dir/Contents/Resources/Board/"
-"$app_dir/Contents/MacOS/Assetboard" --make-icon "$project_dir/dist/icon.png"
+icon_src="$project_dir/desktop/icon-1024.png"
 icon_dir="$project_dir/dist/AppIcon.iconset"
+rm -rf "$icon_dir"
 mkdir -p "$icon_dir"
+# icon-1024.png is full-bleed with no baked shadow: macOS applies the mask and shadow (see desktop/icons.py, --legacy for the pre-masked variant).
 for size in 16 32 128 256 512; do
-  sips -z "$size" "$size" "$project_dir/dist/icon.png" --out "$icon_dir/icon_${size}x${size}.png" >/dev/null
+  sips -z "$size" "$size" "$icon_src" --out "$icon_dir/icon_${size}x${size}.png" >/dev/null
   double=$((size * 2))
-  sips -z "$double" "$double" "$project_dir/dist/icon.png" --out "$icon_dir/icon_${size}x${size}@2x.png" >/dev/null
+  sips -z "$double" "$double" "$icon_src" --out "$icon_dir/icon_${size}x${size}@2x.png" >/dev/null
 done
 iconutil -c icns "$icon_dir" -o "$app_dir/Contents/Resources/AppIcon.icns"
 if [[ -n "${SIGNING_IDENTITY:-}" ]]; then
