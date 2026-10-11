@@ -2,9 +2,6 @@
 
 *A local-first dashboard for your domains, VPS, repos and subscriptions. Native macOS app, nothing leaves your machine.*
 
-<!-- {{PROMO_LINK}}: 推广链接位（发帖链接 / 主页），上线前替换或删掉这一行 -->
-{{PROMO_LINK}}
-
 面向个人开发者和小团队的本地数字资产总览：域名、VPS、代码仓库、订阅，放在一块板上，什么时候到期、哪天扣款，一眼看到。
 
 ![主板](screenshots/board.png)
@@ -112,6 +109,3 @@ App 的数据在本机的 SQLite 文件里，菜单“文件 → 打开本地数
 ## 许可证
 
 [MIT](LICENSE)
-
-<!-- {{PROMO_LINK}}: 文末推广链接位，与顶部同一条，上线前替换或删掉 -->
-{{PROMO_LINK}}
