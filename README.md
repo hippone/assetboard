@@ -24,7 +24,7 @@
 到 [Releases](https://github.com/hippone/assetboard/releases) 下载最新的 `Assetboard-macOS-arm64-*.zip`，解压后打开 `Assetboard.app`。
 
 - 系统：macOS 12 或更高，仅提供 Apple Silicon（arm64）版本。
-- 安装包已签名并公证，一般双击即可打开。如果系统仍然提示无法验证开发者，到「系统设置 → 隐私与安全性」点“仍要打开”。
+- 安装包已签名并公证，双击即可打开。
 - 也可以不装，直接在浏览器里试：见下文“从源码构建”。
 
 想先看看效果，用演示数据启动（不读也不写你的数据）：
