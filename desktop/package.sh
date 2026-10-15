@@ -10,7 +10,7 @@ project_dir="${0:A:h:h}"
 "$project_dir/desktop/build.sh"
 
 app_dir="$project_dir/dist/Assetboard.app"
-archive_path="$project_dir/dist/Assetboard-macOS-arm64-0.2.1.zip"
+archive_path="$project_dir/dist/Assetboard-macOS-arm64-0.3.0.zip"
 codesign --verify --deep --strict --verbose=2 "$app_dir"
 ditto -c -k --sequesterRsrc --keepParent "$app_dir" "$archive_path"
 unzip -tq "$archive_path"

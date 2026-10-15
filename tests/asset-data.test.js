@@ -1,6 +1,6 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
-const {removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset}=require('../asset-data.js');
+const {removeUntouchedDemo,orderAssets,moveAsset}=require('../asset-data.js');
 
 const sample={id:'a1',type:'domain',name:'example-notes.studio',provider:'Cloudflare',account:'个人账号',purpose:'写作工具',event:'12 天后到期',date:'2026-10-06',cost:'¥ 89 / 年',warn:true,art:'note',url:'https://example.com',notes:'主站域名，记录每一个从想法到作品的瞬间。'};
 
@@ -28,16 +28,6 @@ test('removes the untouched sample layout and preserves a later custom block',()
  const result=removeUntouchedDemo({blocks:[...original,custom],assets:[]});
  assert.equal(result.removedBlocks,4);
  assert.deepEqual(result.board.blocks,[custom]);
-});
-
-test('shows recently updated repositories first and swaps a compact one into the expanded group',()=>{
- const assets=Array.from({length:8},(_,index)=>({id:`repo-${index}`,type:'repository',name:`repo-${index}`,updatedAt:`2026-09-${String(index+1).padStart(2,'0')}T00:00:00Z`}));
- const initial=repositoryGroups(assets,null);
- assert.deepEqual(initial.featured.map(asset=>asset.id),['repo-7','repo-6','repo-5','repo-4','repo-3','repo-2']);
- assert.deepEqual(initial.compact.map(asset=>asset.id),['repo-1','repo-0']);
- const swapped=swapRepositoryDisplay(assets,initial.featured.map(asset=>asset.id),'repo-0');
- assert.deepEqual(repositoryGroups(assets,swapped).featured.map(asset=>asset.id),['repo-0','repo-7','repo-6','repo-5','repo-4','repo-3']);
- assert.equal(repositoryGroups(assets,swapped).compact.length,2);
 });
 
 test('preserves a user card order and places newly synced cards afterward',()=>{
@@ -334,34 +324,22 @@ test('plans one request per vendor and skips custom, existing and hidden icons',
  const listed=JSON.stringify(plan.hosts);for(const name of ['one.dev','mine.org','box','site'])assert.ok(!listed.includes(`"${name}"`),'The plan never carries asset names');
 });
 
-const {blockDensity,setBlockDensity,ensureBlock:addBlockFor}=require('../asset-data.js');
+const {ensureBlock:addBlockFor}=require('../asset-data.js');
 
-test('reads the card style of old and new blocks',()=>{
- assert.equal(blockDensity({id:'domain',collapsed:true}),'compact');
- assert.equal(blockDensity({id:'domain',collapsed:false}),'full');
- assert.equal(blockDensity({id:'domain',density:'full',collapsed:true}),'full');
- const block={id:'domain',collapsed:true};
- setBlockDensity(block,'full');
- assert.deepEqual(block,{id:'domain',density:'full'});
+test('adds a category block once',()=>{
  const board={blocks:[]};
  addBlockFor(board,'bankcard');
  assert.deepEqual(board.blocks,[{id:'bankcard',width:50,height:null,density:'full',folded:false}]);
 });
 
-test('display limits cap counts, rows and amber dates without touching data',()=>{
- const {formatCount,rowLimit,wholeRows,strongDateIds,DISPLAY_LIMITS}=require('../asset-data.js');
+test('counts read 99+ beyond the display limit',()=>{
+ const {formatCount,DISPLAY_LIMITS}=require('../asset-data.js');
  assert.equal(formatCount(7),'7');assert.equal(formatCount(99),'99');assert.equal(formatCount(100),'99+');assert.equal(formatCount('x'),'0');
- assert.equal(rowLimit(5,4,3),5);assert.equal(rowLimit(13,4,3),12);assert.equal(rowLimit(3,0,0),1);
- assert.equal(wholeRows(3,4,2),3);assert.equal(wholeRows(6,4,2),4);assert.equal(wholeRows(6,3,2),6);assert.equal(wholeRows(12,4,2),8);assert.equal(wholeRows(6,5,2),5);
- const now=new Date(2026,9,9),day=n=>{const d=new Date(2026,9,9+n);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
- const assets=[-3,2,5,8,20,90].map((n,i)=>({id:'a'+i,type:'domain',name:'d'+i,date:day(n)})).concat({id:'h',type:'domain',name:'h',date:day(1),hiddenAt:'x'});
- const ids=strongDateIds(assets,now);
- assert.deepEqual([...ids].sort(),['a0','a1','a2','a3']);
- assert.equal(DISPLAY_LIMITS.columns,4);
+ assert.deepEqual(DISPLAY_LIMITS,{count:99});
 });
 
 test('display order: manual order first, then most recently updated, never by urgency',()=>{
- const {arrangeAssets,recentFirst,touchedPrefix,swapInOrder,bringToFront,recencyTime}=require('../asset-data.js');
+ const {arrangeAssets,recentFirst,touchedPrefix,bringToFront,recencyTime}=require('../asset-data.js');
  const assets=[
   {id:'old',name:'old'},
   {id:'created',name:'created',createdAt:'2026-10-01T00:00:00Z'},
@@ -376,15 +354,8 @@ test('display order: manual order first, then most recently updated, never by ur
  assert.deepEqual(arrangeAssets(assets,undefined).map(a=>a.id),['edited','created','urgent','old','older'],'old saves without cardOrder still work');
  assert.deepEqual(touchedPrefix(['a','b','c','d'],['b','a','c','d']),['b','a']);
  assert.deepEqual(touchedPrefix(['a','b'],['a','b']),[]);
- assert.deepEqual(swapInOrder(['a','b','c','d'],'d','b'),['a','d','c','b']);
- assert.deepEqual(swapInOrder(['a','b'],'a','x'),['a','b']);
  assert.deepEqual(bringToFront(['a','b','c'],'c'),['c','a','b']);
  assert.deepEqual(bringToFront(undefined,'c'),['c']);
-});
-
-test('repositories feature the most recently updated, falling back to import time',()=>{
- const assets=[{id:'a',type:'repository',name:'a',createdAt:'2026-10-01T00:00:00Z'},...Array.from({length:6},(_,i)=>({id:'r'+i,type:'repository',name:'r'+i,updatedAt:`2026-09-0${i+1}T00:00:00Z`}))];
- assert.deepEqual(repositoryGroups(assets,[]).featured.map(a=>a.id),['a','r5','r4','r3','r2','r1']);
 });
 
 test('category quick actions are open/copy only, local folders only in the app',()=>{

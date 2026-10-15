@@ -67,10 +67,10 @@ async (page) => {
   await p.keyboard.press('Escape');await p.waitForTimeout(200);
   // P from the board: on a server card it focuses that server, on a mounted card it focuses its server, on a loose card it opens the overview.
   const pOn=async sel=>{await p.focus(sel);await p.keyboard.press('p');await p.waitForTimeout(250);const r=await p.evaluate(()=>document.querySelector('.pano-hero')?.dataset.hero||'overview');await p.keyboard.press('Escape');await p.waitForTimeout(150);if(await p.evaluate(()=>!document.querySelector('#panorama').hidden))await p.keyboard.press('Escape');await p.waitForTimeout(150);return r;};
-  check(await pOn('#board [data-asset="demo-s2"] .card-open')==='demo-s2','P on a server card focuses that server');
-  check(await pOn('#board [data-asset="demo-d2"] .card-open')==='demo-s1','P on a mounted card focuses the server it sits on');
+  check(await pOn('#board [data-asset="demo-s2"] .item-open')==='demo-s2','P on a server card focuses that server');
+  check(await pOn('#board [data-asset="demo-d2"] .item-open')==='demo-s1','P on a mounted card focuses the server it sits on');
   const loose=await p.evaluate(()=>state.assets.find(a=>a.type==='repository'&&!a.hiddenAt&&!serverChain(state.assets,a).servers.length)?.id);
-  check(await pOn(`#board [data-asset="${loose}"] .card-open`)==='overview','P on an unmounted card opens the overview');
+  check(await pOn(`#board [data-asset="${loose}"] .item-open`)==='overview','P on an unmounted card opens the overview');
   // Narrow window: rail becomes a strip, columns stack, no sideways scroll.
   await p.setViewportSize({width:390,height:844});await p.keyboard.press('p');await p.waitForTimeout(250);await p.click('[data-lane-head="demo-s1"]');await p.waitForTimeout(250);
   const n=await p.evaluate(()=>{const b=document.querySelector('.pano-body'),r=document.querySelector('.pano-rail').getBoundingClientRect();return {layout:b.dataset.layout,over:b.scrollWidth>b.clientWidth+1,stripH:r.height<120,cols:getComputedStyle(document.querySelector('.pf-cols')).gridTemplateColumns.split(' ').length};});

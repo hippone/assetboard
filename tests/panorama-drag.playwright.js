@@ -95,7 +95,7 @@ async (page) => {
   check(await p.evaluate(()=>!document.querySelector('.pano-ghost')),'Reduced motion: the ghost is gone at once');await p.mouse.up();
   // Board: L on a card opens the link picker (the manual path outside the panorama).
   await p.emulateMedia({reducedMotion:'no-preference'});await p.mouse.up();await p.keyboard.press('Escape');await p.waitForTimeout(200);if(await p.evaluate(()=>!document.querySelector('#panorama').hidden))await p.keyboard.press('Escape');await p.waitForTimeout(200);
-  await p.focus('#board [data-asset="demo-d2"] .card-open');await p.keyboard.press('l');await p.waitForTimeout(200);
+  await p.focus('#board [data-asset="demo-d2"] .item-open');await p.keyboard.press('l');await p.waitForTimeout(200);
   check(await p.evaluate(()=>$('#modal').open&&/关联到/.test(document.querySelector('#modal').textContent)),'L on a board card opens the link picker');
   check(!errors.length,'No page errors: '+errors.join());
   return 'PASS: 4px threshold, lifted ghost + hole + slot + 55% dim, move/⌥ also/unmounted unlink, one undo step, cancel paths, from the strip, focused rail target, keyboard L twin, reduced motion';

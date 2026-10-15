@@ -48,11 +48,17 @@ async (page) => {
     render();
    });
    await audit(scheme+' board');
-   await p.locator('.block.domain').hover();await audit(scheme+' hover handles');
-   await p.locator('[data-asset="a"] .card-open').click();await audit(scheme+' detail');
-   await p.locator('#detail [data-action="hide-asset"]').click();await audit(scheme+' toast');
-   await p.locator('[data-action="toggle-hidden"][data-id="domain"]').click();await audit(scheme+' hidden cards');
-   await p.locator('[data-action="toggle-hidden"][data-id="domain"]').click();
+   await p.locator('.group[data-group="domain"] .group-head').hover();await audit(scheme+' hover handles');
+   await p.locator('[data-asset="b"]').hover();await audit(scheme+' hovered row');
+   await p.locator('[data-asset="a"] .item-open').click();await audit(scheme+' detail');await audit(scheme+' selected row','#board [data-asset="a"]');
+   await p.locator('#detail [data-action="asset-menu"]').click();await audit(scheme+' menu','#menu');
+   await p.locator('#menu .menu-item >> nth=1').hover();await audit(scheme+' menu hover','#menu');
+   await p.locator('#menu [data-action="hide-asset"]').click();await audit(scheme+' toast');
+   await p.locator('#sidebar .nav-item[data-id="hidden"]').click();await audit(scheme+' hidden rows');
+   await p.locator('#sidebar .nav-item[data-id="upcoming"]').click();await audit(scheme+' upcoming');
+   await p.locator('#sidebar .nav-item[data-id="all"]').click();
+   await p.locator('#layout-toggle [data-id="grid"]').click();await audit(scheme+' grid');
+   await p.locator('#layout-toggle [data-id="list"]').click();
    await p.locator('#search').fill('nothing-matches');await audit(scheme+' empty search');await p.locator('#search').fill('');
    await p.evaluate(()=>inboxDialog(false));await audit(scheme+' inbox');
    await p.locator('[data-action="candidate-review"]').first().click();await audit(scheme+' review');
@@ -60,14 +66,13 @@ async (page) => {
    await p.evaluate(()=>{$('#modal').close();confirmDialog('删除这条记录？','将删除「soon.dev」在 Assetboard 中的记录。','删除记录',true);});await audit(scheme+' confirm');
    await p.evaluate(()=>{$('#modal').close();themeDialog();});await audit(scheme+' theme');
    await p.evaluate(()=>{$('#modal').close();syncFollowUp('GitHub',{read:1,collisions:[{assetId:'a',name:'soon.dev',fields:{}}]},['Pages 权限不足']);});await audit(scheme+' sync follow-up');
-   await p.evaluate(()=>{$('#modal').close();state.blocks.unshift({id:'bankcard',width:50,collapsed:false,height:null},{id:'appleid',width:50,collapsed:false,height:null});state.assets.push({id:'card',type:'bankcard',name:'汇丰 One',provider:'汇丰香港',account:'',region:'HK',last4:'4821',network:'Visa',date:isoDay(localDay()+20),dateKind:'expire',art:'generic',source:'manual',links:['apple']},{id:'apple',type:'appleid',name:'美区主号',provider:'Apple',account:'me@example.org',region:'US',art:'generic',source:'manual',links:['card']});render();});await audit(scheme+' priority cards');
-   await p.locator('[data-asset="apple"] .card-open').click();await audit(scheme+' linked detail');
+   await p.evaluate(()=>{$('#modal').close();state.blocks.unshift({id:'bankcard',width:50,collapsed:false,height:null},{id:'appleid',width:50,collapsed:false,height:null});state.assets.push({id:'card',type:'bankcard',name:'汇丰 One',provider:'汇丰香港',account:'',region:'HK',last4:'4821',network:'Visa',date:isoDay(localDay()+20),dateKind:'expire',art:'generic',source:'manual',links:['apple']},{id:'apple',type:'appleid',name:'美区主号',provider:'Apple',account:'me@example.org',region:'US',art:'generic',source:'manual',links:['card']});render();});await audit(scheme+' priority rows');
+   await p.locator('[data-asset="apple"] .item-open').click();await audit(scheme+' linked detail');
    await p.locator('#detail [data-action="link-picker"]').click();await audit(scheme+' link picker');
    await p.evaluate(()=>{$('#modal').close();closeDetail();assetForm('bankcard');});await audit(scheme+' bank card form');
    // Panorama (v13b): lanes, chips, stopped chip, tray heads and the unmounted strip. The dimmed non-focus state is intentionally excluded.
    await p.evaluate(()=>{$('#modal').close();closeDetail();state=window.assetboardDemoBoard();state.assets.find(a=>a.id==='demo-d2').stopped=true;state.assets.find(a=>a.id==='demo-s2').stopped=true;render();scrollTo(0,0);});await p.waitForTimeout(450);
-   // Only the stopped cards: this audit reads background colours, not gradients, so the rest of the board is judged elsewhere.
-   await audit(scheme+' stopped domain card','#board [data-asset="demo-d2"]');await audit(scheme+' stopped server card','#board [data-asset="demo-s2"]');
+   await audit(scheme+' stopped domain row','#board [data-asset="demo-d2"]');await audit(scheme+' stopped server row','#board [data-asset="demo-s2"]');
    await p.evaluate(()=>panoramaOpen(true));
    await audit(scheme+' panorama');
    await p.locator('[data-loose-more]').click();await audit(scheme+' panorama unmounted open');

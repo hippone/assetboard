@@ -1,4 +1,4 @@
-// v13 B: server relations. Marker instead of name capsules, Peek, grouped detail, legal pairs in the picker, standby/proxied marks, hidden and deleted ends.
+// v13 B: server relations. Marker instead of name capsules, a calm list (no Peek since v15), grouped detail, legal pairs in the picker, standby/proxied marks, hidden and deleted ends.
 async (page) => {
  const check=(ok,message)=>{if(!ok)throw new Error(message);};
  const context=await page.context().browser().newContext({viewport:{width:1320,height:822}});const p=await context.newPage();const errors=[];p.on('pageerror',e=>errors.push(e.message));
@@ -14,24 +14,14 @@ async (page) => {
   m=await mark('demo-u3');check(m&&m.label==='名下 2 台服务器'&&m.text==='2','Account: its server count: '+JSON.stringify(m));
   check(await p.evaluate(()=>!document.querySelector('#board [data-asset="demo-d1"] .link-chip')&&!/tokyo-vps/.test(document.querySelector('#board [data-asset="demo-d1"]').innerText)),'No server-name capsule on the card');
   check(await p.evaluate(()=>!document.querySelector('#board [data-asset="demo-r2"] .rel-mark')&&!document.querySelector('#board [data-asset="demo-s3"] .rel-mark')),'Orphans and empty servers stay quiet');
-  // Peek: hover a server, related cards get a dashed outline, the rest step back to 38%, nothing moves, no lines.
+  // v15: the list draws no lines and dims nothing on hover; relations live in the marker, the inspector and the panorama.
   const before=await p.evaluate(()=>[...document.querySelectorAll('#board [data-asset]')].slice(0,30).map(n=>{const r=n.getBoundingClientRect();return [Math.round(r.x),Math.round(r.y),Math.round(r.width),Math.round(r.height)].join();}).join('|'));
-  await p.hover('#board [data-asset="demo-s1"] .card-open');await p.waitForTimeout(450);
-  const peek=await p.evaluate(()=>{const op=id=>getComputedStyle(document.querySelector(`#board [data-asset="${id}"]`)).opacity,peer=id=>!!document.querySelector(`#board [data-asset="${id}"]`)?.classList.contains('link-peer');return {on:document.querySelector('#board').classList.contains('peeking'),related:['demo-d1','demo-d2','demo-r0','demo-r1','demo-db1','demo-u3'].map(i=>peer(i)&&op(i)==='1'),dim:['demo-d3','demo-r2','demo-s2','demo-u1'].map(i=>op(i)),self:op('demo-s1'),lines:document.querySelectorAll('.link-lines path').length,hidden:peer('demo-d4')};});
-  check(peek.on&&peek.related.every(Boolean)&&peek.dim.every(v=>v==='0.38')&&peek.self==='1','Peek: related stay, others at .38: '+JSON.stringify(peek));
-  check(peek.lines===0,'The board draws no lines for server relations');
+  await p.hover('#board [data-asset="demo-s1"] .item-open');await p.waitForTimeout(300);
+  const calm=await p.evaluate(()=>({peek:document.querySelector('#board').classList.contains('peeking')||!!document.querySelector('#board .link-peer'),lines:document.querySelectorAll('.link-lines path').length,dim:['demo-d3','demo-r2','demo-s2','demo-u1'].map(id=>getComputedStyle(document.querySelector(`#board [data-asset="${id}"]`)).opacity)}));
+  check(!calm.peek&&calm.lines===0&&calm.dim.every(v=>v==='1'),'Hover neither dims nor draws lines: '+JSON.stringify(calm));
   const mid=await p.evaluate(()=>[...document.querySelectorAll('#board [data-asset]')].slice(0,30).map(n=>{const r=n.getBoundingClientRect();return [Math.round(r.x),Math.round(r.y),Math.round(r.width),Math.round(r.height)].join();}).join('|'));
-  check(mid===before,'Peek moves and resizes nothing');
-  await p.mouse.move(5,5);await p.waitForTimeout(350);
-  check(await p.evaluate(()=>!document.querySelector('#board').classList.contains('peeking')&&!document.querySelector('#board .link-peer')&&getComputedStyle(document.querySelector('#board [data-asset="demo-d3"]')).opacity==='1'),'Leaving restores everything');
-  // A brief pass over a card does not flash the board (120ms delay).
-  await p.hover('#board [data-asset="demo-s1"] .card-open');await p.mouse.move(5,5);await p.waitForTimeout(250);
-  check(await p.evaluate(()=>!document.querySelector('#board').classList.contains('peeking')),'A pass shorter than the delay never dims the board');
-  // Keyboard focus triggers Peek too; domain reaches its servers and their account.
-  await p.focus('#board [data-asset="demo-d3"] .card-open');await p.waitForTimeout(450);
-  const dpeer=await p.evaluate(()=>[...document.querySelectorAll('#board .link-peer')].map(n=>n.dataset.asset).sort().join());
-  check(dpeer==='demo-s2,demo-u3','Domain Peek: its server and that server\'s account: '+dpeer);
-  await p.evaluate(()=>document.activeElement.blur());await p.mouse.move(5,5);await p.waitForTimeout(200);
+  check(mid===before,'Hover moves and resizes nothing');
+  await p.mouse.move(5,5);
   // Detail of a domain: servers grouped, standby and proxied toggles, names and addresses.
   await p.evaluate(()=>showDetail('demo-d1'));
   const dd=await p.evaluate(()=>({rows:[...document.querySelectorAll('#detail .link-row')].map(r=>r.querySelector('b').textContent+'|'+r.querySelector('small').textContent),tags:[...document.querySelectorAll('#detail .link-tag')].map(t=>t.textContent+':'+t.getAttribute('aria-pressed')),groups:document.querySelectorAll('#detail .link-group').length,titles:document.querySelectorAll('#detail .link-group-title').length}));
@@ -77,7 +67,7 @@ async (page) => {
   const h=await mark('demo-d2');check(!h,'Only server hidden: the domain card shows no marker: '+JSON.stringify(h));
   await p.evaluate(()=>{delete state.assets.find(a=>a.id==='demo-s1').hiddenAt;render();});
   // Deleting a server: the confirmation says how many links go; links and marks go with it; one undo restores both.
-  await p.evaluate(()=>showDetail('demo-s1'));await p.click('#detail [data-action="delete-asset"]');await p.waitForSelector('#modal[open]');
+  await p.evaluate(()=>showDetail('demo-s1'));await p.click('#detail [data-action="asset-menu"]');await p.click('#menu [data-action="delete-asset"]');await p.waitForSelector('#modal[open]');
   check(/同时解除 7 项关联，域名和仓库本身不受影响/.test(await p.textContent('#modal')),'Delete states the links that go: '+(await p.textContent('#modal')).slice(0,200));
   await p.click('#modal [data-action="confirm-yes"], #modal .button.danger');await p.waitForTimeout(300);
   check(await p.evaluate(()=>!state.assets.some(a=>a.id==='demo-s1')&&state.assets.filter(a=>(a.links||[]).includes('demo-s1')).length===0&&!JSON.stringify(state.assets.find(a=>a.id==='demo-d1').linkMeta||{}).includes('demo-s1')),'Links and marks to the deleted server are gone');
@@ -87,11 +77,12 @@ async (page) => {
   check(await p.evaluate(()=>state.assets.find(a=>a.id==='demo-d1').links.includes('demo-s1')&&state.assets.find(a=>a.id==='demo-d1').linkMeta['demo-s1'].proxied===true),'One undo restores the server with its links and marks');
   // Reduced motion: no opacity transition.
   await p.emulateMedia({reducedMotion:'reduce'});await p.waitForTimeout(150);
-  check(await p.evaluate(()=>parseFloat(getComputedStyle(document.querySelector('#board .asset-card')).transitionDuration)===0),'Reduced motion: no card transition');
-  // Priority-type links keep their capsules.
+  check(await p.evaluate(()=>parseFloat(getComputedStyle(document.querySelector('#board .row')).transitionDuration)===0),'Reduced motion: no row transition');
+  // Priority-type links are listed in the inspector by name.
   await p.evaluate(()=>{state.assets.push({id:'bk',type:'bankcard',name:'Visa',provider:'Bank',last4:'1234',updatedAt:new Date().toISOString(),links:['demo-a1'],source:'manual'});state.assets.find(a=>a.id==='demo-a1').links=['bk'];state.blocks.some(b=>b.id==='bankcard')||state.blocks.push({id:'bankcard',width:30,height:null,density:'full',folded:false});render();});
-  check(await p.evaluate(()=>!!document.querySelector('#board [data-asset="demo-a1"] .link-chip')),'Priority-type links keep their chips');
+  await p.evaluate(()=>showDetail('demo-a1',{focus:false}));
+  check(await p.evaluate(()=>[...document.querySelectorAll('#detail .link-row b')].some(b=>/Visa/.test(b.textContent))),'Priority-type links are listed in the inspector');
   check(!errors.length,'No page errors: '+errors.join());
-  return 'PASS: relation marker (icon, count, colour dot, named label), no name capsules, Peek without movement or lines and with a delay, grouped detail with +N, standby and proxy marks, legal-pair picker, one account per server with undo, hidden/deleted ends, reduced motion';
+  return 'PASS: relation marker (icon, count, colour dot, named label), no name capsules, calm hover without movement or lines, grouped detail with +N, standby and proxy marks, legal-pair picker, one account per server with undo, hidden/deleted ends, reduced motion';
  }finally{await context.close();}
 }

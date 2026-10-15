@@ -347,16 +347,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         case "panorama":
             item.label = "全景"
             item.toolTip = "全景"
-            item.view = iconButton("square.grid.2x2", "全景", #selector(openPanorama))
+            item.view = iconButton("square.split.bottomrightquarter", "全景", #selector(openPanorama))
         case "inbox":
             inboxButton = iconButton("tray", "待确认", #selector(openInbox))
             item.label = "待确认"
             item.toolTip = "待确认"
             item.view = inboxButton
         case "add":
-            item.label = "添加区块"
-            item.toolTip = "添加区块"
-            item.view = iconButton("plus", "添加区块", #selector(addBlock))
+            item.label = "添加资产"
+            item.toolTip = "添加资产"
+            item.view = iconButton("plus", "添加资产", #selector(addBlock))
         default: return nil
         }
         return item
@@ -1358,9 +1358,9 @@ func testWebView() {
         }
         let rows = String(data: try JSONSerialization.data(withJSONObject: try store.database.listEvidence()), encoding: .utf8)!
         _ = run("window.assetboardEvidenceList(\(rows));''")
-        let evidence = run("JSON.stringify({pending:pendingCount(),date:candidates()[0]?.date?.value,cost:candidates()[0]?.cost,agenda:document.querySelector('#agenda').innerText})")
+        let evidence = run("JSON.stringify({pending:pendingCount(),date:candidates()[0]?.date?.value,cost:candidates()[0]?.cost,agenda:(setView('upcoming'),document.querySelector('#board').innerText)})")
         precondition(evidence.contains("\"pending\":1") && evidence.contains("2099-10-06") && evidence.contains("$15.00 / 月") && evidence.contains("3 天"), evidence)
-        let opened = run("document.querySelector('[data-asset=\"a\"] .card-open').click();document.querySelector('#detail [data-action=\"delete-asset\"]').click();String(!!document.querySelector('#modal[open] #confirm-yes'))")
+        let opened = run("document.querySelector('[data-asset=\"a\"] .item-open').click();document.querySelector('#detail [data-action=\"asset-menu\"]').click();document.querySelector('#menu [data-action=\"delete-asset\"]').click();String(!!document.querySelector('#modal[open] #confirm-yes'))")
         precondition(opened == "true", "Delete must ask with the in-page dialog in WebKit")
         let saves = handler.actions.filter { $0 == "save" }.count
         let deleted = run("document.querySelector('#confirm-yes').click();''")
@@ -1376,11 +1376,11 @@ func testWebView() {
         wait { run("document.documentElement.dataset.scheme") == "dark" }
         let darkCanvas = run("getComputedStyle(document.body).backgroundColor+getComputedStyle(document.body,'::before').backgroundImage")
         precondition(lightCanvas != darkCanvas && handler.actions.filter { $0 == "themeColor" }.count >= 2, "Page must follow the system appearance: \(lightCanvas) / \(darkCanvas)")
-        // Direct manipulation with synthetic pointer events: card reorder, cross-block move, edge resize.
+        // Direct manipulation with synthetic pointer events: row reorder, drop on a sidebar category, list/grid switch.
         let setup = run("""
             state.blocks.push({id:'server',width:50,collapsed:false,height:null});
             state.assets.push({id:'b',type:'domain',name:'b.dev',provider:'R',account:'',art:'generic',source:'manual'},{id:'s',type:'server',name:'box',provider:'H',account:'',art:'generic',source:'manual'});
-            render();
+            setView('all');
             window.__fire=(el,type,x,y)=>el.dispatchEvent(new PointerEvent(type,{bubbles:true,cancelable:true,pointerId:7,pointerType:'mouse',isPrimary:true,button:0,buttons:type==='pointerup'?0:1,clientX:x,clientY:y}));
             window.__center=el=>{const r=el.getBoundingClientRect();return [r.left+r.width/2,r.top+r.height/2];};
             String(CSS.supports('translate','1px 2px')&&CSS.supports('scale','1.02'))
@@ -1389,22 +1389,18 @@ func testWebView() {
         let reorder = run("""
             (()=>{const a=document.querySelector('[data-asset="a"]'),[ax,ay]=__center(a),[bx,by]=__center(document.querySelector('[data-asset="b"]'));
             __fire(a,'pointerdown',ax,ay);__fire(document,'pointermove',ax+10,ay);const lifted=a.classList.contains('is-dragging')&&getComputedStyle(a).position==='fixed';
-            __fire(document,'pointermove',bx+40,by);const slot=!!document.querySelector('.domain .drop-slot');__fire(document,'pointerup',bx+40,by);return JSON.stringify({lifted,slot});})()
+            __fire(document,'pointermove',bx+40,by);const slot=!!document.querySelector('.group[data-group="domain"] .drop-slot');__fire(document,'pointerup',bx+40,by);return JSON.stringify({lifted,slot});})()
             """)
-        check(reorder == "{\"lifted\":true,\"slot\":true}", "Card drag must lift and preview in WebKit: " + reorder)
+        check(reorder == "{\"lifted\":true,\"slot\":true}", "Row drag must lift and preview in WebKit: " + reorder)
         wait("card order") { run("String(state.cardOrder?.domain?.join(','))") == "b,a" && run("String(!document.querySelector('.drop-slot,.is-dragging'))") == "true" }
         let crossed = run("""
-            (()=>{const b=document.querySelector('[data-asset="b"]'),server=document.querySelector('.block.server'),[x,y]=__center(b),[sx,sy]=__center(server);
+            (()=>{const b=document.querySelector('[data-asset="b"]'),server=document.querySelector('#sidebar .nav-item[data-block="server"]'),[x,y]=__center(b),[sx,sy]=__center(server);
             __fire(b,'pointerdown',x,y);__fire(document,'pointermove',x+10,y);__fire(document,'pointermove',sx,sy);const into=server.classList.contains('drop-into');__fire(document,'pointerup',sx,sy);return String(into);})()
             """)
         wait("cross-block category") { run("state.assets.find(a=>a.id==='b').type") == "server" }
-        check(crossed == "true", "Cross-block target must be highlighted in WebKit")
-        // The off-screen test view runs no animation frames, so the release applies the last pointer position directly.
-        let resized = run("""
-            (()=>{const edge=document.querySelector('.block.domain > .resize-edge[data-edge="x"]'),r=edge.getBoundingClientRect(),x=r.left+4,y=r.top+r.height/2;
-            __fire(edge,'pointerdown',x,y);__fire(edge,'pointermove',x-60,y);__fire(edge,'pointerup',x-60,y);return String(state.blocks.find(b=>b.id==='domain').width<50);})()
-            """)
-        check(resized == "true", "Edge resize must change the width in WebKit")
+        check(crossed == "true", "A sidebar category must highlight as a drop target in WebKit")
+        let grid = run("document.querySelector('#layout-toggle [data-id=\"grid\"]').click();String(layoutMode==='grid'&&document.querySelectorAll('#board .gcard').length===3)")
+        check(grid == "true", "The list/grid switch must work in WebKit")
         // Panorama: opens on P, shows a server lane and the registered-status label, closes on Esc.
         let panorama = run("""
             (()=>{document.dispatchEvent(new KeyboardEvent('keydown',{key:'p',bubbles:true,cancelable:true}));const opened=!document.querySelector('#panorama').hidden,lane=!!document.querySelector('#panorama .pano-lane'),tag=document.querySelector('.pano-tag')?.textContent||'';
@@ -1414,7 +1410,7 @@ func testWebView() {
             """)
         check(panorama.contains("\"opened\":true") && panorama.contains("\"lane\":true") && panorama.contains("\"hero\":true") && panorama.contains("\"back\":true") && panorama.contains("登记状态") && panorama.contains("\"closed\":true"), "Panorama must open on P, focus a server on click, and peel with Esc in WebKit: " + panorama)
         check(run("JSON.stringify(window.__errors)") == "[]", "Page reported script errors: " + run("JSON.stringify(window.__errors)"))
-        print("PASS: WebKit board load, evidence bridge candidates, agenda, in-page delete confirmation, toast undo, AI reply parsing, light/dark appearance, card drag, cross-block move, edge resize, panorama open and close")
+        print("PASS: WebKit board load, evidence bridge candidates, upcoming view, in-page delete confirmation from the inspector menu, toast undo, AI reply parsing, light/dark appearance, row drag, drop on a sidebar category, list/grid switch, panorama open and close")
     } catch { fputs("WebView test failed: \(error)\n", stderr); exit(1) }
 }
 

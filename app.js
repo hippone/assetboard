@@ -42,7 +42,7 @@ window.assetboardConnectionState=connections=>{
  const githubStatus=$('#github-status');
  if(githubStatus)githubStatus.textContent=nativeStore.githubConnected?'已连接':nativeStore.keychainUnavailable?'钥匙串没有响应，可用 gh 同步':'未连接';
 };
-let state=structuredClone(seed),query='',focusCategory=null,history=[],future=[],activeAsset=null,lastFocus=null,toastTimer,showHiddenBlocks=new Set(),assetFormSnapshot=null;
+let state=structuredClone(seed),query='',view='all',layoutMode='list',history=[],future=[],activeAsset=null,lastFocus=null,toastTimer,assetFormSnapshot=null;
 let migratedLegacyData=false;
 try{const saved=demoMode?window.assetboardDemoBoard():nativeStore?nativeStore.data:JSON.parse(localStorage.getItem(key));if(saved&&Array.isArray(saved.blocks)&&Array.isArray(saved.assets)&&saved.blocks.every(b=>cats[b.id])){const migration=removeUntouchedDemo(saved);state=migration.board;migratedLegacyData=!!(migration.removed||migration.removedBlocks);}}catch{} if(!Array.isArray(state.deletedExternalIds))state.deletedExternalIds=[];
 let saveSequence=0;
@@ -50,7 +50,7 @@ window.assetboardSaved=(sequence,success)=>{if(sequence!==saveSequence)return;if
 function save(){if(demoMode)return;try{if(nativeStore)window.webkit.messageHandlers.assetboard.postMessage({action:'save',sequence:++saveSequence,data:state});else localStorage.setItem(key,JSON.stringify(state));}catch{toast('保存失败，请保留此窗口');}}
 function checkpoint(){history.push(JSON.stringify(state));if(history.length>25)history.shift();future=[];}
 function toast(message,undoable=false,redoable=false){clearTimeout(toastTimer);const offer=(undoable&&history.length)||(redoable&&future.length);$('#toast').innerHTML=`<span>${esc(message)}</span>${undoable&&history.length?'<button class="toast-undo" data-action="undo">撤销</button>':redoable&&future.length?'<button class="toast-undo" data-action="redo">重做</button>':''}`;$('#toast').classList.add('show');toastTimer=setTimeout(()=>$('#toast').classList.remove('show'),offer?6000:3000);}
-function restoreSnapshot(json){state=JSON.parse(json);save();if(activeAsset&&!state.assets.some(a=>a.id===activeAsset))closeDetail();else if(activeAsset)showDetail(activeAsset);render();}
+function restoreSnapshot(json){state=JSON.parse(json);save();if(activeAsset&&!state.assets.some(a=>a.id===activeAsset))closeDetail();else if(activeAsset)showDetail(activeAsset,{focus:false});render();}
 function undo(){if(!history.length){toast('没有可撤销的');return;}future.push(JSON.stringify(state));if(future.length>25)future.shift();restoreSnapshot(history.pop());toast('已撤销',false,true);}
 function redo(){if(!future.length){toast('没有可重做的');return;}history.push(JSON.stringify(state));if(history.length>25)history.shift();restoreSnapshot(future.pop());toast('已重做',true);}
 function confirmDialog(title,message,confirmLabel,danger=false){return new Promise(resolve=>{modal(title,`<p class="form-note confirm-message">${esc(message).replaceAll('\n','<br>')}</p><div class="confirm-actions"><button class="button ${danger?'danger':'primary'}" id="confirm-yes">${esc(confirmLabel)}</button><button class="button" id="confirm-no">取消</button></div>`);const dialog=$('#modal');let settled=false;const finish=value=>{if(settled)return;settled=true;dialog.removeEventListener('close',cancel);resolve(value);},cancel=()=>finish(false);dialog.addEventListener('close',cancel);$('#confirm-yes').onclick=()=>{finish(true);dialog.close();};$('#confirm-no').onclick=()=>dialog.close();$('#confirm-no').focus();});}
@@ -60,11 +60,13 @@ function rememberDeleted(a){const key=assetSyncKey(a);if(!key)return;if(!Array.i
 function icon(type){return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[type]||icons.storage}</svg>`;}
 // Small UI glyphs for buttons and chips; every icon-only button must carry title and aria-label.
 const uiGlyphs={download:'<path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14"/>',file:'<path d="M7 3.5h6.5L18 8v12.5H7z"/><path d="M13.5 3.5V8H18"/>',plus:'<path d="M12 5v14M5 12h14"/>',mail:'<path d="M4 6h16v12H4zM4 6l8 7 8-7"/>',image:'<rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="m5 17 4.5-4.5L13 16l2.5-2.5L19 17"/>',terminal:'<rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="m7.5 10 3 2.5-3 2.5M13 15h3.5"/>',refresh:'<path d="M19.5 9.5A8 8 0 0 0 5.2 7.8M4.5 14.5a8 8 0 0 0 14.3 1.7"/><path d="M5 4v4h4M19 20v-4h-4"/>',cloud:'<path d="M3.5 15.5h12a4 4 0 0 0 .4-8 6 6 0 0 0-11.5 1.8A3.5 3.5 0 0 0 3.5 15.5Z"/>',github:'<path d="M9 19c-4 1.5-4-2-7-2m14 5v-3.9a3.4 3.4 0 0 0-1-2.6c3.2-.3 6.5-1.5 6.5-7A5.2 5.2 0 0 0 19 4.6 4.8 4.8 0 0 0 18.9 1S17.7.7 15 2.5a10.4 10.4 0 0 0-6 0C6.3.7 5.1 1 5.1 1A4.8 4.8 0 0 0 5 4.6 5.2 5.2 0 0 0 3.5 8.5c0 5.4 3.3 6.7 6.5 7a3.4 3.4 0 0 0-1 2.6V22"/>',back:'<path d="M10 6 4 12l6 6M4 12h16"/>',info:'<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/>',lock:'<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3"/>',warn:'<path d="M12 4 3 19.5h18z"/><path d="M12 10v4.5M12 17h.01"/>',check:'<path d="m5 12.5 4.5 4.5L19 7.5"/>',gear:'<circle cx="12" cy="12" r="3"/><path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.4 1.4M16.6 16.6 18 18M18 6l-1.4 1.4M7.4 16.6 6 18"/>',tray:'<path d="M4 13.5 6.5 5.5h11L20 13.5V18a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18Z"/><path d="M4 13.5h4.5a1 1 0 0 1 1 1 2.5 2.5 0 0 0 5 0 1 1 0 0 1 1-1H20"/>',palette:'<path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.2 0 1.8-.8 1.8-1.7 0-1.3-1-1.6-1-2.7 0-.9.7-1.6 1.7-1.6h2.2a3.3 3.3 0 0 0 3.3-3.3C20 6.9 16.5 3.5 12 3.5Z"/><circle cx="7.8" cy="11" r=".7"/><circle cx="10.5" cy="7.5" r=".7"/><circle cx="15" cy="8" r=".7"/>',clock:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',eyeoff:'<path d="M3.5 12s3.2-5.5 8.5-5.5S20.5 12 20.5 12s-3.2 5.5-8.5 5.5S3.5 12 3.5 12Z"/><circle cx="12" cy="12" r="2.5"/><path d="M4.5 4.5l15 15"/>',spark:'<path d="M11 4c.6 3.9 2.6 5.9 6.5 6.5-3.9.6-5.9 2.6-6.5 6.5-.6-3.9-2.6-5.9-6.5-6.5C8.4 9.9 10.4 7.9 11 4Z"/>'};
+// v15 shell glyphs: view switch, sidebar views, disclosure, more, external link.
+Object.assign(uiGlyphs,{list:'<path d="M9 6.5h11M9 12h11M9 17.5h11"/><path d="M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01"/>',tiles:'<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>',stack:'<path d="m12 4 8 4-8 4-8-4z"/><path d="m4 12 8 4 8-4M4 16l8 4 8-4"/>',chevron:'<path d="m9.5 6 6 6-6 6"/>',more:'<path d="M6 12h.01M12 12h.01M18 12h.01" stroke-width="2.6"/>',external:'<path d="M13.5 4.5h6v6M19.5 4.5 11 13M17.5 13.5v5a1.5 1.5 0 0 1-1.5 1.5H6a1.5 1.5 0 0 1-1.5-1.5V8A1.5 1.5 0 0 1 6 6.5h5"/>'});
 function ui(name){return `<svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${uiGlyphs[name]||''}</svg>`;}
 // One rounded tile per asset (DESIGN-PRINCIPLES §9): a real icon (custom iconData, then a fetched siteIcon) wins; the category line icon only fills in when there is none.
 function customIconSrc(a){return typeof a?.iconData==='string'&&a.iconData.length<400000&&/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(a.iconData)?a.iconData:'';}
 function hasRealIcon(a){return !!(customIconSrc(a)||siteIconSrc(a));}
-// Cards draw the tile only for a real platform icon; the block header already names the category.
+// The panorama draws a tile only for a real platform icon; its blocks already say the category.
 function cardTile(a,size=''){return hasRealIcon(a)?tile(a,size):'';}
 function tile(a,size=''){const custom=customIconSrc(a),src=custom||siteIconSrc(a),tone=src?markTone(src):'';return `<span class="tile${size?' '+size:''} ${custom?'custom-art':src?'custom-art site-art':'type-art'}${tone?' '+tone:''}" aria-hidden="true">${src?`<img src="${src}" alt="" draggable="false">`:icon(a.type)}</span>`;}
 function searchText(a){return [a.name,a.provider,a.purpose,a.reason,a.account,cats[a.type]?.name,regionName(a.region),a.region,a.network,a.last4,a.phone,String(a.phone||'').replace(/\D/g,''),...assetIps(a).map(x=>x.ip)].filter(Boolean).join(' ').toLowerCase();}
@@ -79,8 +81,6 @@ function ageText(iso){const t=Date.parse(iso);if(!t)return '';const days=Math.fl
 function quietEvent(a){const e=a.event||'';if(a.type==='repository'&&(e==='公开仓库'||e==='私有仓库'||!e))return ageText(a.updatedAt);return e==='日期待补充'?'':e;}
 function eventInfo(a){if(a.syncMissing)return {text:'本次未返回',cls:'warn'};const status=assetDateStatus(a);if(status.level==='none')return {text:assetProfiles[a.type]?'':quietEvent(a),cls:''};if(a.type==='bankcard'&&status.level==='upcoming')return {text:`有效期 ${expiryText(a.date)}`,cls:''};return {text:status.label,cls:status.level==='overdue'?'warn overdue':status.level==='soon'?'warn':''};}
 function lockMark(a){return isPrivateRepo(a)?`<span class="lock-mark" role="img" aria-label="私有仓库" title="私有仓库">${ui('lock')}</span>`:'';}
-// The one manually fronted card of a block (放到前面) is drawn larger; its date reads as a big number. Urgency never picks it.
-function bigEvent(a,event){const st=assetDateStatus(a);if(st.level==='none'||event.text!==st.label)return '';const w=dateKinds[st.kind]||dateKinds.expire;if(st.days<0)return `<b>${-st.days}</b> <span>天 · ${w.past}</span>`;if(st.days===0||st.days===1)return `<b>${st.days===0?'今天':'明天'}</b> <span>${w.future}</span>`;return st.days<=60?`<b>${st.days}</b> <span>天后${w.future}</span>`:'';}
 // Manual "stopped" (v13b P5): a registered fact, never a probe. Default is in use; only the stopped ones carry a mark (hollow ring), the name goes muted.
 const STOPPABLE=['server','domain','repository','database','license'];
 const stopRing=a=>a.stopped?'<i class="stop-ring" role="img" aria-label="已停用" title="已停用"></i>':'';
@@ -89,8 +89,7 @@ function toggleStopped(id){
  checkpoint();if(a.stopped)delete a.stopped;else a.stopped=true;save();render();if(activeAsset===id&&!$('#detail').hidden)showDetail(id);
  toast(a.stopped?'已标为停用':'已恢复启用',true);return true;
 }
-function card(a,canDemote=false,strong=true,pinned=false){const event=mutedEvent(eventInfo(a),strong),big=pinned?bigEvent(a,event):'',hint=[a.name,a.purpose&&a.purpose!==cats[a.type].name?a.purpose:''].filter(Boolean).join('\n');const mark=relMark(a);return `<article class="asset-card${pinned?' pinned':''}${mark?' has-rel':''}${a.stopped?' stopped':''}" data-asset="${esc(a.id)}">${mark}<button class="card-open" data-action="detail" data-id="${esc(a.id)}" aria-label="查看 ${esc(a.name)} 详情${a.stopped?'，已停用':''}" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight" title="${esc(hint)}"><span class="card-head">${cardTile(a)}<span class="card-copy"><span class="card-name">${esc(displayName(a))}${lockMark(a)}${stopRing(a)}</span>${cardSub(a)}<span class="card-glance ${event.cls}">${esc(glance(a,event))}</span>${searchHit(a)}</span></span></button><div class="card-foot">${event.text?`<span class="card-event ${event.cls}${big?' big':''}">${big||esc(event.text)}</span>`:''}${linkChips(a)}${canDemote?`<button class="repo-swap" data-action="repo-swap" data-id="${esc(a.id)}" aria-label="将 ${esc(a.name)} 移到下方列表">移到列表</button>`:''}<button class="card-hide" data-action="hide-asset" data-id="${esc(a.id)}" aria-label="隐藏 ${esc(a.name)}">隐藏</button>${quickButtons(a)}</div></article>`;}
-// Category quick actions (DESIGN-PRINCIPLES §5): at most QUICK_LIMIT icon buttons on a card, the full list in the detail panel.
+// Category quick actions (DESIGN-PRINCIPLES §5): at most QUICK_LIMIT icon buttons on a row, the full list in the inspector.
 const quickIcons={open:'<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M7 3.5H4A1.5 1.5 0 0 0 2.5 5v7A1.5 1.5 0 0 0 4 13.5h7a1.5 1.5 0 0 0 1.5-1.5V9M9.5 2.5h4v4M13.5 2.5 7.5 8.5"/></svg>',copy:'<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5V4A1.5 1.5 0 0 0 9 2.5H4A1.5 1.5 0 0 0 2.5 4v5A1.5 1.5 0 0 0 4 10.5h1.5"/></svg>',local:'<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5a1 1 0 0 1 1-1h3l1.5 1.5h4.5a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1z"/></svg>','copy-ssh':'<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="M4.5 6.5 6.5 8l-2 1.5M8 10h3"/></svg>'};
 function assetQuick(a){const link=safeManagementUrl(a?.url);return quickActions(a,{link:link&&new URL(link).hostname!=='example.com'?link:'',native:!!nativeStore});}
 function quickButtons(a){return assetQuick(a).slice(0,QUICK_LIMIT).map(q=>`<button class="quick-action" data-action="quick" data-id="${esc(a.id)}" data-quick="${q.id}" aria-label="${esc(q.label)} · ${esc(a.name)}" title="${esc(q.label)}">${quickIcons[q.id]||quickIcons[q.kind]}</button>`).join('');}
@@ -111,36 +110,9 @@ function runQuick(id,quickId,kind){
  return true;
 }
 window.assetboardLocalResult=ok=>toast(ok?'已打开':'找不到这个目录，请检查路径');
-// Only the most urgent few "soon" dates in a block stay amber (DISPLAY_LIMITS.strongDates); overdue always stays red.
-function mutedEvent(event,strong){return strong||event.cls!=='warn'?event:{...event,cls:''};}
-// Card text has three layers at most: name, one source line (provider · account, or region + masked identifier for priority types), one status in the foot.
-function accountTag(a){return a.account?`<span class="account-tag" title="账号">${esc(a.account)}</span>`:'';}
-// Provider and account shared by every visible asset of a block move up to the block header once; mixed blocks keep them on each card.
-let hoisted=null;
-function blockCommon(type){if(assetProfiles[type]||query)return null;const list=state.assets.filter(a=>a.type===type&&!isHidden(a));if(list.length<2)return null;const provider=list[0].provider||'',account=list[0].account||'';if(!provider&&!account)return null;return list.every(a=>(a.provider||'')===provider&&(a.account||'')===account)?{type,provider,account,github:list.every(a=>a.source==='github')}:null;}
-function originChip(c){if(!c)return '';const text=c.github?c.account||c.provider:[c.provider,c.account].filter(Boolean).join(' · ');return `<span class="block-origin" title="${esc([c.provider,c.account].filter(Boolean).join(' · '))}">${c.github?ui('github'):''}<span>${esc(text)}</span></span>`;}
-// A server's second line is its address (tabular digits, never wrapped); the provider follows and is the first to be cut.
-function ipSub(a){
- const ip=primaryIp(a);if(!ip)return '';
- const shown=ip.ip,provider=hoisted&&hoisted.type===a.type?'':a.provider;
- return `<span class="card-sub card-provider ip-sub" title="${esc([assetIps(a).map(x=>x.ip).join('  '),a.provider].filter(Boolean).join(' · '))}">${ip.inner?'<em class="ip-inner" title="内网地址">内</em>':''}<span class="ip-text">${esc(shown)}</span>${ip.more?`<em class="ip-more" aria-label="另有 IPv6">+${ip.more}</em>`:''}${provider?`<span class="ip-prov">${esc(provider)}</span>`:''}</span>`;
-}
-function cardSub(a){
- if(a.type==='server'){const line=ipSub(a);if(line)return line;}
- if(hoisted&&hoisted.type===a.type)return '';
- if(!assetProfiles[a.type]){
-  if(['cloudflare','github','ssh'].includes(a.source)&&a.account)return `<span class="card-sub card-provider">${esc(a.provider||'')}${accountTag(a)}</span>`;
-  const text=[a.provider,a.account].filter(Boolean).join(' · ');return text?`<span class="card-sub card-provider">${esc(text)}</span>`:'';
- }
- const flag=regionFlag(a.region),identity={bankcard:[[a.network,a.last4&&`•••• ${a.last4}`].filter(Boolean).join(' ')],phone:[maskPhone(a.phone)],appleid:[maskEmail(a.account)||regionName(a.region)],google:[maskEmail(a.account)||regionName(a.region)],ai:[a.provider,a.cost&&a.cost!=='未知'?a.cost:'']}[a.type].filter(Boolean).join(' · '),extra={bankcard:a.provider,phone:a.provider}[a.type],text=[identity,extra].filter(Boolean).join(' · ');
- return text||flag?`<span class="card-sub card-identity">${flag?`<span class="flag">${flag}</span>`:''}<span class="sub-text">${esc(text)}</span></span>`:'';
-}
-// While searching, a match that only lives in the purpose says so, otherwise the card would look unrelated to the query.
+// While searching, a match that only lives in the purpose says so, otherwise the row would look unrelated to the query.
 function searchHit(a){if(!query||!a.purpose)return '';const q=query.toLowerCase(),seen=[a.name,a.provider,a.account].filter(Boolean).join(' ').toLowerCase();return a.purpose.toLowerCase().includes(q)&&!seen.includes(q)?`<span class="card-hit">用途：${esc(a.purpose)}</span>`:'';}
-function glance(a,event=eventInfo(a)){const digits=String(a.phone||'').replace(/\D/g,''),short={bankcard:a.last4&&`•${a.last4}`,phone:digits&&maskPhone(a.phone),appleid:maskEmail(a.account),google:maskEmail(a.account),ai:a.cost&&a.cost!=='未知'?a.cost:''}[a.type]||'';return [short,event.text||(assetProfiles[a.type]?'':a.provider)].filter(Boolean).join(' · ');}
-function peekMark(a){return `<span class="peek-mark" title="${esc(a.name)}">${tile(a,'sm')}</span>`;}
-function linkLabel(a){const flag=regionFlag(a.region),digits=String(a.phone||'').replace(/\D/g,'');if(a.type==='bankcard'&&a.last4)return `${flag}•${a.last4}`;if(a.type==='phone'&&digits)return `${flag}•${digits.slice(-4)}`;return `${flag}${displayName(a)}`;}
-// Server relations never print names on a card (v13): a mounted card gets a small server icon, a server its mount count, an account its server count.
+// Server relations never print names on a row (v13): a mounted record gets a small server icon, a server its mount count, an account its server count.
 // The dot is the colour of the servers' expiry (never reorders anything); the names live in title and aria-label.
 function relMark(a){
  if(a.hiddenAt||!['server','subscription',...MOUNT_TYPES].includes(a.type))return '';
@@ -152,88 +124,136 @@ function relMark(a){
  if(!n)return '';
  return `<span class="rel-mark${tone?' '+tone:''}" role="img" aria-label="${esc(label)}" title="${esc(label)}">${tone?'<i class="rel-dot" aria-hidden="true"></i>':''}${withIcon?icon('server'):''}${withCount?`<b>${n>99?'99+':n}</b>`:''}</span>`;
 }
-function linkChips(a){const links=linkedAssets(state.assets,a).filter(x=>!isHidden(x)&&!relationKind(a,x));if(!links.length)return '';return `<span class="link-chips">${links.slice(0,3).map(x=>`<span class="link-chip">${assetMark(x)}${esc(linkLabel(x))}</span>`).join('')}${links.length>3?`<span class="link-chip">+${links.length-3}</span>`:''}</span>`;}
 function identityText(a){return {bankcard:[a.network,a.last4&&`•••• ${a.last4}`],phone:[maskPhone(a.phone)],appleid:[maskEmail(a.account)],google:[maskEmail(a.account)],ai:[a.provider]}[a.type]?.filter(Boolean).join(' ')||a.provider||'';}
-function flippedCard(a){return `<article class="asset-card flip-card" data-asset="${esc(a.id)}"><div class="flip-inner"><div class="flip-face front"><span class="card-head">${cardTile(a)}<span class="card-copy"><span class="card-name">${esc(displayName(a))}</span>${cardSub(a)}</span></span></div><div class="flip-face back"><span class="flip-label">已隐藏</span><strong title="${esc(a.name)}">${esc(displayName(a))}</strong><span class="flip-note">仅本机隐藏</span><div class="flip-actions"><button class="button" data-action="restore-asset" data-id="${esc(a.id)}">恢复</button><button class="button" data-action="delete-asset" data-id="${esc(a.id)}" title="只删除 Assetboard 里的记录">删除</button></div></div></div></article>`;}
-function compactRepository(a,spill=false){return `<div class="compact-repo${spill?' spill':''}${a.stopped?' stopped':''}" ${spill?`data-spill="${esc(a.id)}" style="display:none"`:`data-asset="${esc(a.id)}"`}><button class="compact-repo-open" data-action="detail" data-id="${esc(a.id)}" aria-label="查看 ${esc(a.name)} 详情" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight" title="${esc(a.name)}">${cardTile(a,'sm')}<span>${esc(displayName(a))}</span>${stopRing(a)}</button><button class="repo-swap" data-action="repo-swap" data-id="${esc(a.id)}" aria-label="将 ${esc(a.name)} 显示为卡片">显示卡片</button></div>`;}
-function renderBlock(b){
- const typed=state.assets.filter(a=>a.type===b.id&&matches(a));
- const hiddenCount=state.assets.filter(a=>a.type===b.id&&isHidden(a)).length;
- if(!hiddenCount)showHiddenBlocks.delete(b.id); // restoring or deleting the last hidden asset leaves the hidden view, which would otherwise have no way back
- const viewingHidden=showHiddenBlocks.has(b.id);
- const visible=arrangeAssets(typed.filter(a=>!isHidden(a)),state.cardOrder?.[b.id]);
- const hiddenAssets=arrangeAssets(typed.filter(a=>isHidden(a)),state.cardOrder?.[b.id]);
- const assets=viewingHidden?hiddenAssets:visible;
- // Search and the full view always show full, unfolded cards; the board keeps each block's own style.
- const folded=!!b.folded&&!query&&!focusCategory,compact=!folded&&!query&&!focusCategory&&blockDensity(b)==='compact';
- const fixed=b.height&&!folded&&!focusCategory&&!query&&!viewingHidden;
- const levels=state.assets.filter(a=>a.type===b.id&&!isHidden(a)).map(a=>assetDateStatus(a).level),overdue=levels.filter(level=>level==='overdue').length,soon=levels.filter(level=>level==='soon').length;
- const summary=[overdue&&`${overdue} 项已过期`,soon&&`${soon} 项即将到期`].filter(Boolean).join(' · '),summaryDots=`${overdue?`<span class="sum-dot overdue"><i class="dot"></i>${formatCount(overdue)}</span>`:''}${soon?`<span class="sum-dot soon"><i class="dot"></i>${formatCount(soon)}</span>`:''}`;
- hoisted=viewingHidden?null:blockCommon(b.id);
- const pinnedId=!compact&&!viewingHidden&&b.id!=='repository'&&visible.length>=2&&visible.some(a=>a.id===state.cardOrder?.[b.id]?.[0])?state.cardOrder[b.id][0]:'';
- const emptySlot=!visible.length&&!hiddenCount&&!query&&!focusCategory&&!folded;
- const repositoryLayout=b.id==='repository'&&!query&&!focusCategory&&!folded&&!compact&&!viewingHidden&&assets.length>6;
- // The full view lists repositories in the board's order (featured, then the list) so its divider matches what the board shows.
- const repositoryOrder=b.id==='repository'&&!query&&!viewingHidden&&assets.length>6&&(repositoryLayout||focusCategory===b.id);
- const rawGroups=repositoryOrder?repositoryGroups(assets,state.featuredRepositoryIds):null;
- const ordered=rawGroups?{featured:arrangeAssets(rawGroups.featured,state.cardOrder?.repository),compact:arrangeAssets(rawGroups.compact,state.cardOrder?.repository)}:null;
- const groups=repositoryLayout?ordered:null,listed=ordered&&!groups?[...ordered.featured,...ordered.compact]:assets;
- // In the full view a divider marks where the board's display area ended; dragging a card across it onto another card swaps the two.
- const shownOnBoard=focusCategory===b.id&&!viewingHidden&&!query?boardShown.get(b.id):undefined,divider=shownOnBoard>0&&shownOnBoard<listed.length?shownOnBoard:-1;
- const strong=strongDateIds(visible),limited=!folded&&!fixed&&!viewingHidden&&!query&&!focusCategory;
- const searchHiddenHtml=(!viewingHidden&&query&&hiddenAssets.length)?hiddenAssets.map(flippedCard).join(''):'';
- const cardsHtml=viewingHidden?assets.map(flippedCard).join(''):groups?`${groups.featured.map(a=>card(a,true,strong.has(a.id))).join('')}<div class="compact-repositories"><div class="compact-repositories-title sr-only" role="separator" data-count="${groups.compact.length}" aria-label="其余 ${formatCount(groups.compact.length)} 个仓库"></div><div class="compact-repositories-grid">${limited?groups.featured.map(a=>compactRepository(a,true)).join(''):''}${groups.compact.map(a=>compactRepository(a)).join('')}</div></div>${searchHiddenHtml}`:(listed.map((a,i)=>(i===divider?'<div class="limit-divider" role="separator">以下在大板上收起 · 拖到上方卡片上，或按 X 选两张卡，可交换位置</div>':'')+card(a,false,strong.has(a.id),a.id===pinnedId)).join('')+searchHiddenHtml);
- const emptyHtml=viewingHidden?'<div class="block-empty">这个区块没有已隐藏的资产</div>':`<button type="button" class="block-empty" data-action="add-asset" data-id="${b.id}" title="添加${cats[b.id].name}资产">${ui('plus')}<span class="sr-only">添加你的第一项资产</span></button>`;
- const hiddenToggle=hiddenCount?`<button class="text-button hidden-toggle ${viewingHidden?'active':''}" data-action="toggle-hidden" data-id="${b.id}" aria-pressed="${viewingHidden}" aria-label="${viewingHidden?'返回显示未隐藏资产':`已隐藏 ${hiddenCount} 项，点按查看`}" title="${viewingHidden?'返回显示未隐藏资产':`已隐藏 ${hiddenCount} 项`}">${viewingHidden?ui('back'):`${ui('eyeoff')}<span>${formatCount(hiddenCount)}</span>`}</button>`:'';
- const origin=originChip(hoisted);
- const html=`<section class="block ${b.id} ${emptySlot?'empty-slot':''} ${folded?'folded':''} ${compact?'compact':''} ${fixed?'fixed':''} ${limited?'limited':''} ${viewingHidden?'showing-hidden':''}" data-block="${b.id}" style="--width:${b.width}">
- <header class="block-head">
- <button class="block-title" data-action="collapse" data-id="${b.id}" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight" aria-expanded="${!folded}" aria-controls="cards-${b.id}" title="${folded?'展开':'收起'}（按住 ⌥ 点按：全部）"><span class="tile sm type-art" aria-hidden="true">${icon(b.id)}</span><span>${cats[b.id].name}</span><span class="asset-count" title="${viewingHidden?hiddenCount:visible.length} 项">${formatCount(viewingHidden?hiddenCount:visible.length)}</span><span class="chevron">${folded?'⌄':'⌃'}</span></button>
- ${origin}
- ${folded&&visible.length?`<span class="fold-peek" aria-hidden="true">${visible.slice(0,5).map(peekMark).join('')}${visible.length>5?`<span class="peek-more">+${formatCount(visible.length-5)}</span>`:''}</span>`:''}
- ${summary&&!viewingHidden?`<span class="block-summary ${overdue?'overdue':''}" role="img" aria-label="${summary}" title="${summary}">${summaryDots}</span>`:''}
- <div class="block-actions">${hiddenToggle}<button class="text-button" data-action="all" data-id="${b.id}" aria-label="查看全部${cats[b.id].name}" hidden>查看全部</button><button class="icon-button" data-action="add-asset" data-id="${b.id}" aria-label="添加${cats[b.id].name}资产">＋</button><button class="icon-button" data-action="settings" data-id="${b.id}" aria-label="${cats[b.id].name}区块设置">⋯</button></div></header>
- <div class="cards" id="cards-${b.id}" ${fixed?`style="height:${b.height}px"`:''}>${cardsHtml||emptyHtml}</div>
- ${!query&&!focusCategory?'<div class="resize-edge" data-edge="x" aria-hidden="true"></div><div class="resize-edge" data-edge="y" aria-hidden="true"></div><div class="resize-edge" data-edge="xy" aria-hidden="true"></div>':''}</section>`;
- hoisted=null;return html;
+// v15 shell (2026-10-15, user-confirmed): a sidebar of views, every asset grouped by category as a list or a grid, a docked inspector.
+// The overview never truncates; groups fold instead. View and layout are per-viewer conveniences kept in localStorage, not in the board.
+const VIEW_KEY='assetboard-view-v1';
+function readViewPrefs(){try{return JSON.parse(localStorage.getItem(VIEW_KEY)||'{}')||{};}catch{return {};}}
+function writeViewPrefs(){try{localStorage.setItem(VIEW_KEY,JSON.stringify({view,layout:layoutMode}));}catch{}}
+{const prefs=readViewPrefs();if(prefs.layout==='grid')layoutMode='grid';if(typeof prefs.view==='string')view=prefs.view;}
+// Sidebar categories follow state.blocks; a category that holds assets is always listed, even without a block entry.
+function categoryIds(){const ids=state.blocks.map(b=>b.id).filter(id=>cats[id]);for(const a of state.assets)if(cats[a.type]&&!ids.includes(a.type))ids.push(a.type);return ids;}
+function currentView(){if(view==='all'||view==='upcoming')return view;if(view==='hidden')return state.assets.some(isHidden)?'hidden':'all';return cats[view]&&categoryIds().includes(view)?view:'all';}
+function setView(next){if(!['all','upcoming','hidden'].includes(next)&&!cats[next])return;view=next;writeViewPrefs();if(query){query='';$('#search').value='';}render();scrollTo(0,0);}
+function setLayout(next){if(!['list','grid'].includes(next)||next===layoutMode)return;layoutMode=next;writeViewPrefs();render();}
+function liveAssets(){return state.assets.filter(a=>!isHidden(a));}
+function dueLevels(list){let overdue=0,soon=0;for(const a of list){const level=assetDateStatus(a).level;if(level==='overdue')overdue++;else if(level==='soon')soon++;}return {overdue,soon};}
+function dueWords({overdue,soon}){return [overdue&&`${overdue} 项已过期`,soon&&`${soon} 项 30 天内到期`].filter(Boolean).join('，');}
+function navCount(n,level=''){return `<span class="nav-count${level?' '+level:''}"${n>DISPLAY_LIMITS.count?` title="${n}"`:''}>${formatCount(n)}</span>`;}
+function navItem(id,label,glyph,count,attrs=''){const on=!query&&currentView()===id;return `<button class="nav-item${on?' active':''}" data-action="view" data-id="${id}"${on?' aria-current="page"':''} ${attrs}>${glyph}<span class="nav-label">${esc(label)}</span>${count}</button>`;}
+function renderSidebar(){
+ const live=liveAssets(),hidden=state.assets.length-live.length,due=dueLevels(live),dueCount=due.overdue+due.soon;
+ const catItems=categoryIds().map(id=>{const own=live.filter(a=>a.type===id),l=dueLevels(own),words=dueWords(l);return navItem(id,cats[id].name,`<span class="nav-icon">${icon(id)}</span>`,`${l.overdue||l.soon?`<i class="nav-dot ${l.overdue?'overdue':'soon'}" aria-hidden="true"></i>`:''}${navCount(own.length)}`,`data-block="${id}" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" aria-label="${esc(cats[id].name)}，${own.length} 项${words?'，'+words:''}"`);}).join('');
+ $('#sidebar').innerHTML=`<div class="nav-group">${navItem('upcoming','即将到来',ui('clock'),dueCount?navCount(dueCount,due.overdue?'overdue':'soon'):'',`aria-label="即将到来${dueCount?'，'+dueWords(due):''}"`)}${navItem('all','全部资产',ui('stack'),navCount(live.length))}</div>${catItems?`<div class="nav-group nav-cats" role="group" aria-labelledby="nav-cats-title"><h2 class="nav-title" id="nav-cats-title">类别</h2>${catItems}</div>`:''}${hidden?`<div class="nav-group">${navItem('hidden','已隐藏',ui('eyeoff'),navCount(hidden))}</div>`:''}`;
 }
-let layoutFrame=0,renderedQuery='',linkFocus=null,linkLayer=null,skipLayoutAnimation=false;
+function renderHeader(v,shown){
+ const title=query?'搜索':v==='all'?'全部资产':v==='upcoming'?'即将到来':v==='hidden'?'已隐藏':cats[v].name;
+ $('#view-title').textContent=title;
+ const scope=cats[v]&&!query?liveAssets().filter(a=>a.type===v):v==='all'&&!query?liveAssets():[],l=dueLevels(scope);
+ $('#view-meta').innerHTML=state.assets.length?`<span${shown>DISPLAY_LIMITS.count?` title="${shown} 项"`:''}>${formatCount(shown)} 项</span>${l.overdue?`<span class="meta-flag overdue">${l.overdue} 已过期</span>`:''}${l.soon?`<span class="meta-flag soon">${l.soon} 即将到期</span>`:''}`:'';
+ $('#view-menu').hidden=!(cats[v]&&!query);$('#view-menu').dataset.id=cats[v]?v:'';
+ if(cats[v])$('#view-menu').setAttribute('aria-label',`${cats[v].name}类别设置`);
+ const toggle=$('#layout-toggle');toggle.hidden=!state.assets.length||(v==='upcoming'&&!query);
+ toggle.querySelectorAll('[data-action="layout"]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.id===layoutMode)));
+ document.title=`${title} · Assetboard`;
+}
+// One row or grid card per asset. The tile is the platform icon when there is one, the category line icon otherwise, so every row has the same anchor.
+// A bare day count for compact lists (the panorama's next-dates list); the kind lives in the label beside it.
+function agendaWhen(status){return status.days<0?`过期 ${-status.days} 天`:status.days===0?'今天':status.days===1?'明天':`${status.days} 天`;}
+function costText(a){return a.cost&&a.cost!=='未知'?a.cost:'';}
+function subLine(a){
+ if(a.type==='server'){const ip=primaryIp(a);if(ip)return {html:`${ip.inner?'<em class="ip-inner" title="内网地址">内</em>':''}<span class="ip-text">${esc(ip.ip)}</span>${ip.more?`<em class="ip-more" aria-label="另有 IPv6">+${ip.more}</em>`:''}${a.provider?`<span class="sub-sep" aria-hidden="true">·</span><span class="ip-prov">${esc(a.provider)}</span>`:''}`,text:[assetIps(a).map(x=>x.ip).join('  '),a.provider].filter(Boolean).join(' · '),cls:'ip-sub'};}
+ if(assetProfiles[a.type]){const flag=regionFlag(a.region),identity={bankcard:[a.network,a.last4&&`•••• ${a.last4}`].filter(Boolean).join(' '),phone:maskPhone(a.phone),appleid:maskEmail(a.account)||regionName(a.region),google:maskEmail(a.account)||regionName(a.region),ai:a.provider}[a.type]||'',text=[identity,{bankcard:a.provider,phone:a.provider}[a.type]].filter(Boolean).join(' · ');return {html:`${flag?`<span class="flag">${flag}</span>`:''}${esc(text)}`,text};}
+ // Synced records name their account as a small tag, so two GitHub or Cloudflare accounts in one group stay apart.
+ const provider=a.provider==='平台待补充'?'':a.provider,text=[provider,a.account].filter(Boolean).join(' · ');
+ if(['cloudflare','github','ssh'].includes(a.source)&&a.account)return {html:`${provider?`${esc(provider)}<span class="sub-sep" aria-hidden="true">·</span>`:''}<span class="account-tag">${esc(a.account)}</span>`,text};
+ return {html:esc(text),text};
+}
+function statusHtml(e){return `<span class="r-date${e.cls?' '+e.cls:''}">${e.cls?'<i class="dot" aria-hidden="true"></i>':''}${esc(e.text)}</span>`;}
+function itemLabel(a,e,cost){return [displayName(a),isPrivateRepo(a)&&'私有仓库',a.stopped&&'已停用',isHidden(a)&&'已隐藏',e.text,cost].filter(Boolean).join('，');}
+function itemActions(a){return isHidden(a)?`<button class="button r-restore" data-action="restore-asset" data-id="${esc(a.id)}">恢复</button><button class="button danger-quiet" data-action="delete-asset" data-id="${esc(a.id)}" title="只删除 Assetboard 里的记录">删除</button>`:quickButtons(a);}
+function itemHtml(a,{withType=false,grid=false}={}){
+ const e=eventInfo(a),cost=costText(a),sub=subLine(a),hint=[a.name,a.purpose&&a.purpose!==cats[a.type]?.name?a.purpose:'',a.reason&&`保留原因：${a.reason}`].filter(Boolean).join('\n');
+ // In 即将到来 the category leads, then the keep reason when there is one (it is what helps decide), otherwise the source.
+ const subHtml=withType?`${esc(cats[a.type].name)}${a.reason?`<span class="sub-sep" aria-hidden="true">·</span><span class="r-reason">${esc(a.reason)}</span>`:sub.text?`<span class="sub-sep" aria-hidden="true">·</span>${sub.html}`:''}`:sub.html;
+ const name=`<span class="r-name"><span class="r-text">${esc(displayName(a))}</span>${lockMark(a)}${stopRing(a)}${relMark(a)}</span>`,subSpan=`<span class="r-sub${sub.cls&&!withType?' '+sub.cls:''}"${sub.text?` title="${esc(sub.text)}"`:''}>${subHtml}</span>`;
+ const selected=activeAsset===a.id&&!$('#detail').hidden;
+ return `<div class="${grid?'gcard':'row'}${a.stopped?' stopped':''}${isHidden(a)?' is-hidden':''}${selected?' selected':''}" data-asset="${esc(a.id)}"><button class="item-open" data-action="detail" data-id="${esc(a.id)}" aria-label="${esc(itemLabel(a,e,cost))}" title="${esc(hint)}">${tile(a,grid?'':'sm')}<span class="r-main">${name}${subSpan}${searchHit(a)}</span><span class="r-when">${statusHtml(e)}<span class="r-cost">${esc(cost)}</span></span></button><span class="r-actions">${itemActions(a)}</span></div>`;
+}
+function groupSummary(list){const l=dueLevels(list);return l.overdue||l.soon?`<span class="g-sum" role="img" aria-label="${dueWords(l)}" title="${dueWords(l)}">${l.overdue?`<span class="g-flag overdue"><i class="dot" aria-hidden="true"></i>${formatCount(l.overdue)}</span>`:''}${l.soon?`<span class="g-flag soon"><i class="dot" aria-hidden="true"></i>${formatCount(l.soon)}</span>`:''}</span>`:'';}
+// A group is a category (or a date band, or the hidden pile). Only categories in the overview fold and reorder.
+function groupHtml({id,title,glyph='',list,fold=false,folded=false,reorder=false,head=true,summary='',actions='',withType=false}){
+ const grid=layoutMode==='grid'&&!withType,count=`<span class="g-count">${formatCount(list.length)}</span>`;
+ const heading=!head?'':`<header class="group-head">${fold?`<button class="group-title" data-action="collapse" data-id="${id}" aria-expanded="${!folded}" aria-controls="group-${id}" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" title="${folded?'展开':'收起'}（按住 ⌥ 点按：全部）"><span class="g-chevron">${ui('chevron')}</span>${glyph}<span class="g-name">${esc(title)}</span>${count}</button>`:`<h2 class="group-title static">${glyph}<span class="g-name">${esc(title)}</span>${count}</h2>`}${summary}${actions?`<span class="g-actions">${actions}</span>`:''}</header>`;
+ return `<section class="group${folded?' folded':''}${head?'':' solo'}" data-group="${id}" aria-label="${esc(title)}">${heading}${folded?'':`<div class="group-body ${grid?'grid':'list'}" id="group-${id}"${reorder?` data-reorder="${id}"`:''}>${list.map(a=>itemHtml(a,{withType,grid})).join('')}</div>`}</section>`;
+}
+function categoryActions(id){return `<button class="icon-button" data-action="add-asset" data-id="${id}" aria-label="添加${esc(cats[id].name)}" title="添加${esc(cats[id].name)}">${ui('plus')}</button><button class="icon-button" data-action="view" data-id="${id}" aria-label="只看${esc(cats[id].name)}" title="只看${esc(cats[id].name)}">${ui('chevron')}</button>`;}
+function arranged(id,list){return arrangeAssets(list,state.cardOrder?.[id]);}
+const UPCOMING_BANDS=[['overdue','已过期',s=>s.days<0],['week','7 天内',s=>s.days<=7],['month','30 天内',s=>s.days<=30],['later','更晚',()=>true]];
+function viewEmpty(glyph,text,button=''){return `<div class="view-empty">${glyph}<p>${text}</p>${button}</div>`;}
+// Returns the board HTML and how many assets it lists; an empty string means "nothing to show" (the search empty state takes over).
+function boardHtml(v){
+ const typeGlyph=id=>`<span class="g-icon">${icon(id)}</span>`;
+ if(query){
+  const hits=state.assets.filter(matches),live=hits.filter(a=>!isHidden(a)),hidden=hits.filter(isHidden);
+  const html=categoryIds().map(id=>{const list=arranged(id,live.filter(a=>a.type===id));return list.length?groupHtml({id,title:cats[id].name,glyph:typeGlyph(id),list}):'';}).join('')+(hidden.length?groupHtml({id:'hidden',title:'已隐藏',glyph:`<span class="g-icon">${ui('eyeoff')}</span>`,list:hidden}):'');
+  return {html,count:hits.length};
+ }
+ if(v==='upcoming'){
+  const events=upcomingEvents(state.assets,new Date(),Infinity);
+  if(!events.length)return {html:viewEmpty(ui('clock'),'还没有到期或扣款日期','<button class="button" data-action="inbox">粘贴续费通知</button>'),count:0};
+  const left=[...events];
+  const html=UPCOMING_BANDS.map(([id,title,fits])=>{const band=[];while(left.length&&fits(left[0].status))band.push(left.shift().asset);return band.length?groupHtml({id,title,list:band,withType:true}):'';}).join('');
+  return {html,count:events.length};
+ }
+ if(v==='hidden'){
+  const hidden=state.assets.filter(isHidden);
+  return {html:categoryIds().map(id=>{const list=arranged(id,hidden.filter(a=>a.type===id));return list.length?groupHtml({id,title:cats[id].name,glyph:typeGlyph(id),list}):'';}).join(''),count:hidden.length};
+ }
+ const live=liveAssets();
+ if(cats[v]){
+  const list=arranged(v,live.filter(a=>a.type===v));
+  return {html:list.length?groupHtml({id:v,title:cats[v].name,list,reorder:true,head:false}):viewEmpty(`<span class="g-icon">${icon(v)}</span>`,`还没有${esc(cats[v].name)}`,`<button class="button" data-action="add-asset" data-id="${v}">${ui('plus')}添加</button>`),count:list.length};
+ }
+ const html=categoryIds().map(id=>{const list=arranged(id,live.filter(a=>a.type===id));if(!list.length)return '';const folded=!!state.blocks.find(b=>b.id===id)?.folded;return groupHtml({id,title:cats[id].name,glyph:typeGlyph(id),list,fold:true,folded,reorder:true,summary:groupSummary(list),actions:categoryActions(id)});}).join('');
+ return {html:html||viewEmpty(ui('stack'),'没有显示中的资产'),count:live.length};
+}
+let layoutFrame=0,renderedKey='',skipLayoutAnimation=false;
 function render(){
- clearLinks();const animateLayout=!skipLayoutAnimation;skipLayoutAnimation=false;
+ const animateLayout=!skipLayoutAnimation;skipLayoutAnimation=false;
  if(typeof applyBoardTheme==='function'&&!themePreview)applyBoardTheme(state.theme);
- cancelAnimationFrame(layoutFrame);
- const previous=new Map([...document.querySelectorAll('.block')].map(el=>[el.dataset.block,el.getBoundingClientRect()]));
- const previousCards=query===renderedQuery?new Map([...document.querySelectorAll('#board [data-asset]')].map(el=>{const block=el.closest('.block');return [el.dataset.asset,{rect:el.getBoundingClientRect(),block:block?.dataset.block,origin:previous.get(block?.dataset.block)}];})):new Map();renderedQuery=query;
- $('#board').classList.toggle('full-view',!!focusCategory);$('#focusbar').hidden=!focusCategory;$('#focusbar').innerHTML=focusCategory?`<button class="button" data-action="back">← 返回大板</button><strong>${esc(cats[focusCategory].name)} · 全部资产</strong>`:'';
- const blocks=query?Object.keys(cats).filter(id=>state.assets.some(a=>a.type===id&&matches(a))).map(id=>state.blocks.find(b=>b.id===id)||{id,width:50}):state.blocks.filter(b=>!focusCategory||b.id===focusCategory);
- const welcome=!query&&state.assets.length===0;
- $('#board').hidden=welcome;$('#welcome').hidden=!welcome;
+ cancelAnimationFrame(layoutFrame);closeMenu(false);
+ const v=currentView(),key=`${query}|${v}|${layoutMode}`,same=key===renderedKey;renderedKey=key;
+ // Rows slide to their new place inside the same group; groups slide as a whole (a fold above them, a moved category).
+ const previousGroups=same?new Map([...document.querySelectorAll('#board .group')].map(el=>[el.dataset.group,el.getBoundingClientRect()])):new Map();
+ const previousItems=same?new Map([...document.querySelectorAll('#board [data-asset]')].map(el=>{const group=el.closest('.group');return [el.dataset.asset,{rect:el.getBoundingClientRect(),group:group?.dataset.group,origin:previousGroups.get(group?.dataset.group)}];})):new Map();
+ renderSidebar();
+ const welcome=!query&&!state.assets.length,board=welcome?{html:'',count:0}:boardHtml(v);
+ renderHeader(v,board.count);
+ $('#board').hidden=welcome||!board.html;$('#welcome').hidden=!welcome;
  document.querySelectorAll('#welcome .native-only').forEach(el=>el.hidden=!nativeStore);
- $('#board').innerHTML=blocks.map(renderBlock).join('');
- renderAgenda();
- $('#empty').hidden=welcome||blocks.length>0;
- $('#empty-title').textContent=query?'没有结果':'还没有区块';
- $('#empty-note').hidden=true;
- $('#clear-search').textContent=query?'清除':'添加区块';
+ $('#board').dataset.view=query?'search':cats[v]?'category':v;
+ $('#board').innerHTML=board.html;
+ $('#empty').hidden=welcome||!!board.html;
+ $('#empty-title').textContent='没有结果';$('#empty-note').hidden=true;$('#clear-search').textContent='清除';
+ syncToolbar();
  layoutFrame=requestAnimationFrame(()=>{
-  layoutFrame=0;updateOverflow();
-  if(!animateLayout||matchMedia('(prefers-reduced-motion: reduce)').matches)return;
-  const blocks=[...document.querySelectorAll('.block')].map(el=>({el,to:el.getBoundingClientRect()})),cards=[...document.querySelectorAll('#board [data-asset]')].map(el=>{const block=el.closest('.block');return {el,to:el.getBoundingClientRect(),block:block?.dataset.block,origin:block?.getBoundingClientRect()};});
-  // Positions slide; sizes change in place so text is never stretched. Cards slide only within their block and only when their size is unchanged.
-  for(const {el,to} of blocks){const from=previous.get(el.dataset.block);if(from&&to.width)slideFrom(el,from,MOTION_MS);}
-  for(const {el,to,block,origin} of cards){const was=previousCards.get(el.dataset.asset);if(!was||was.block!==block||!was.origin||Math.abs(was.rect.width-to.width)>2||Math.abs(was.rect.height-to.height)>2)continue;const dx=(was.rect.left-was.origin.left)-(to.left-origin.left),dy=(was.rect.top-was.origin.top)-(to.top-origin.top);if(Math.abs(dx)>=1||Math.abs(dy)>=1)el.animate([{transform:`translate(${dx}px,${dy}px)`},{transform:'none'}],{duration:MOTION_MS,easing:settleEase});}
+  layoutFrame=0;
+  if(!animateLayout||reduceMotion())return;
+  for(const el of document.querySelectorAll('#board .group')){const from=previousGroups.get(el.dataset.group);if(from)slideFrom(el,from,MOTION_MS);}
+  for(const el of document.querySelectorAll('#board [data-asset]')){const was=previousItems.get(el.dataset.asset),group=el.closest('.group'),to=el.getBoundingClientRect(),origin=group?.getBoundingClientRect();if(!was||was.group!==group?.dataset.group||!was.origin||Math.abs(was.rect.width-to.width)>2||Math.abs(was.rect.height-to.height)>2)continue;const dx=(was.rect.left-was.origin.left)-(to.left-origin.left),dy=(was.rect.top-was.origin.top)-(to.top-origin.top);if(Math.abs(dx)>=1||Math.abs(dy)>=1)el.animate([{transform:`translate(${dx}px,${dy}px)`},{transform:'none'}],{duration:MOTION_MS,easing:settleEase});}
  });
 }
-// Folding animates the changed blocks' height in layout, so neighbours follow without a separate slide; the clicked header stays where it was.
-function foldRender(ids,anchorId,before=new Map([...document.querySelectorAll('#board .block')].map(el=>[el.dataset.block,el.getBoundingClientRect()]))){
- const header=()=>document.querySelector(`#board .block[data-block="${CSS.escape(anchorId)}"]`),anchor=header()?.getBoundingClientRect().top;
+// Folding animates the changed groups' height in layout, so the groups below follow; the clicked header stays where it was.
+function foldRender(ids,anchorId,before=new Map([...document.querySelectorAll('#board .group')].map(el=>[el.dataset.group,el.getBoundingClientRect()]))){
+ const header=()=>document.querySelector(`#board .group[data-group="${CSS.escape(anchorId)}"]`),anchor=header()?.getBoundingClientRect().top;
  skipLayoutAnimation=true;render();
  if(reduceMotion())return;
  for(const id of ids){
-  const el=document.querySelector(`#board .block[data-block="${CSS.escape(id)}"]`),from=before.get(id);if(!el||!from)continue;
+  const el=document.querySelector(`#board .group[data-group="${CSS.escape(id)}"]`),from=before.get(id);if(!el||!from)continue;
   const to=el.getBoundingClientRect().height;if(Math.abs(to-from.height)<1)continue;
-  el.animate([{height:from.height+'px'},{height:to+'px'}],{duration:MOTION_MS,easing:settleEase});
-  el.querySelector(el.classList.contains('folded')?'.fold-peek':'.cards')?.animate([{opacity:0},{opacity:1}],{duration:160,delay:40,easing:'ease-out',fill:'backwards'});
+  el.animate([{height:from.height+'px',overflow:'hidden'},{height:to+'px',overflow:'hidden'}],{duration:MOTION_MS,easing:settleEase});
+  el.querySelector('.group-body')?.animate([{opacity:0},{opacity:1}],{duration:160,delay:40,easing:'ease-out',fill:'backwards'});
  }
  if(anchor===undefined)return;
  const until=performance.now()+MOTION_MS+60,hold=()=>{const top=header()?.getBoundingClientRect().top;if(top===undefined)return;if(Math.abs(top-anchor)>.5)scrollBy(0,top-anchor);if(performance.now()<until)requestAnimationFrame(hold);};
@@ -241,61 +261,66 @@ function foldRender(ids,anchorId,before=new Map([...document.querySelectorAll('#
 }
 function setIconButton(el,glyph,label,badge=''){if(!el)return;el.innerHTML=ui(glyph)+(badge?`<i class="count-badge">${badge}</i>`:'');el.setAttribute('aria-label',label);el.title=label;}
 function syncToolbar(){const pending=pendingCount();setIconButton($('#inbox-button'),'tray',pending?`待确认 ${formatCount(pending)}`:'待确认',pending?formatCount(pending):'');if(nativeStore)window.webkit.messageHandlers.assetboard.postMessage({action:'toolbarState',query,pending});}
-// Agenda chips: status dot, name, a bare day count and the amount. The kind (expires, charges) lives in the name tooltip and accessible label.
-function agendaWhen(status){return status.days<0?`过期 ${-status.days} 天`:status.days===0?'今天':status.days===1?'明天':`${status.days} 天`;}
-function agendaItem({asset,status}){const real=customIconSrc(asset)||siteIconSrc(asset),cost=asset.cost&&asset.cost!=='未知'?asset.cost:'',full=`${displayName(asset)}，${status.label}${cost?'，'+cost:''}`;return `<button class="agenda-item ${status.level}" data-action="detail" data-id="${esc(asset.id)}" aria-label="${esc(full)}" title="${esc(status.label)}"><i class="dot" aria-hidden="true"></i>${real?tile(asset,'sm'):''}<strong>${esc(displayName(asset))}</strong><span class="agenda-when">${esc(agendaWhen(status))}</span>${cost?`<span class="agenda-cost">${esc(cost)}</span>`:''}${asset.reason?`<small>${esc(asset.reason)}</small>`:''}</button>`;}
-function renderAgenda(){
- const bar=$('#agenda'),events=upcomingEvents(state.assets),dated=state.assets.some(a=>!isHidden(a)&&dayNumber(a.date)!==null);
- bar.hidden=!!query||!!focusCategory||!state.assets.length;
- const body=events.length?events.slice(0,3).map(agendaItem).join('')+(events.length>3?`<button class="text-button agenda-more" data-action="agenda-all" aria-label="全部 ${formatCount(events.length)} 项" title="全部 ${formatCount(events.length)} 项">${formatCount(events.length)} ›</button>`:''):dated?'<span class="agenda-empty">60 天内没有到期或扣款</span><button class="text-button agenda-more" data-action="agenda-all" aria-label="查看全部日期" title="查看全部日期">›</button>':'<button class="text-button agenda-empty" data-action="inbox">还没有到期或扣款日期，粘贴一段续费通知</button>';
- bar.innerHTML=`<span class="agenda-label" role="img" aria-label="接下来" title="接下来">${ui('clock')}</span><div class="agenda-items">${body}</div>`;
- syncToolbar();
+// The selected row follows the inspector without a re-render.
+function markSelected(){document.querySelectorAll('#board .selected').forEach(n=>n.classList.remove('selected'));const open=!$('#detail').hidden;document.body.classList.toggle('inspecting',open);if(open&&activeAsset)document.querySelector(`#board [data-asset="${CSS.escape(activeAsset)}"]`)?.classList.add('selected');}
+// One small menu for the inspector's ⋯ and a row's context menu. Items are ordinary data-action buttons, so they run through the one click handler.
+let menuReturn=null;
+function assetMenuItems(a,full=false){
+ const id=a.id,items=[],link=safeManagementUrl(a.url),realLink=link&&new URL(link).hostname!=='example.com';
+ if(full){if(realLink)items.push({action:'external',label:'打开管理页',key:'O'});items.push({action:'edit-asset',label:'编辑…',key:'E'});for(const q of assetQuick(a).filter(q=>q.kind!=='open'))items.push({action:'quick',label:q.label,quick:q.id});items.push('-');}
+ if(!a.hiddenAt){items.push({action:'pin-front',label:'放到前面',key:'F'});if(manualOrder(a.type))items.push({action:'auto-order',label:'恢复自动排序'});items.push({action:'link-picker',label:'关联…',key:'L'});}
+ if(nativeStore)items.push({action:'icon-dialog',label:'网站图标…'});
+ if(STOPPABLE.includes(a.type)&&!a.hiddenAt)items.push({action:'toggle-stopped',label:a.stopped?'恢复启用':'标为停用',key:'S'});
+ items.push({action:a.hiddenAt?'restore-asset':'hide-asset',label:a.hiddenAt?'恢复显示':'隐藏',key:'H'},'-',{action:'delete-asset',label:'删除…',danger:true});
+ return items.map(x=>x==='-'?x:{...x,id});
 }
-function agendaAll(){const events=upcomingEvents(state.assets,new Date(),Infinity);modal('全部日期',events.length?`<div class="agenda-list">${events.map(agendaItem).join('')}</div><p class="form-note">按日期排序，已隐藏的资产不在此列。设为每月或每年重复的日期会自动顺延到下一次。</p>`:'<p class="form-note">还没有资产记录日期。在资产资料中填写“下一日期”，或从待确认资料中补充。</p>');}
-function updateOverflow(){
- limitRows();
- const grids=[...document.querySelectorAll('.block.fixed')].map(block=>{const grid=block.querySelector('.cards'),cards=[...grid.querySelectorAll('.asset-card:not(.is-dragging)')],style=getComputedStyle(grid),bottom=parseFloat(style.paddingBottom)||0;return {block,grid,cards,bottom,minHeight:(cards[0]?.offsetHeight||100)+(parseFloat(style.paddingTop)||0)+bottom};});
- for(const {grid,minHeight} of grids){const value=minHeight+'px';if(grid.style.minHeight!==value)grid.style.minHeight=value;}
- const visibility=grids.map(item=>{const limit=item.grid.offsetTop+item.grid.clientHeight-item.bottom+1;return {...item,hidden:item.cards.map(card=>card.offsetTop+card.offsetHeight>limit)};});
- for(const {block,cards,hidden} of visibility){cards.forEach((card,i)=>{const value=hidden[i]?'hidden':'';if(card.style.visibility!==value)card.style.visibility=value;if(card.inert!==hidden[i])card.inert=hidden[i];});const all=block.querySelector('[data-action="all"]');all.hidden=!hidden.some(Boolean);all.title='还有资产未显示，查看全部';}
- if(onBoard())for(const {block,hidden} of visibility)boardShown.set(block.dataset.block,hidden.filter(h=>!h).length);
+function openMenu(items,{x,y,anchor}={}){
+ const menu=$('#menu');menuReturn=document.activeElement;
+ menu.innerHTML=items.map(x=>x==='-'?'<div class="menu-sep" role="separator"></div>':`<button class="menu-item${x.danger?' danger':''}" role="menuitem" tabindex="-1" data-action="${x.action}" data-id="${esc(x.id)}"${x.quick?` data-quick="${esc(x.quick)}"`:''}><span>${esc(x.label)}</span>${x.key?`<kbd>${x.key}</kbd>`:''}</button>`).join('');
+ menu.hidden=false;anchor?.setAttribute('aria-expanded','true');menu.anchor=anchor||null;
+ const r=anchor?.getBoundingClientRect(),w=menu.offsetWidth,h=menu.offsetHeight;let left=r?r.right-w:x,top=r?r.bottom+4:y;
+ if(left+w>innerWidth-8)left=innerWidth-w-8;if(top+h>innerHeight-8)top=r?r.top-h-4:innerHeight-h-8;
+ menu.style.left=Math.max(8,left)+'px';menu.style.top=Math.max(8,top)+'px';
+ menu.querySelector('.menu-item')?.focus();
 }
-// Auto-height blocks show at most DISPLAY_LIMITS rows; the header's 查看全部 opens the rest. Fixed-height blocks are clipped by height below.
-function gridColumns(grid){return Math.max(1,getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length);}
-function showItem(el,show){const value=show?'':'none';if(el.style.display!==value)el.style.display=value;if(el.inert===show)el.inert=!show;}
-// How many cards each block showed on the board last time (its display area). The full view draws its divider there.
-const boardShown=new Map();
-function onBoard(){let active=false;try{active=!!gesture?.active;}catch{}return !focusCategory&&!query&&!active;}
-function limitRows(){
- const record=onBoard();if(record)boardShown.clear();
- for(const block of document.querySelectorAll('#board .block.limited')){
-  const grid=block.querySelector('.cards'),all=block.querySelector('[data-action="all"]');if(!grid||!all)continue;
-  const cards=[...grid.querySelectorAll(':scope > .asset-card:not(.is-dragging)')];cards.forEach(el=>showItem(el,true));
-  const cols=gridColumns(grid),list=grid.querySelector('.compact-repositories-grid');let hidden=0;
-  if(list){
-   const keep=wholeRows(cards.length,cols,DISPLAY_LIMITS.featuredRows);
-   cards.forEach((el,i)=>{showItem(el,i<keep);const spill=list.querySelector(`[data-spill="${CSS.escape(el.dataset.asset)}"]`);if(spill)showItem(spill,i>=keep);});
-   const tiles=[...list.children].filter(el=>el.dataset.asset||el.style.display!=='none'),title=grid.querySelector('.compact-repositories-title');
-   if(title){title.setAttribute("aria-label",`其余 ${formatCount(tiles.length)} 个仓库`);title.dataset.count=tiles.length;}
-   tiles.forEach(el=>showItem(el,true));const max=rowLimit(tiles.length,gridColumns(list),DISPLAY_LIMITS.listRows);tiles.forEach((el,i)=>showItem(el,i<max));hidden=tiles.length-max;
-   if(record)boardShown.set(block.dataset.block,keep);
-  }else{
-   const max=rowLimit(cards.length,cols,block.classList.contains('compact')?DISPLAY_LIMITS.compactRows:DISPLAY_LIMITS.cardRows);
-   cards.forEach((el,i)=>showItem(el,i<max));hidden=cards.length-max;
-   if(record)boardShown.set(block.dataset.block,max);
-  }
-  all.hidden=!hidden;all.textContent='全部 ›';all.title=hidden?`还有 ${hidden} 项未显示，查看全部`:'查看全部';all.setAttribute('aria-label',hidden?`查看全部${cats[all.dataset.id].name}，另 ${formatCount(hidden)} 项`:`查看全部${cats[all.dataset.id].name}`);all.dataset.count=hidden||'';
- }
-}
+function closeMenu(restore=true){const menu=$('#menu');if(!menu||menu.hidden)return;menu.hidden=true;menu.innerHTML='';menu.anchor?.setAttribute('aria-expanded','false');menu.anchor=null;if(restore&&menuReturn?.isConnected)menuReturn.focus();menuReturn=null;}
+document.addEventListener('pointerdown',e=>{if(!$('#menu').hidden&&!e.target.closest('#menu,[data-action="asset-menu"]'))closeMenu(false);},true);
+document.addEventListener('keydown',e=>{
+ const menu=$('#menu');if(menu.hidden)return;
+ const items=[...menu.querySelectorAll('.menu-item')],at=items.indexOf(document.activeElement);
+ if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();closeMenu();return;}
+ if(e.key==='Tab'){closeMenu(false);return;}
+ if(['ArrowDown','ArrowUp','Home','End'].includes(e.key)){e.preventDefault();e.stopImmediatePropagation();const next=e.key==='Home'?0:e.key==='End'?items.length-1:(at+(e.key==='ArrowDown'?1:-1)+items.length)%items.length;items[next]?.focus();return;}
+ if(e.key.length===1&&!e.metaKey&&!e.ctrlKey){e.preventDefault();e.stopImmediatePropagation();const hit=items.find(n=>n.querySelector('kbd')?.textContent.toLowerCase()===e.key.toLowerCase());if(hit)hit.click();}
+},true);
+document.addEventListener('contextmenu',e=>{
+ const item=e.target.closest?.('#board [data-asset]'),a=item&&state.assets.find(x=>x.id===item.dataset.asset);if(!a||gesture)return;
+ e.preventDefault();openMenu(assetMenuItems(a,true),{x:e.clientX,y:e.clientY});
+});
+addEventListener('scroll',()=>closeMenu(false),{passive:true});
 function sourceLabel(a){if(a.syncMissing)return `${a.source==='github'?'GitHub':'Cloudflare'} 本次未返回`;if(a.source==='github')return `GitHub 仓库 · ${a.syncStatus||'状态未知'}`;if(a.source==='cloudflare')return `Cloudflare ${a.resourceKind||'Zone'} · ${a.syncStatus||'状态未知'}`;return a.source==='manual'?'手动录入':'演示资产';}
-function dateText(a){const status=assetDateStatus(a);if(status.level==='none')return a.date||'待补充';return `${status.date} · ${status.label}${billingCycles[a.cycle]?` · ${billingCycles[a.cycle].label}重复`:''}`;}
-// Manual display order from the detail panel: bring one card to the front of its block, or go back to recency order.
-function manualOrder(type){return !!(state.cardOrder?.[type]?.length||(type==='repository'&&state.featuredRepositoryIds?.length));}
-function orderActions(a){if(a.hiddenAt||!cats[a.type])return '';return `<div class="detail-actions order-actions"><button class="button" data-action="pin-front" data-id="${esc(a.id)}" title="放到「${esc(cats[a.type].name)}」显示区的第一位">放到前面</button>${manualOrder(a.type)?`<button class="button" data-action="auto-order" data-id="${esc(a.id)}" title="「${esc(cats[a.type].name)}」恢复按最近更新排列">恢复自动排序</button>`:''}</div>`;}
-function pinFront(id){const a=state.assets.find(x=>x.id===id);if(!a||a.hiddenAt)return;checkpoint();state.cardOrder||={};state.cardOrder[a.type]=bringToFront(state.cardOrder[a.type],id);if(a.type==='repository')state.featuredRepositoryIds=bringToFront(state.featuredRepositoryIds,id);save();render();if(activeAsset===id)showDetail(id);toast('已放到最前',true);}
-function autoOrder(id){const a=state.assets.find(x=>x.id===id);if(!a||!manualOrder(a.type))return;checkpoint();if(state.cardOrder)delete state.cardOrder[a.type];if(a.type==='repository')state.featuredRepositoryIds=[];save();render();if(activeAsset===id)showDetail(id);toast('已恢复自动排序',true);}
-function showDetail(id){const a=state.assets.find(a=>a.id===id);if(!a)return;lastFocus=document.activeElement;activeAsset=id;const link=safeManagementUrl(a.url),realLink=link&&new URL(link).hostname!=='example.com',lastSync=a.syncedAt&&!isNaN(Date.parse(a.syncedAt))?new Date(a.syncedAt).toLocaleString('zh-CN'):'';$('#detail-content').innerHTML=`<div class="detail-head">${tile(a,'lg')}<span class="eyebrow">${esc(cats[a.type].name)}</span></div><h2>${esc(a.name)}</h2><p class="detail-sub">${esc(assetProfiles[a.type]?[regionFlag(a.region),identityText(a)].filter(Boolean).join(' '):[a.provider,a.account].filter(Boolean).join(' · '))}</p>${a.purpose?`<span class="detail-badge">${esc(a.purpose)}</span>`:''}<div class="detail-actions">${realLink?`<button class="button primary" data-action="external" data-id="${esc(id)}" title="打开管理页">打开 ↗</button>`:''}<button class="button" data-action="edit-asset" data-id="${esc(id)}">编辑</button>${nativeStore?`<button class="button" data-action="icon-dialog" data-id="${esc(id)}" title="网站图标">图标</button>`:''}</div>${quickRow(a)}${orderActions(a)}<div class="detail-actions secondary-actions">${STOPPABLE.includes(a.type)&&!a.hiddenAt?`<button class="button" data-action="toggle-stopped" data-id="${esc(id)}" title="${a.stopped?'恢复为在用':'标为已停用，只是登记，不探测服务'}">${a.stopped?'启用':'停用'}</button>`:''}<button class="button" data-action="${a.hiddenAt?'restore-asset':'hide-asset'}" data-id="${esc(id)}" title="${a.hiddenAt?'恢复显示':'仅在本机隐藏，可随时恢复'}">${a.hiddenAt?'恢复':'隐藏'}</button><button class="button danger-quiet" data-action="delete-asset" data-id="${esc(id)}" title="只删除 Assetboard 里的记录">删除</button></div><div class="facts">${detailFacts(a,lastSync)}</div>${linkSection(a)}${(()=>{const src={cloudflare:'同步自 Cloudflare，名称和账号下次同步会按平台值更新。',github:'同步自 GitHub，名称和账号下次同步会按平台值更新。',ssh:'来自 ~/.ssh/config，名称和主机下次导入会按配置更新。',manual:'',demo:'演示数据，不代表实际账户。'}[a.source]??'演示数据，不代表实际账户。';return a.notes||src?`<details><summary>${a.notes?'备注':'来源'}${a.notes&&src?' · 来源':''}</summary>${a.notes?`<p>${esc(a.notes)}</p>`:''}${src?`<p>${src}</p>`:''}</details>`:'';})()}`;$('#detail').hidden=false;$('#close-detail').focus();}
-// Masked values reveal on request; the full value never appears on the board.
+function dateText(a){const status=assetDateStatus(a);if(status.level==='none')return a.date||'待补充';return [status.label.startsWith(status.date)?status.label:`${status.date} · ${status.label}`,billingCycles[a.cycle]?`${billingCycles[a.cycle].label}重复`:''].filter(Boolean).join(' · ');}
+// Manual display order from the inspector menu: bring one record to the front of its category, or go back to recency order.
+function manualOrder(type){return !!state.cardOrder?.[type]?.length;}
+function pinFront(id){const a=state.assets.find(x=>x.id===id);if(!a||a.hiddenAt)return;checkpoint();state.cardOrder||={};state.cardOrder[a.type]=bringToFront(state.cardOrder[a.type],id);save();render();if(activeAsset===id)showDetail(id);toast('已放到最前',true);}
+function autoOrder(id){const a=state.assets.find(x=>x.id===id);if(!a||!manualOrder(a.type))return;checkpoint();if(state.cardOrder)delete state.cardOrder[a.type];save();render();if(activeAsset===id)showDetail(id);toast('已恢复自动排序',true);}
+// The inspector: one primary action (打开 when there is a management link, otherwise 编辑), category quick actions, the rest behind ⋯.
+// Opening by keyboard, or as an overlay on a narrow window, moves focus into it; a click on a wide window leaves focus on the row so ↑/↓ keep browsing.
+function showDetail(id,{focus}={}){
+ const a=state.assets.find(a=>a.id===id);if(!a)return;
+ const wasOpen=!$('#detail').hidden,active=document.activeElement,inside=!!active?.closest?.('#detail');if(active&&!active.closest?.('#detail,#menu'))lastFocus=active;
+ activeAsset=id;
+ const link=safeManagementUrl(a.url),realLink=link&&new URL(link).hostname!=='example.com',lastSync=a.syncedAt&&!isNaN(Date.parse(a.syncedAt))?new Date(a.syncedAt).toLocaleString('zh-CN'):'';
+ const sub=assetProfiles[a.type]?[regionFlag(a.region),identityText(a)].filter(Boolean).join(' '):[a.provider,a.account].filter(Boolean).join(' · ');
+ const primary=a.hiddenAt?`<button class="button primary" data-action="restore-asset" data-id="${esc(id)}">恢复显示</button>`:realLink?`<button class="button primary" data-action="external" data-id="${esc(id)}" title="打开管理页">${ui('external')}打开</button>`:'';
+ const actions=`<div class="detail-actions main-actions">${primary}<button class="button${primary?'':' primary'}" data-action="edit-asset" data-id="${esc(id)}">编辑</button><button class="button icon-only detail-more" data-action="asset-menu" data-id="${esc(id)}" aria-haspopup="menu" aria-expanded="false" aria-label="更多操作" title="更多操作">${ui('more')}</button></div>`;
+ const source={cloudflare:'同步自 Cloudflare，名称和账号下次同步会按平台值更新。',github:'同步自 GitHub，名称和账号下次同步会按平台值更新。',ssh:'来自 ~/.ssh/config，名称和主机下次导入会按配置更新。',manual:'',demo:'演示数据，不代表实际账户。'}[a.source]??'演示数据，不代表实际账户。';
+ const notes=a.notes||source?`<details><summary>${a.notes?'备注':'来源'}${a.notes&&source?' · 来源':''}</summary>${a.notes?`<p>${esc(a.notes)}</p>`:''}${source?`<p>${source}</p>`:''}</details>`:'';
+ $('#detail-content').innerHTML=`<div class="detail-head">${tile(a,'lg')}<span class="eyebrow">${esc(cats[a.type].name)}${a.hiddenAt?' · 已隐藏':''}</span></div><h2>${esc(a.name)}</h2>${sub?`<p class="detail-sub">${esc(sub)}</p>`:''}${a.purpose?`<span class="detail-badge">${esc(a.purpose)}</span>`:''}${actions}${a.hiddenAt?'':quickRow(a)}<div class="facts">${detailFacts(a,lastSync)}</div>${linkSection(a)}${notes}`;
+ $('#detail').hidden=false;markSelected();
+ if(focus??(wasOpen?inside:!inspectorDocked()))$('#close-detail').focus();
+}
+// Masked values reveal on request; the full value never appears in the list.
 function secret(full,masked){return full&&masked&&masked!==full?`<span class="secret" data-full="${esc(full)}" data-masked="${esc(masked)}">${esc(masked)}</span><button class="text-button reveal" data-action="reveal" aria-pressed="false">显示</button>`:esc(full||'');}
 function detailFacts(a,lastSync){
  const row=([k,html])=>`<div class="fact"><span>${k}</span><span>${html}</span></div>`,text=value=>esc(value||'');
@@ -425,9 +450,10 @@ function markTone(src){
  img.src=src;return '';
 }
 function refreshMarkTones(){document.querySelectorAll('.tile.custom-art img,.site-mark').forEach(img=>{const tone=markTones.get(img.getAttribute('src'));if(tone===undefined)return;const host=img.classList.contains('site-mark')?img:img.parentElement;host.classList.toggle('mark-dark',tone==='mark-dark');host.classList.toggle('mark-light',tone==='mark-light');});}
-function closeDetail(){ $('#detail').hidden=true;activeAsset=null;if(lastFocus?.isConnected)lastFocus.focus();}
+function closeDetail(){$('#detail').hidden=true;activeAsset=null;markSelected();if(lastFocus?.isConnected)lastFocus.focus();}
 function modal(title,html,view=''){$('#modal-title').textContent=title;$('#modal-content').innerHTML=html;$('#modal').dataset.view=view;if(!html.includes('id="asset-form"')&&!html.includes("id='asset-form'")&&!html.includes('id="dirty-save"'))assetFormSnapshot=null;if(nativeStore)$('#modal-content').querySelectorAll('.form-note').forEach(el=>{if(el.textContent.includes('浏览器'))el.textContent=el.textContent.replaceAll('当前浏览器','此 Mac').replaceAll('此浏览器','此 Mac');});if(!$('#modal').open)$('#modal').showModal();}
-function addBlock(){modal('给大板添一个区块',Object.entries(cats).map(([id,c])=>`<button class="category-choice" data-action="choose-block" data-id="${id}" ${state.blocks.some(b=>b.id===id)?'disabled':''}><span class="tile type-art" aria-hidden="true">${icon(id)}</span><span>${c.name}${c.hint?`<small>${c.hint}</small>`:''}</span><span class="plus">${state.blocks.some(b=>b.id===id)?'✓':'＋'}</span></button>`).join('')+'');}
+// The + adds an asset: straight into the category on screen, otherwise through the category chooser.
+function addAsset(){const v=currentView();if(cats[v]&&!query)assetForm(v);else manualImport();}
 let importPlan=null,importKind=null;
 function importHub(){
  const deleted=(state.deletedExternalIds||[]).length;
@@ -732,7 +758,7 @@ function buildPasteCandidate(){pasteCandidate={...buildCandidates([pasteRow],{..
 function requestEvidence(then){afterEvidence=then||null;if(nativeStore)window.webkit.messageHandlers.assetboard.postMessage({action:'evidenceList'});else{afterEvidence=null;then?.();}}
 window.assetboardEvidenceList=(rows,error)=>{
  if(Array.isArray(rows)){evidenceRows=rows;evidenceVersion++;}else if(error)toast(error);
- renderAgenda();const next=afterEvidence;afterEvidence=null;
+ syncToolbar();renderSidebar();const next=afterEvidence;afterEvidence=null;
  if(next)next();else if($('#modal').open&&$('#modal').dataset.view==='inbox')inboxDialog(false);
 };
 // A person's own model endpoint. Swift keeps the key and sends the request; the page only receives reply text.
@@ -765,7 +791,7 @@ async function aiRecognizeCandidate(key){
  const result=await aiRequest(key==='paste'?{text:pasteRow.body}:{evidenceId:c.latest.id});
  aiBusy.delete(key);
  if(!result.ok)aiErrors.set(key,result.error||'AI 识别失败');else if(key==='paste'){pasteRow.payload={ai:result.ai};pasteRecorded=new Set();buildPasteCandidate();}
- renderAgenda();refreshReview(key,0);
+ syncToolbar();refreshReview(key,0);
 }
 function aiProgressText(){return `${aiBatchState.done}/${aiBatchState.total}${aiBatchState.stop?' · 停止中':''}`;}
 async function aiBatch(){
@@ -777,7 +803,7 @@ async function aiBatch(){
  aiBatchState={done:0,total:targets.length,stop:false};inboxDialog(false);
  let failure='';
  for(const c of targets){if(aiBatchState.stop)break;const result=await aiRequest({evidenceId:c.latest.id});if(!result.ok){failure=result.error||'AI 识别失败';break;}aiBatchState.done++;const progress=$('#ai-progress');if(progress)progress.textContent=aiProgressText();}
- const done=aiBatchState.done;aiBatchState=null;renderAgenda();
+ const done=aiBatchState.done;aiBatchState=null;syncToolbar();
  if($('#modal').open&&$('#modal').dataset.view==='inbox')inboxDialog(false);
  toast(failure?`识别 ${done} 组后停止：${failure}`:`已识别 ${done} 组，请逐组核对`);
 }
@@ -832,9 +858,14 @@ function resolveCandidate(key,status,assetId,index=null){
  return c.pendingIds.length;
 }
 document.addEventListener('submit',e=>{if(e.target.id!=='paste-form')return;e.preventDefault();const text=$('#paste-text').value.trim();if(!text){$('#paste-text').focus();return;}pasteRow={id:'paste-'+Date.now(),kind:'paste',source:'',title:text.split('\n')[0].slice(0,60),body:text,importedAt:new Date().toISOString()};pasteRecorded=new Set();candidateReview(buildPasteCandidate());});
-function settings(id){const b=state.blocks.find(b=>b.id===id);if(!b)return;modal(`${cats[id].name} · 区块设置`,`<div class="form"><label>区块宽度 · <span id="range-value">${Math.round(b.width)}%</span><input id="block-width" type="range" min="25" max="100" value="${b.width}" aria-label="区块宽度"></label><label>卡片样式<select id="block-density"><option value="full" ${blockDensity(b)==='full'?'selected':''}>完整卡片</option><option value="compact" ${blockDensity(b)==='compact'?'selected':''}>紧凑列表：图标、名称和一条关键信息</option></select></label><label>展示高度<select id="block-height"><option value="">随内容自适应</option><option value="240" ${b.height===240?'selected':''}>约一行卡片</option><option value="480" ${b.height===480?'selected':''}>约两行卡片</option></select></label><p class="form-note">这里是键盘与触屏的快捷设置。在大板上也可以直接拖动区块的右边或下边：往上拉到放不下一行完整卡片会变成紧凑列表，再往上拉会收起。拖动标题栏移动位置，选中标题后按 ⌥ + 方向键同样可以移动。</p><button class="button primary" data-action="save-settings" data-id="${id}">应用设置</button></div><div class="settings-actions"><button class="button" data-action="move-up" data-id="${id}">向前移动</button><button class="button" data-action="move-down" data-id="${id}">向后移动</button><button class="button" data-action="remove-block" data-id="${id}">从大板移除</button></div><p class="form-note">移除区块不删除资产，重新添加该类别即可找回。</p>`);$('#block-width').oninput=e=>$('#range-value').textContent=e.target.value+'%';}
+function settings(id){if(!cats[id])return;const count=state.assets.filter(a=>a.type===id).length;modal(`${cats[id].name} · 类别`,`<div class="settings-actions"><button class="button" data-action="move-up" data-id="${id}">向上移动</button><button class="button" data-action="move-down" data-id="${id}">向下移动</button>${count?'':`<button class="button" data-action="remove-block" data-id="${id}">从侧边栏移除</button>`}</div><p class="form-note">也可以在侧边栏拖动类别，或选中后按 ⌥ + ↑ ↓。</p>`);}
 document.addEventListener('click',e=>{const button=e.target.closest('[data-action]');if(!button)return;const {action,id}=button.dataset;
- if(action==='detail'){if($('#modal').open)$('#modal').close();showDetail(id);}
+ if(button.closest('#menu'))closeMenu();
+ if(action==='detail'){if($('#modal').open)$('#modal').close();showDetail(id,{focus:e.detail===0||!inspectorDocked()});}
+ else if(action==='view')setView(id);
+ else if(action==='layout')setLayout(id);
+ else if(action==='asset-menu'){if(!$('#menu').hidden&&$('#menu').anchor===button){closeMenu();return;}const a=state.assets.find(x=>x.id===id);if(a)openMenu(assetMenuItems(a),{anchor:button});}
+ else if(action==='category-menu'){if(cats[button.dataset.id])settings(button.dataset.id);}
  else if(action==='undo')undo();
  else if(action==='redo')redo();
  else if(action==='quick'){if(!runQuick(id,button.dataset.quick))toast('这个操作已不可用');}
@@ -852,7 +883,7 @@ document.addEventListener('click',e=>{const button=e.target.closest('[data-actio
  else if(action==='link-standby'||action==='link-proxy'){const meta=linkMetaOf(state.assets.find(x=>x.id===id),button.dataset.target);checkpoint();if(!setLinkMeta(state.assets,id,button.dataset.target,action==='link-standby'?{standby:!meta.standby}:{proxied:!meta.proxied})){history.pop();return;}save();render();showDetail(id);}
  else if(action==='unlink'){checkpoint();if(!unlinkAssets(state.assets,id,button.dataset.target)){history.pop();return;}save();render();showDetail(id);toast('已取消关联',true);}
  else if(action==='inbox')inboxDialog();
- else if(action==='agenda-all')agendaAll();
+ else if(action==='agenda-all')setView('upcoming');
  else if(action==='close-modal')$('#modal').close();
  else if(action==='apply-collisions'){const chosen=[...document.querySelectorAll('input[name="collision"]:checked')].map(input=>pendingCollisions[Number(input.value)]).filter(Boolean);$('#modal').close();if(!chosen.length)return;checkpoint();const applied=chosen.filter(item=>applyCollision(state,item)).length;pendingCollisions=[];save();render();toast(`已覆盖 ${applied} 条`,true);}
  else if(action==='candidate-review'){const c=findCandidate(id);if(c)candidateReview(c);}
@@ -868,7 +899,6 @@ document.addEventListener('click',e=>{const button=e.target.closest('[data-actio
  else if(action==='dismiss-weak'){const weak=candidates().filter(c=>c.pending&&c.weak);if(!weak.length)return;checkpoint();for(const c of weak)resolveCandidate(c.key,'dismissed');save();render();inboxDialog(false);toast(`已忽略 ${weak.length} 组`,true);}
  else if(action==='pin-front')pinFront(id);
  else if(action==='auto-order')autoOrder(id);
- else if(action==='repo-swap'){checkpoint();state.featuredRepositoryIds=swapRepositoryDisplay(state.assets,state.featuredRepositoryIds,id);save();render();}
  else if(action==='import-hub')importHub();
  else if(action==='import-pick-file')$('#import-file')?.click();
  else if(action==='import-demo-sample'){if(!demoMode)return;importKind='csv';importCsvText(demoImportSampleCsv(),{filename:'demo-sample.csv'});}
@@ -906,59 +936,52 @@ document.addEventListener('click',e=>{const button=e.target.closest('[data-actio
  }
  else if(action==='choose-asset-type')assetForm(id);
  else if(action==='external'){const a=state.assets.find(a=>a.id===id),url=safeManagementUrl(a?.url);if(!url||new URL(url).hostname==='example.com'){toast('先在资料里填管理链接');return;}if(nativeStore)window.webkit.messageHandlers.assetboard.postMessage({action:'openExternal',url});else window.open(url,'_blank','noopener,noreferrer');}
- else if(action==='collapse'){if(query||focusCategory){toast('回到大板后可收起区块');return;}const b=state.blocks.find(x=>x.id===id);if(!b)return;const fold=!b.folded,targets=e.altKey?state.blocks:[b];checkpoint();for(const block of targets)block.folded=fold;save();foldRender(targets.map(x=>x.id),id);document.querySelector(`#board [data-action="collapse"][data-id="${id}"]`)?.focus();if(e.altKey)toast(fold?'已收起全部区块':'已展开全部区块',true);}
- else if(action==='all'){focusCategory=id;closeDetail();render();window.scrollTo({top:0,behavior:'smooth'});}
- else if(action==='back'){focusCategory=null;render();}
+ else if(action==='collapse'){if(query||currentView()!=='all'||!cats[id])return;checkpoint();ensureBlock(state,id);const b=state.blocks.find(x=>x.id===id),fold=!b.folded,targets=e.altKey?categoryIds():[id];for(const type of targets){ensureBlock(state,type);state.blocks.find(x=>x.id===type).folded=fold;}save();foldRender(targets,id);document.querySelector(`#board [data-action="collapse"][data-id="${id}"]`)?.focus();if(e.altKey)toast(fold?'已收起全部类别':'已展开全部类别',true);}
+ else if(action==='all')setView(id);
+ else if(action==='back')setView('all');
  else if(action==='add-asset')assetForm(id);
  else if(action==='edit-asset')assetForm(state.assets.find(a=>a.id===id).type,id);
  else if(action==='settings')settings(id);
- else if(action==='choose-block'){checkpoint();state.blocks.push({id,width:50,height:null,density:'full',folded:false});save();$('#modal').close();render();toast('已添加区块',true);}
- else if(action==='save-settings'){checkpoint();const b=state.blocks.find(b=>b.id===id);b.width=Number($('#block-width').value);b.height=Number($('#block-height').value)||null;const style=$('#block-density').value;if(style!==blockDensity(b)||b.collapsed!==undefined)setBlockDensity(b,style);save();$('#modal').close();render();toast('布局已更新',true);}
- else if(action==='toggle-hidden'){if(showHiddenBlocks.has(id))showHiddenBlocks.delete(id);else showHiddenBlocks.add(id);render();document.querySelector(`[data-action="toggle-hidden"][data-id="${id}"]`)?.focus();}
+ else if(action==='toggle-hidden')setView('hidden');
  else if(action==='toggle-stopped')toggleStopped(id);
  else if(action==='hide-asset'){const a=state.assets.find(a=>a.id===id);if(!a||a.hiddenAt)return;checkpoint();a.hiddenAt=new Date().toISOString();save();if(activeAsset===id)closeDetail();render();toast('已隐藏',true);}
- else if(action==='restore-asset'){const a=state.assets.find(a=>a.id===id),fromBoard=!!button.closest('#board');if(!a)return;checkpoint();delete a.hiddenAt;save();if(activeAsset===id)showDetail(id);render();if(fromBoard)(document.querySelector(`#board [data-asset="${CSS.escape(id)}"] .card-open`)||document.querySelector(`#board .block[data-block="${a.type}"] [data-action="restore-asset"]`))?.focus();toast('已恢复显示',true);}
+ else if(action==='restore-asset'){const a=state.assets.find(a=>a.id===id),fromBoard=!!button.closest('#board');if(!a)return;checkpoint();delete a.hiddenAt;save();if(activeAsset===id)showDetail(id);render();if(fromBoard)(document.querySelector(`#board [data-asset="${CSS.escape(id)}"] .item-open`)||document.querySelector('#board [data-action="restore-asset"]')||$('#sidebar .nav-item.active'))?.focus();toast('已恢复显示',true);}
  else if(action==='delete-asset'){const a=state.assets.find(a=>a.id===id);if(!a)return;confirmDialog(`删除「${a.name}」？`,`只删除 Assetboard 里的记录，不取消订阅，也不动线上资源。之后同步不会加回。${a.type==='server'&&serverChainCount(state.assets,a)?`\n同时解除 ${serverChainCount(state.assets,a)} 项关联，域名和仓库本身不受影响。`:''}`,'删除',true).then(ok=>{const a=state.assets.find(a=>a.id===id);if(!ok||!a)return;checkpoint();rememberDeleted(a);state.assets=state.assets.filter(x=>x.id!==id);removeLinksTo(state.assets,id);if(Array.isArray(state.featuredRepositoryIds))state.featuredRepositoryIds=state.featuredRepositoryIds.filter(x=>x!==id);if(state.cardOrder){for(const key of Object.keys(state.cardOrder))state.cardOrder[key]=(state.cardOrder[key]||[]).filter(x=>x!==id);}if(activeAsset===id)closeDetail();save();render();toast('已删除',true);});}
- else if(action==='remove-block'){checkpoint();state.blocks=state.blocks.filter(b=>b.id!==id);showHiddenBlocks.delete(id);if(focusCategory===id)focusCategory=null;save();$('#modal').close();render();toast('区块已移除，资产保留',true);}
+ else if(action==='remove-block'){if(state.assets.some(a=>a.type===id))return;checkpoint();state.blocks=state.blocks.filter(b=>b.id!==id);save();$('#modal').close();render();toast('已从侧边栏移除',true);}
  else if(action==='move-up'||action==='move-down'){moveBlock(id,action==='move-up'?-1:1);$('#modal').close();}
 });
 document.addEventListener('submit',async e=>{if(e.target.id!=='asset-form')return;e.preventDefault();const form=e.target,data=new FormData(form),name=String(data.get('name')).trim(),url=String(data.get('url')).trim(),file=form.elements.icon.files[0];if(!name)return;const leaked=['name','provider','account','purpose','reason','cost','notes'].find(key=>looksLikeCardNumber(data.get(key)));if(leaked){const input=form.elements[leaked];input.setCustomValidity('这里像是完整卡号。Assetboard 只保存卡号后 4 位，请删掉后再保存。');input.reportValidity();input.addEventListener('input',()=>input.setCustomValidity(''),{once:true});return;}if(url&&!safeManagementUrl(url)){form.elements.url.setCustomValidity('请输入不含账号密码的 http 或 https 链接');form.elements.url.reportValidity();return;}form.elements.url.setCustomValidity('');const actionHints={host:'请填写主机名或 IP，例如 203.0.113.10',ips:'最多 4 个有效 IP，用逗号或空格分隔',sshUser:'SSH 用户只能包含字母、数字和 _ . -',sshPort:'端口是 1 到 65535 之间的数字',localPath:'请填写以 / 或 ~/ 开头的本机目录'};for(const key of Object.keys(actionHints)){const input=form.elements[key];if(!input)continue;input.setCustomValidity(validActionField(key,input.value)?'':actionHints[key]);if(!input.checkValidity()){input.reportValidity();input.addEventListener('input',()=>input.setCustomValidity(''),{once:true});return;}}if(file&&(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>256*1024)){toast('图标需为 PNG、JPEG 或 WebP，且不超过 256 KB');return;}const submit=form.querySelector('[type="submit"]');submit.disabled=true;try{const iconData=file?await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);}):null;const id=form.dataset.id,chosen=String(data.get('type')||''),type=cats[chosen]?chosen:form.dataset.type,candidateKey=form.dataset.candidate,candidateItem=form.dataset.item===''||form.dataset.item===undefined?null:Number(form.dataset.item),profile=assetProfiles[type]||{},date=data.has('expiry')?cardExpiry(data.get('expiry'))||'':String(data.get('date')??''),dateKind=data.has('expiry')?'expire':dateKinds[data.get('dateKind')]?String(data.get('dateKind')):'expire',cycle=billingCycles[data.get('cycle')]?String(data.get('cycle')):'',extras=Object.fromEntries((profile.extra||[]).map(key=>[key,String(data.get(key)??'').trim()])),fields={name,provider:profile.fixedProvider||String(data.get('provider')??'').trim()||(assetProfiles[type]?'':'平台待补充'),account:String(data.get('account')).trim(),purpose:String(data.get('purpose')).trim(),reason:String(data.get('reason')||'').trim(),date,dateKind,cycle,cost:String(data.get('cost')).trim()||'未知',notes:String(data.get('notes')).trim(),url:url?safeManagementUrl(url):''},event=date?`${date} ${dateKinds[dateKind].future}`:'日期待补充';if(extras.region&&!regionName(extras.region))extras.region='';if(extras.last4&&!/^\d{4}$/.test(extras.last4))extras.last4='';if(extras.network&&!cardNetworks.includes(extras.network))extras.network='';if(extras.phone)extras.phone=extras.phone.slice(0,30);Object.assign(fields,extras);for(const [key] of ACTION_FIELDS[type]||[])if(data.has(key))fields[key]=key==='ips'?parseIps(data.get(key)).ips.map(x=>x.ip):String(data.get(key)).trim();checkpoint();let assetId=id;if(id){const a=state.assets.find(a=>a.id===id);const synced=['cloudflare','github'].includes(a.source);Object.assign(a,fields);for(const key of ['region','last4','network','phone'])if(!(key in extras))delete a[key];if(file)a.iconData=iconData;else if(data.has('removeIcon'))delete a.iconData;if(!synced){a.source='manual';a.type=type;a.event=event;a.updatedAt=new Date().toISOString();}delete a.warn;ensureBlock(state,a.type);}else{assetId='asset-'+crypto.randomUUID();state.assets.push({id:assetId,type,...fields,iconData,source:'manual',event,art:'generic',createdAt:new Date().toISOString()});if(state.cardOrder?.[type]?.length)state.cardOrder[type].unshift(assetId);ensureBlock(state,type);}const resolved=candidateKey?resolveCandidate(candidateKey,id?'linked':'created',assetId,candidateItem):0;assetFormSnapshot=null;save();render();if(id&&activeAsset===id)showDetail(id);const source=candidateKey&&findCandidate(candidateKey),items=source?.ai?.items||[],recorded=items.length>1?recordedItems(source):[],next=items.length>1?items.findIndex((_,index)=>!recorded.includes(index)):-1;if(next>=0){candidateReview(source,next);toast(`已记录，这份资料里还有 ${items.length-recorded.length} 项`,true);}else if(candidateKey&&nativeStore&&pendingCount()){inboxDialog(false);toast(resolved?'已记录，继续核对下一组':'已记录',true);}else{$('#modal').close();toast(id?'资料已更新':'资产已添加',true);}}catch{toast('读取图标失败，请重试');}finally{submit.disabled=false;}});
-setIconButton($('#add-block'),'plus','添加区块');setIconButton($('#import-button'),'download','导入');$('#add-block').onclick=addBlock;$('#close-modal').onclick=()=>requestCloseModal();$('#close-detail').onclick=closeDetail;$('#modal').addEventListener('cancel',e=>{if(isAssetFormDirty()){e.preventDefault();requestCloseModal();}else assetFormSnapshot=null;});
-$('#search').oninput=e=>{query=e.target.value;focusCategory=null;render();};$('#clear-search').onclick=()=>{if(query){$('#search').value='';query='';render();}else addBlock();};
-// Keyboard map (redesign-plan §9). Letter keys never act while typing, with a dialog open, or with ⌘/⌃/⌥ held.
-let swapMark=null,helpReturn=null;
+setIconButton($('#add-block'),'plus','添加资产');document.querySelectorAll('#layout-toggle [data-action="layout"]').forEach(b=>b.innerHTML=ui(b.dataset.id==='grid'?'tiles':'list'));$('#view-menu').innerHTML=ui('more');setIconButton($('#import-button'),'download','导入');$('#add-block').onclick=addAsset;$('#close-modal').onclick=()=>requestCloseModal();$('#close-detail').onclick=closeDetail;$('#modal').addEventListener('cancel',e=>{if(isAssetFormDirty()){e.preventDefault();requestCloseModal();}else assetFormSnapshot=null;});
+$('#search').oninput=e=>{query=e.target.value;render();};$('#clear-search').onclick=()=>{if(query){$('#search').value='';query='';render();}else addAsset();};
+// Keyboard map (DESIGN-PRINCIPLES §4 rule 4). Letter keys never act while typing, with a dialog open, or with ⌘/⌃/⌥ held.
+let helpReturn=null;
 function typing(e){return e.isComposing||!!e.target.closest?.('input,textarea,select,[contenteditable]:not([contenteditable="false"])');}
 function focusSearchBox(){if(nativeStore){window.webkit.messageHandlers.assetboard.postMessage({action:'focusSearch'});return;}const input=$('#search');input.focus();input.select();}
-function navTargets(){return [...document.querySelectorAll('#board .block-title,#board .card-open,#board .compact-repo-open,#board .flip-actions .button:first-child')].filter(n=>n.getClientRects().length&&!n.closest('[inert]')&&n.closest('[data-asset]')?.style.visibility!=='hidden');}
+function navTargets(){return [...document.querySelectorAll('#board .group-title:not(.static),#board .item-open')].filter(n=>n.getClientRects().length);}
 function focusCard(n){n.focus({preventScroll:true});n.scrollIntoView({block:'nearest',inline:'nearest'});}
-function focusAsset(id){const n=id&&document.querySelector(`#board [data-asset="${CSS.escape(id)}"] :is(.card-open,.compact-repo-open,.flip-actions .button)`);if(n&&n.getClientRects().length&&!n.closest('[inert]')){focusCard(n);return true;}return false;}
-// Left/right walk the block's cards in reading order, then step to a block beside it on the same row; up/down take the nearest target below or above, preferring the same column.
+function focusAsset(id){const n=id&&document.querySelector(`#board [data-asset="${CSS.escape(id)}"] .item-open`);if(n&&n.getClientRects().length){focusCard(n);return true;}return false;}
+function inspectorDocked(){return matchMedia('(min-width: 1180px)').matches;}
+// Lists walk in reading order with ↑/↓. The grid moves spatially: ←/→ within a group, ↑/↓ to the nearest item above or below, preferring the same column.
 function moveFocus(from,key){
- const list=navTargets(),horizontal=key==='ArrowLeft'||key==='ArrowRight',sign=key==='ArrowRight'||key==='ArrowDown'?1:-1;
- if(horizontal&&!from.classList.contains('block-title')){const grid=from.closest('.cards'),peers=list.filter(n=>n.closest('.cards')===grid),next=peers[peers.indexOf(from)+sign];if(next){focusCard(next);return;}}
- const r=from.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;let best=null,score=Infinity;
- const home=from.closest('.block');
- for(const n of list){if(n===from||horizontal&&n.closest('.block')===home)continue;const b=n.getBoundingClientRect(),main=(horizontal?b.left+b.width/2-cx:b.top+b.height/2-cy)*sign;if(main<=4)continue;
-  const lined=horizontal?b.bottom>r.top+2&&b.top<r.bottom-2:b.right>r.left+2&&b.left<r.right-2,side=Math.abs(horizontal?b.top+b.height/2-cy:b.left+b.width/2-cx);if(horizontal&&!lined)continue;const value=(lined?0:100000)+main+side*(lined?.25:2);
-  if(value<score){score=value;best=n;}}
- if(best)focusCard(best);
+ const list=navTargets(),sign=key==='ArrowRight'||key==='ArrowDown'?1:-1,horizontal=key==='ArrowLeft'||key==='ArrowRight',grid=!!from.closest('.group-body.grid')||from.classList.contains('group-title')&&!!from.closest('.group')?.querySelector('.group-body.grid');
+ let next=null;
+ if(!grid){if(horizontal)return;next=list[list.indexOf(from)+sign];}
+ else if(horizontal&&!from.classList.contains('group-title')){const body=from.closest('.group-body'),peers=list.filter(n=>n.closest('.group-body')===body);next=peers[peers.indexOf(from)+sign];}
+ else if(!horizontal){
+  const r=from.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;let score=Infinity;
+  for(const n of list){if(n===from)continue;const b=n.getBoundingClientRect(),main=(b.top+b.height/2-cy)*sign;if(main<=4)continue;const lined=b.right>r.left+2&&b.left<r.right-2,value=(lined?0:100000)+main+Math.abs(b.left+b.width/2-cx)*(lined?.25:2);if(value<score){score=value;next=n;}}
+ }
+ if(!next)return;
+ focusCard(next);
+ // With the inspector open beside the list, the selection carries it along (like Mail's reading pane).
+ const id=next.closest('[data-asset]')?.dataset.asset;if(id&&!$('#detail').hidden&&inspectorDocked())showDetail(id,{focus:false});
 }
-function keyAsset(e){const card=e.target.closest?.('#board [data-asset]');if(card)return card.dataset.asset;return e.target.closest?.('#detail')&&activeAsset?activeAsset:null;}
+function navMove(from,key){const items=[...document.querySelectorAll('#sidebar .nav-item')],at=items.indexOf(from);if(key==='ArrowDown'||key==='ArrowUp'){items[at+(key==='ArrowDown'?1:-1)]?.focus();return;}if(key==='ArrowRight'){const first=navTargets()[0];if(first)focusCard(first);}}
+function keyAsset(e){const item=e.target.closest?.('#board [data-asset]');if(item)return item.dataset.asset;return e.target.closest?.('#detail')&&activeAsset?activeAsset:null;}
 function fire(action,id){const b=document.createElement('button');b.hidden=true;b.dataset.action=action;b.dataset.id=id;document.body.append(b);b.click();b.remove();}
-function clearSwapMark(){document.querySelectorAll('#board .swap-mark').forEach(n=>n.classList.remove('swap-mark'));swapMark=null;}
-function markSwap(el){
- const id=el.dataset.asset,block=el.closest('.block');
- if(query||el.classList.contains('flip-card')){toast('搜索结果和隐藏资产里不能交换');return;}
- if(!swapMark){swapMark=id;el.classList.add('swap-mark');toast('再选一张同类卡按 X，Esc 取消');return;}
- const first=document.querySelector(`#board [data-asset="${CSS.escape(swapMark)}"]`);clearSwapMark();
- if(!first||first===el){toast('已取消交换');return;}
- if(first.closest('.block')!==block){toast('只能和同类卡交换');return;}
- const info=swapZones({block,el:first}),grid=block.querySelector('.cards'),order=info?info.order:[...grid.querySelectorAll('[data-asset]')].map(idOf),shown=info&&info.sameZone===null?info.shown:null;
- if(applySwap(block.dataset.block,order,shown,swapMark||first.dataset.asset,id))focusAsset(id);
-}
 function keysHelpHtml(){
  const row=(keys,label)=>`<li><span>${label}</span><span class="keys">${keys.map(k=>`<kbd>${k}</kbd>`).join('')}</span></li>`;
- const groups=[['浏览',[[['⌘K','/'],'搜索'],[['←','→','↑','↓'],'移动'],[['↩'],'详情'],[['P'],'全景'],[['esc'],'返回']]],['整理',[[['I'],'导入'],[['N'],'新建'],[['E'],'编辑'],[['H'],'隐藏'],[['F'],'置前'],[['⌥','← →'],'交换'],[['X'],'选两张交换'],[['L'],'关联'],[['S'],'停用']]],['快捷',[[['O'],'打开'],[['⌘C'],'复制']]],['编辑',[[['⌘Z'],'撤销'],[['⇧⌘Z'],'重做'],[['⌘↩'],'保存'],[['tab'],'换字段']]]];
+ const groups=[['浏览',[[['⌘K','/'],'搜索'],[['↑','↓'],'移动'],[['↩'],'详情'],[['←'],'侧边栏'],[['P'],'全景'],[['esc'],'返回']]],['整理',[[['I'],'导入'],[['N'],'新建'],[['E'],'编辑'],[['H'],'隐藏'],[['F'],'置前'],[['⌥','↑ ↓'],'调整顺序'],[['L'],'关联'],[['S'],'停用']]],['快捷',[[['O'],'打开'],[['⌘C'],'复制']]],['编辑',[[['⌘Z'],'撤销'],[['⇧⌘Z'],'重做'],[['⌘↩'],'保存'],[['tab'],'换字段']]]];
  return `<div class="keys-card" role="document" tabindex="-1"><div class="keys-head"><h2 id="keys-help-title" title="在输入框里打字时，字母键不生效">快捷键</h2><button class="close" data-action="keys-help" aria-label="关闭快捷键说明">×</button></div><div class="keys-grid">${groups.map(([title,rows])=>`<section><h3>${title}</h3><ul>${rows.map(([k,l])=>row(k,l)).join('')}</ul></section>`).join('')}</div></div>`;
 }
 function toggleKeysHelp(show){
@@ -975,22 +998,27 @@ document.addEventListener('keydown',e=>{
  if(key==='Escape'){
   if(helpOpen){e.preventDefault();toggleKeysHelp(false);return;}
   if(modalOpen||gesture?.active)return;
-  if(swapMark){clearSwapMark();toast('已取消交换');return;}
   if(e.target.id==='search'){if(e.target.value){e.target.value='';e.target.dispatchEvent(new Event('input',{bubbles:true}));}else e.target.blur();return;}
-  if(!$('#detail').hidden)closeDetail();else if(focusCategory){const back=focusCategory;focusCategory=null;render();document.querySelector(`#board .block-title[data-id="${CSS.escape(back)}"]`)?.focus();}
+  if(!$('#detail').hidden)closeDetail();
   return;
  }
- if(e.target.id==='search'&&key==='ArrowDown'&&!mod&&!e.altKey){const first=navTargets().find(n=>!n.classList.contains('block-title'));if(first){e.preventDefault();focusCard(first);}return;}
+ if(e.target.id==='search'&&key==='ArrowDown'&&!mod&&!e.altKey){const first=navTargets().find(n=>n.classList.contains('item-open'));if(first){e.preventDefault();focusCard(first);}return;}
  if(modalOpen||typing(e))return;
  if(mod&&!e.altKey&&!e.shiftKey&&key==='c'&&!String(getSelection?.()||'')){const id=keyAsset(e);if(id){e.preventDefault();if(!runQuick(id,null,'copy'))toast('没有可复制的内容');}return;}
  if(mod||e.altKey)return;
  if(e.key==='?'){e.preventDefault();toggleKeysHelp();return;}
  if(helpOpen)return;
  if(key==='/'){e.preventDefault();focusSearchBox();return;}
- if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(key)){const from=e.target.closest?.('#board .block-title,#board .card-open,#board .compact-repo-open,#board .flip-actions .button');if(!from)return;e.preventDefault();moveFocus(from.closest('.flip-actions')?.querySelector('.button')||from,key);return;}
+ if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(key)){
+  const nav=e.target.closest?.('#sidebar .nav-item');if(nav){e.preventDefault();navMove(nav,key);return;}
+  const from=e.target.closest?.('#board .group-title,#board .item-open');if(!from)return;
+  e.preventDefault();
+  if(key==='ArrowLeft'&&!from.closest('.group-body.grid')){($('#sidebar .nav-item.active')||$('#sidebar .nav-item'))?.focus();return;}
+  moveFocus(from,key);return;
+ }
  if(e.shiftKey&&key!=='n')return;
  if(key==='i'){e.preventDefault();importHub();return;}
- if(key==='n'){e.preventDefault();const type=e.target.closest?.('#board .block')?.dataset.block||(e.target.closest?.('#detail')&&state.assets.find(a=>a.id===activeAsset)?.type)||focusCategory;if(cats[type])assetForm(type);else manualImport();return;}
+ if(key==='n'){e.preventDefault();const group=e.target.closest?.('#board .group')?.dataset.group,type=cats[group]?group:(e.target.closest?.('#detail')&&state.assets.find(a=>a.id===activeAsset)?.type)||(cats[currentView()]?currentView():null);if(cats[type])assetForm(type);else manualImport();return;}
  const id=keyAsset(e),a=id&&state.assets.find(x=>x.id===id);if(!a)return;
  if(key==='e'){e.preventDefault();assetForm(a.type,id);}
  else if(key==='s'){e.preventDefault();if(a.hiddenAt)return;if(toggleStopped(id)&&!e.target.closest('#detail'))focusAsset(id);else if(!STOPPABLE.includes(a.type))toast('这类不用标停用');}
@@ -998,65 +1026,64 @@ document.addEventListener('keydown',e=>{
  else if(key==='o'){e.preventDefault();if(!runQuick(id,null,'open'))toast('没有可打开的链接或目录');}
  else if(key==='f'){e.preventDefault();if(a.hiddenAt){toast('先恢复显示，再放到前面');return;}pinFront(id);if(!e.target.closest('#detail'))focusAsset(id);}
  else if(key==='h'){
-  e.preventDefault();const inDetail=!!e.target.closest('#detail'),peers=navTargets().filter(n=>!n.classList.contains('block-title')),own=peers.findIndex(n=>n.closest('[data-asset]')?.dataset.asset===id),near=[peers[own+1],peers[own-1]].map(n=>n?.closest('[data-asset]')?.dataset.asset).filter(Boolean),restoring=!!a.hiddenAt;
+  e.preventDefault();const inDetail=!!e.target.closest('#detail'),peers=navTargets().filter(n=>n.classList.contains('item-open')),own=peers.findIndex(n=>n.closest('[data-asset]')?.dataset.asset===id),near=[peers[own+1],peers[own-1]].map(n=>n?.closest('[data-asset]')?.dataset.asset).filter(Boolean),restoring=!!a.hiddenAt;
   fire(restoring?'restore-asset':'hide-asset',id);
   if(inDetail&&restoring)return;
-  if(!(restoring&&document.querySelector(`#board [data-asset="${CSS.escape(id)}"]:not(.flip-card)`)&&focusAsset(id)))near.some(focusAsset);
+  if(!focusAsset(id))near.some(focusAsset);
  }
- else if(key==='x'){const el=e.target.closest?.('#board [data-asset]');if(el){e.preventDefault();markSwap(el);}}
 });
-// Direct manipulation, no layout mode: block headers move blocks, cards move themselves, block edges resize. Mouse starts after 5px, touch after a long press; Esc cancels; ⌥ + arrows is the keyboard path.
-let gesture=null,suppressClick=false,floatTip=null,snapGuide=null;
+// Direct manipulation, no layout mode: a row moves within its group, onto a sidebar category to change its category, and sidebar categories reorder.
+// Mouse starts after 5px, touch after a long press; Esc cancels; ⌥ + arrows is the keyboard path.
+let gesture=null,suppressClick=false,floatTip=null;
 const settleEase='cubic-bezier(.22,1,.36,1)';
 function reduceMotion(){return matchMedia('(prefers-reduced-motion: reduce)').matches;}
 function docRect(el){const r=el.getBoundingClientRect();return {left:r.left+scrollX,top:r.top+scrollY,right:r.right+scrollX,bottom:r.bottom+scrollY,width:r.width,height:r.height};}
 function inside(r,x,y){return !!r&&x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom;}
 function slideFrom(el,from,duration=MOTION_MS){if(!from)return;const to=el.getBoundingClientRect(),dx=from.left-to.left,dy=from.top-to.top;if(Math.abs(dx)>=1||Math.abs(dy)>=1)el.animate([{transform:`translate(${dx}px,${dy}px)`},{transform:'none'}],{duration,easing:settleEase});}
 function showTip(text,x=0,y=0,tone='',clear=null){if(!floatTip){floatTip=document.createElement('div');floatTip.setAttribute('aria-hidden','true');document.body.append(floatTip);}floatTip.hidden=!text;if(!text)return;floatTip.className=`float-tip ${tone}`;floatTip.textContent=text;const w=floatTip.offsetWidth,h=floatTip.offsetHeight;let left=x+14,top=y+20;if(clear){left=x-w/2;top=clear.bottom+8;if(top+h>innerHeight-8)top=clear.top-h-8;}floatTip.style.left=Math.max(8,Math.min(innerWidth-w-8,left))+'px';floatTip.style.top=Math.max(8,Math.min(innerHeight-h-8,top))+'px';}
-function showGuide(x){if(!snapGuide){snapGuide=document.createElement('div');snapGuide.className='snap-guide';document.body.append(snapGuide);}snapGuide.hidden=x===null;if(x===null)return;const r=$('#board').getBoundingClientRect(),top=Math.max(0,r.top);snapGuide.style.cssText=`left:${Math.round(x)}px;top:${top}px;height:${Math.max(0,Math.min(innerHeight,r.bottom)-top)}px`;}
-// Only the touched prefix becomes manual order (touchedPrefix); untouched cards keep following recency.
+// Only the touched prefix becomes manual order (touchedPrefix); untouched rows keep following recency.
 function saveCardOrder(category,next){const existing=state.cardOrder?.[category]||[];checkpoint();state.cardOrder ||= {};state.cardOrder[category]=[...next,...existing.filter(id=>!next.includes(id))];save();}
 function commitAssetOrder(source,target,after=false){
  if(!source||!target||source===target||source.parentElement!==target.parentElement)return false;
- const category=source.closest('.block')?.dataset.block;if(!category)return false;
+ const category=source.parentElement.dataset.reorder;if(!cats[category])return false;
  const current=[...source.parentElement.children].filter(n=>n.dataset.asset).map(n=>n.dataset.asset),next=moveAsset(current,source.dataset.asset,target.dataset.asset,after);
  if(next.every((id,i)=>id===current[i]))return false;
  saveCardOrder(category,touchedPrefix(current,next));render();return true;
 }
-function moveBlock(id,step){const index=state.blocks.findIndex(b=>b.id===id),target=index+step;if(index<0||target<0||target>=state.blocks.length){toast(step<0?'已经是第一个区块':'已经是最后一个区块');return false;}checkpoint();[state.blocks[target],state.blocks[index]]=[state.blocks[index],state.blocks[target]];save();render();toast(step<0?'已向前移动':'已向后移动',true);return true;}
+function moveBlock(id,step){const order=categoryIds(),index=order.indexOf(id),target=index+step;if(index<0||target<0||target>=order.length){toast(step<0?'已经是第一个类别':'已经是最后一个类别');return false;}checkpoint();for(const type of order)ensureBlock(state,type);[order[target],order[index]]=[order[index],order[target]];state.blocks=order.map(type=>state.blocks.find(b=>b.id===type));save();render();toast(step<0?'已向上移动':'已向下移动',true);return true;}
 function dragSource(target){
  if(query)return null;
- const card=target.closest('#board [data-asset]:not(.flip-card),#board [data-spill]');
- if(card)return {kind:'card',el:card,container:card.parentElement,block:card.closest('.block'),spill:!!card.dataset.spill};
- const head=!focusCategory&&target.closest('#board .block-head');
- return head?{kind:'block',el:head.closest('.block'),container:$('#board')}:null;
+ const item=target.closest('#board [data-reorder] > [data-asset]');
+ if(item)return {kind:'card',el:item,container:item.parentElement,block:item.closest('.group')};
+ const nav=target.closest('#sidebar .nav-item[data-block]');
+ return nav?{kind:'block',el:nav,container:nav.parentElement}:null;
 }
 function releaseGesture(){const g=gesture;if(!g)return;clearTimeout(g.timer);cancelAnimationFrame(g.frame);removeEventListener('pointermove',dragMove);removeEventListener('pointerup',dragEnd);removeEventListener('pointercancel',dragEnd);gesture=null;}
 function slotOrder(g){const key=g.kind==='block'?'block':'asset';return [...g.container.children].filter(n=>n===g.slot||n!==g.el&&n.dataset[key]).map(n=>(n===g.slot?g.el:n).dataset[key]);}
-function measureItems(g){const key=g.kind==='block'?'block':'asset';g.items=[...g.container.children].filter(n=>n!==g.el&&n!==g.slot&&n.dataset[key]&&n.style.visibility!=='hidden'&&n.style.display!=='none'&&(!g.sameZone||g.sameZone.has(n))).map(n=>({el:n,r:docRect(n)}));g.slotRect=docRect(g.slot);g.box=docRect(g.container);}
+function measureItems(g){const key=g.kind==='block'?'block':'asset';g.items=[...g.container.children].filter(n=>n!==g.el&&n!==g.slot&&n.dataset[key]).map(n=>({el:n,r:docRect(n)}));g.slotRect=docRect(g.slot);g.box=docRect(g.container);}
 function beginDrag(g){
  const el=g.el;if(!el.isConnected){releaseGesture();return;}
- clearTimeout(g.timer);g.active=true;cancelAnimationFrame(layoutFrame);clearLinks();
- document.querySelectorAll('#board .block,#board [data-asset]').forEach(n=>n.getAnimations().forEach(a=>a.cancel()));
+ clearTimeout(g.timer);g.active=true;cancelAnimationFrame(layoutFrame);closeMenu(false);
+ document.querySelectorAll('#board .group,#board [data-asset],#sidebar .nav-item').forEach(n=>n.getAnimations().forEach(a=>a.cancel()));
  const r=el.getBoundingClientRect();g.rect=r;g.dx=g.x0-r.left;g.dy=g.y0-r.top;
  g.slot=document.createElement('div');g.slot.className=`drop-slot ${g.kind}-slot`;g.slot.style.width=r.width+'px';g.slot.style.height=r.height+'px';el.before(g.slot);
  el.classList.add('is-dragging');document.body.classList.add('drag-active');
  Object.assign(el.style,{position:'fixed',left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px',margin:'0',transformOrigin:`${g.dx}px ${g.dy}px`});
  const placed=el.getBoundingClientRect();if(Math.abs(placed.left-r.left)>.5||Math.abs(placed.top-r.top)>.5){el.style.left=2*r.left-placed.left+'px';el.style.top=2*r.top-placed.top+'px';}
- if(g.kind==='card'){g.asset=state.assets.find(a=>a.id===idOf(el));updateOverflow();g.homeRect=docRect(g.block);g.others=focusCategory?[]:[...document.querySelectorAll('#board .block')].filter(n=>n!==g.block).map(n=>({el:n,r:docRect(n)}));}
- if(g.kind==='card'){g.swapInfo=swapZones(g);if(g.swapInfo){g.swapTargets=g.swapInfo.targets.map(el=>({el,r:docRect(el)}));g.sameZone=g.swapInfo.sameZone;}}
+ // A row can also land on another category in the sidebar; those targets are fixed, so they are measured live.
+ if(g.kind==='card'){g.asset=state.assets.find(a=>a.id===el.dataset.asset);g.homeRect=docRect(g.container);g.others=[...document.querySelectorAll('#sidebar .nav-item[data-block]')].filter(n=>n.dataset.block!==g.asset?.type);}
  g.initial=slotOrder(g);measureItems(g);
  const bar=document.querySelector('#topbar');g.top=bar&&getComputedStyle(bar).display!=='none'?Math.max(0,bar.getBoundingClientRect().bottom):0;
- try{$('#board').setPointerCapture(g.id);}catch{}
+ try{document.body.setPointerCapture(g.id);}catch{}
  getSelection()?.removeAllRanges();
  if(reduceMotion())el.classList.add('lifted');else requestAnimationFrame(()=>el.classList.add('lifted'));
  followPointer(g);g.frame=requestAnimationFrame(()=>autoScroll(g));
 }
 function followPointer(g){g.el.style.translate=`${g.x-g.dx-g.rect.left}px ${g.y-g.dy-g.rect.top}px`;}
-function setCrossTarget(g,block){
- if(g.cross===block)return;
- g.cross?.classList.remove('drop-into','drop-refused');g.cross=block;g.crossAllowed=!!block&&!['cloudflare','github'].includes(g.asset?.source);
- block?.classList.add(g.crossAllowed?'drop-into':'drop-refused');g.el.classList.toggle('refused',!!block&&!g.crossAllowed);
+function setCrossTarget(g,target){
+ if(g.cross===target)return;
+ g.cross?.classList.remove('drop-into','drop-refused');g.cross=target;g.crossAllowed=!!target&&!['cloudflare','github'].includes(g.asset?.source);
+ target?.classList.add(g.crossAllowed?'drop-into':'drop-refused');g.el.classList.toggle('refused',!!target&&!g.crossAllowed);
 }
 function moveSlot(g,mode,ref){
  const items=g.items.map(it=>it.el),near=(n,dir)=>{let s=n[dir];while(s&&!items.includes(s))s=s[dir];return s;};
@@ -1065,15 +1092,13 @@ function moveSlot(g,mode,ref){
  if(motion)all.forEach(n=>n.getAnimations().forEach(a=>a.cancel()));
  if(mode==='home')g.el.before(g.slot);else if(mode==='before')ref.before(g.slot);else ref.after(g.slot);
  g.lockUntil=performance.now()+60;
- if(g.kind==='card')updateOverflow();
  measureItems(g);
  if(motion)for(const n of all)slideFrom(n,from.get(n));
 }
 function placeSlot(g){
  if(performance.now()<(g.lockUntil||0))return;
  const x=g.x+scrollX,y=g.y+scrollY;
- if(g.kind==='card'){const home=inside(g.homeRect,x,y),over=home?null:g.others.find(o=>inside(o.r,x,y))?.el||null;setCrossTarget(g,over);if(!home){setSwapTarget(g,null);moveSlot(g,'home');return;}
-  if(g.swapTargets){const swap=g.swapTargets.find(o=>inside(o.r,x,y))?.el||null;setSwapTarget(g,swap);if(swap||g.spill){moveSlot(g,'home');return;}}}
+ if(g.kind==='card'){const over=g.others.find(n=>inside(n.getBoundingClientRect(),g.x,g.y))||null;setCrossTarget(g,over);if(over||!inside(g.homeRect,x,y)){moveSlot(g,'home');return;}}
  else if(x<g.box.left-48||x>g.box.right+48||y<g.box.top-48||y>g.box.bottom+48){moveSlot(g,'home');return;}
  if(inside(g.slotRect,x,y))return;
  let best=null,distance=Infinity;
@@ -1082,11 +1107,11 @@ function placeSlot(g){
  const vertical=best.r.width>g.box.width*.7,before=vertical?y<best.r.top+best.r.height/2:x<best.r.left+best.r.width/2;
  moveSlot(g,before?'before':'after',best.el);
 }
-function dragTip(g){if(g.swap){showTip(`与「${displayName(state.assets.find(a=>a.id===idOf(g.swap))||{name:''})}」交换位置`,g.x,g.y,'',g.el.getBoundingClientRect());return;}showTip(g.cross?g.crossAllowed?`移到「${cats[g.cross.dataset.block].name}」`:'同步来的资产不能改类别':'',g.x,g.y,g.crossAllowed?'':'refused',g.el.getBoundingClientRect());}
+function dragTip(g){showTip(g.cross?g.crossAllowed?`移到「${cats[g.cross.dataset.block].name}」`:'同步来的资产不能改类别':'',g.x,g.y,g.crossAllowed?'':'refused',g.el.getBoundingClientRect());}
 function autoScroll(g){
  if(gesture!==g||!g.active)return;
  const zone=60,v=g.y<g.top+zone?-(g.top+zone-g.y)/zone:g.y>innerHeight-zone?(g.y-innerHeight+zone)/zone:0;
- if(v){const before=scrollY;scrollBy(0,Math.sign(v)*Math.min(1,v*v)*20);if(scrollY!==before)placeSlot(g);}
+ if(v&&g.kind==='card'){const before=scrollY;scrollBy(0,Math.sign(v)*Math.min(1,v*v)*20);if(scrollY!==before)placeSlot(g);}
  g.frame=requestAnimationFrame(()=>autoScroll(g));
 }
 function dragMove(e){
@@ -1097,7 +1122,7 @@ function dragMove(e){
 }
 function dragEnd(e){const g=gesture;if(!g||e.pointerId!==g.id)return;if(!g.active){releaseGesture();return;}suppressClick=true;setTimeout(()=>suppressClick=false,0);const cancelled=e.type==='pointercancel';if(!cancelled&&g.el.isConnected){g.x=e.clientX;g.y=e.clientY;g.lockUntil=0;placeSlot(g);}dropDrag(g,cancelled);}
 function cleanupDrag(g){
- showTip('');document.body.classList.remove('drag-active');g.cross?.classList.remove('drop-into','drop-refused');g.swap?.classList.remove('swap-target');
+ showTip('');document.body.classList.remove('drag-active');g.cross?.classList.remove('drop-into','drop-refused');
  g.el.classList.remove('is-dragging','lifted','settling','refused');for(const p of ['position','left','top','width','height','margin','translate','transformOrigin'])g.el.style[p]='';
  if(g.slot.isConnected)g.slot.replaceWith(g.el);
  if(gesture===g)gesture=null;
@@ -1108,138 +1133,31 @@ function dropDrag(g,cancelled=false){
  g.active=false;showTip('');
  const cross=!cancelled&&g.cross&&g.crossAllowed?g.cross.dataset.block:null;
  if(cross){finishCross(g,cross);return;}
- if(!cancelled&&g.swap){finishSwap(g);return;}
  if(cancelled||g.cross)moveSlot(g,'home');
  g.cross?.classList.remove('drop-into','drop-refused');
  const next=slotOrder(g),changed=next.some((id,i)=>id!==g.initial[i]);
  const done=()=>{
   if(gesture!==g)return;cleanupDrag(g);
-  if(changed&&g.kind==='block'&&next.length===state.blocks.length){checkpoint();state.blocks=next.map(id=>state.blocks.find(b=>b.id===id));save();}
-  else if(changed&&g.kind==='card')saveCardOrder(g.block.dataset.block,touchedPrefix(g.initial,next));
-  render();if(changed)toast(g.kind==='block'?'区块已移动':'顺序已调整',true);
+  if(changed&&g.kind==='block'){checkpoint();for(const type of next)ensureBlock(state,type);state.blocks=[...next.map(type=>state.blocks.find(b=>b.id===type)),...state.blocks.filter(b=>!next.includes(b.id))];save();}
+  else if(changed&&g.kind==='card')saveCardOrder(g.container.dataset.reorder,touchedPrefix(g.initial,next));
+  render();if(changed)toast(g.kind==='block'?'类别顺序已调整':'顺序已调整',true);
  };
  if(reduceMotion()){done();return;}
  const to=g.slot.getBoundingClientRect();g.el.classList.add('settling');g.el.classList.remove('lifted','refused');g.el.style.translate=`${to.left-g.rect.left}px ${to.top-g.rect.top}px`;setTimeout(done,MOTION_MS);
 }
-// Swapping: a card from outside the display area (the repository list, or below the full view's divider) dropped on a card inside it trades places with it.
-function idOf(el){return el?.dataset.asset||el?.dataset.spill;}
-function onScreen(el){return el.style.display!=='none'&&el.style.visibility!=='hidden';}
-function swapZones(g){
- const grid=g.block?.querySelector('.cards');if(!grid||query)return null;
- const list=grid.querySelector('.compact-repositories-grid');
- if(list){
-  const featured=[...grid.querySelectorAll(':scope > .asset-card')],tiles=[...list.children].filter(idOf),shown=featured.filter(onScreen),inFeatured=featured.includes(g.el);
-  return {targets:(inFeatured?tiles.filter(onScreen):shown).filter(n=>n!==g.el),order:[...shown,...featured.filter(n=>!onScreen(n)),...tiles.filter(n=>n.dataset.asset)].map(idOf),shown:shown.length,sameZone:null};
- }
- const divider=grid.querySelector(':scope > .limit-divider');if(!divider)return null;
- const cards=[...grid.children].filter(n=>n.dataset.asset),below=n=>!!(divider.compareDocumentPosition(n)&Node.DOCUMENT_POSITION_FOLLOWING),mine=below(g.el);
- return {targets:cards.filter(n=>n!==g.el&&below(n)!==mine),order:cards.map(idOf),shown:cards.filter(n=>!below(n)).length,sameZone:new Set(cards.filter(n=>below(n)===mine))};
-}
-function setSwapTarget(g,el){if(g.swap===el)return;g.swap?.classList.remove('swap-target');g.swap=el;el?.classList.add('swap-target');}
-function finishSwap(g){
- const source=idOf(g.el),other=idOf(g.swap),category=g.block.dataset.block,{order,shown}=g.swapInfo;
- cleanupDrag(g);applySwap(category,order,shown,source,other);
-}
-// shown is the featured-repository count when the swap crosses the repository card/list edge, otherwise null.
-function applySwap(category,order,shown,source,other){
- const next=swapInOrder(order,source,other);if(next.every((id,i)=>id===order[i])){render();return false;}
- checkpoint();state.cardOrder||={};const existing=state.cardOrder[category]||[],prefix=touchedPrefix(order,next);
- state.cardOrder[category]=[...prefix,...existing.filter(id=>!prefix.includes(id))];
- if(category==='repository'&&shown!=null)state.featuredRepositoryIds=next.slice(0,shown);
- save();render();
- if(!reduceMotion())for(const id of [source,other])document.querySelector(`#board [data-asset="${CSS.escape(id)}"]`)?.animate([{opacity:.35},{opacity:1}],{duration:MOTION_MS,easing:'ease-out'});
- const name=id=>displayName(state.assets.find(a=>a.id===id)||{name:''});
- toast('已交换位置',true);return true;
-}
 function finishCross(g,type){
- const a=g.asset,ghost=g.el.getBoundingClientRect(),target=g.cross;
+ const a=g.asset;
  cleanupDrag(g);
  if(!a||!cats[type]){render();return;}
- checkpoint();a.type=type;
+ checkpoint();a.type=type;ensureBlock(state,type);
  if(state.cardOrder){for(const key of Object.keys(state.cardOrder))state.cardOrder[key]=(state.cardOrder[key]||[]).filter(id=>id!==a.id);if(state.cardOrder[type]?.length)state.cardOrder[type].push(a.id);}
  save();render();
- const moved=document.querySelector(`#board [data-asset="${CSS.escape(a.id)}"]`);
- if(moved&&!reduceMotion()){
-  if(moved.style.visibility==='hidden'){const block=moved.closest('.block');block.classList.add('drop-flash');setTimeout(()=>block.classList.remove('drop-flash'),600);}
-  else{const to=moved.getBoundingClientRect();moved.animate([{transform:`translate(${ghost.left+ghost.width/2-to.left-to.width/2}px,${ghost.top+ghost.height/2-to.top-to.height/2}px)`,opacity:.5},{transform:'none',opacity:1}],{duration:MOTION_MS,easing:settleEase});}
- }
+ const target=document.querySelector(`#sidebar .nav-item[data-block="${CSS.escape(type)}"]`);
+ if(target&&!reduceMotion()){target.classList.add('drop-flash');setTimeout(()=>target.classList.remove('drop-flash'),600);}
  toast(`已移到「${cats[type].name}」`,true);
 }
-function rubber(value,min,max){const damp=over=>(1-1/(over*.55/120+1))*120;return value<min?min-damp(min-value):value>max?max+damp(value-max):value;}
-function startResize(e,edge){
- const block=edge.closest('.block'),b=state.blocks.find(x=>x.id===block?.dataset.block);if(!b||query||focusCategory)return;
- e.preventDefault();cancelAnimationFrame(layoutFrame);
- const board=$('#board'),blocks=[...board.querySelectorAll('.block')];blocks.forEach(n=>n.getAnimations().forEach(a=>a.cancel()));
- const axis=edge.dataset.edge,bs=getComputedStyle(board),gap=parseFloat(bs.columnGap)||0,inner=board.clientWidth-parseFloat(bs.paddingLeft)-parseFloat(bs.paddingRight),px=w=>w/100*(inner+gap)-gap;
- const rect=block.getBoundingClientRect(),grid=block.querySelector('.cards'),minW=Math.max(px(25),parseFloat(getComputedStyle(block).minWidth)||0),maxW=inner;
- // Height decides the card style: under one full row the cards turn compact, under one compact row the block folds,
- // and pulling well past the compact content opens full cards again. Folding keeps the unfolded style and height for later.
- const startWidth=b.width,startHeight=b.height,startDensity=blockDensity(b),startFolded=!!b.folded,x0=e.clientX,y0=e.clientY;
- let density=startDensity,folded=startFolded,expand=false,nextHeight=startHeight;
- const live=()=>{block.classList.toggle('folded',folded);block.classList.toggle('compact',!folded&&density==='compact');};
- const measure=()=>{const saved=[grid.style.height,grid.style.minHeight];grid.style.height='auto';grid.style.minHeight='';const style=getComputedStyle(grid),first=grid.querySelector('[data-asset]'),metrics={row:first?.offsetHeight||0,gap:parseFloat(style.rowGap)||0,pad:(parseFloat(style.paddingTop)||0)+(parseFloat(style.paddingBottom)||0),natural:grid.offsetHeight};[grid.style.height,grid.style.minHeight]=saved;metrics.min=metrics.pad+metrics.row;return metrics;};
- const minFor=style=>{density=style;folded=false;live();return measure().min;};
- const fullMin=minFor('full'),compactMin=minFor('compact'),foldAt=Math.max(24,compactMin/2);
- density=startDensity;folded=startFolded;live();
- let m=measure();const startH=folded?0:grid.clientHeight;
- const snaps=[[25,'1/4'],[100/3,'1/3'],[50,'1/2'],[200/3,'2/3'],[75,'3/4'],[100,'整行']].map(([w,label])=>({w:px(w),label}));
- for(const other of blocks)if(other!==block){const r=other.getBoundingClientRect();for(const x of [r.right,r.left-gap])snaps.push({w:x-rect.left,x});}
- let frame=0,pending=null,moved=false,heightOn=axis==='y';
- checkpoint();try{edge.setPointerCapture(e.pointerId);}catch{}block.classList.add('resizing');document.body.classList.add(`resize-${axis}`);
- const rows=height=>Math.max(1,Math.round((height-m.pad+m.gap)/(m.row+m.gap)));
- const flush=()=>{
-  frame=0;if(!pending)return;const {x,y,free}=pending;pending=null;moved=true;
-  const neighbours=reduceMotion()?[]:blocks.filter(n=>n!==block).map(n=>[n,n.getBoundingClientRect()]),parts=[];neighbours.forEach(([n])=>n.getAnimations().forEach(a=>a.cancel()));
-  if(axis!=='y'){
-   let w=rect.width+x-x0,snap=null;
-   if(!free)for(const s of snaps){const d=Math.abs(s.w-w);if(s.w>=minW-.5&&s.w<=maxW+.5&&d<=8&&(!snap||d<snap.d))snap={...s,d};}
-   if(snap)w=snap.w;
-   b.width=Math.round((Math.min(maxW,Math.max(minW,w))+gap)/(inner+gap)*1000)/10;block.style.setProperty('--width',b.width);block.style.width=rubber(w,minW,maxW)+'px';
-   showGuide(snap&&'x' in snap?snap.x:null);parts.push(`宽 ${snap?.label||Math.round(b.width)+'%'}`);
-   if(!folded)m=measure();
-  }
-  if(axis!=='x'&&!heightOn&&Math.abs(y-y0)>8)heightOn=true;
-  if(heightOn){
-   let h=startH+y-y0;
-   if(folded&&h>foldAt+12){folded=false;density='compact';live();m=measure();}
-   else if(!folded&&density==='full'&&h<fullMin-24){density='compact';live();m=measure();}
-   else if(!folded&&density==='compact'&&h<foldAt){folded=true;live();}
-   expand=!folded&&density==='compact'&&h>Math.max(m.natural,fullMin)+40;
-   if(folded){grid.style.height='';parts.push('收起');}
-   else{
-    if(!free&&m.row){const fit=m.pad+rows(h)*m.row+(rows(h)-1)*m.gap;if(Math.abs(fit-h)<=12)h=fit;}
-    if(h>=m.natural-4){nextHeight=null;block.classList.remove('fixed');grid.style.height=h>m.natural?rubber(h,m.min,m.natural)+'px':'';grid.style.minHeight='';grid.querySelectorAll('[data-asset]').forEach(card=>{card.style.visibility='';card.inert=false;});}
-    else{nextHeight=Math.round(Math.max(m.min,h));block.classList.add('fixed');grid.style.height=rubber(h,m.min,m.natural)+'px';}
-    parts.push(expand?'松手展开为完整卡片':`${density==='compact'?'紧凑':'完整卡片'} · ${nextHeight===null?'自动高度':`显示 ${rows(nextHeight)} 行`}`);
-    updateOverflow();
-   }
-  }else parts.push(folded?'收起':b.height?'固定高度':'自动高度');
-  for(const [n,from] of neighbours)slideFrom(n,from,180);
-  showTip(parts.join(' · '),x,y);
- };
- const move=event=>{pending={x:event.clientX,y:event.clientY,free:event.metaKey||event.ctrlKey};if(!frame)frame=requestAnimationFrame(flush);};
- const end=()=>{
-  cancelAnimationFrame(frame);flush();edge.removeEventListener('pointermove',move);edge.removeEventListener('pointerup',end);edge.removeEventListener('pointercancel',end);
-  showGuide(null);showTip('');document.body.classList.remove(`resize-${axis}`);
-  const before=new Map(blocks.map(n=>[n.dataset.block,n.getBoundingClientRect()]));
-  if(heightOn){
-   const style=folded?startDensity:expand?'full':density;
-   b.folded=folded;b.height=folded?startHeight:expand?null:nextHeight;
-   if(style!==blockDensity(b)||b.collapsed!==undefined)setBlockDensity(b,style);
-  }
-  const styleChanged=!!b.folded!==startFolded||blockDensity(b)!==startDensity,changed=styleChanged||b.width!==startWidth||b.height!==startHeight;
-  if(!changed)history.pop();else save();
-  if(!moved){block.classList.remove('resizing');return;}
-  if(styleChanged){block.classList.remove('resizing');block.style.width='';foldRender([b.id],b.id,before);toast(b.folded?'已收起':blockDensity(b)==='compact'?'紧凑卡片':'完整卡片',true);return;}
-  const finish=()=>{block.classList.remove('resizing','settling-size');render();if(changed)toast('区块大小已调整',true);};
-  if(reduceMotion()){finish();return;}
-  block.classList.add('settling-size');block.style.width=px(b.width)+'px';grid.style.height=(b.height??m.natural)+'px';setTimeout(finish,MOTION_MS);
- };
- edge.addEventListener('pointermove',move);edge.addEventListener('pointerup',end);edge.addEventListener('pointercancel',end);
-}
 document.addEventListener('pointerdown',e=>{
- if(gesture||!e.isPrimary||e.button!==0||e.target.closest('input,select,textarea'))return;
- const edge=e.target.closest('#board .resize-edge');if(edge){startResize(e,edge);return;}
+ if(gesture||!e.isPrimary||e.button!==0||e.target.closest('input,select,textarea,.r-actions'))return;
  const source=dragSource(e.target);if(!source)return;
  const g=gesture={...source,id:e.pointerId,touch:e.pointerType!=='mouse',x0:e.clientX,y0:e.clientY,x:e.clientX,y:e.clientY,active:false};
  if(g.touch)g.timer=setTimeout(()=>{if(gesture===g)beginDrag(g);},300);
@@ -1247,45 +1165,27 @@ document.addEventListener('pointerdown',e=>{
 });
 addEventListener('click',e=>{if(!suppressClick)return;suppressClick=false;e.preventDefault();e.stopPropagation();},true);
 addEventListener('keydown',e=>{if(e.key!=='Escape'||!gesture?.active)return;e.preventDefault();e.stopImmediatePropagation();suppressClick=true;addEventListener('pointerup',()=>setTimeout(()=>suppressClick=false,0),{once:true,capture:true});dropDrag(gesture,true);},true);
-$('#board').addEventListener('touchmove',e=>{if(gesture?.active)e.preventDefault();},{passive:false});
-$('#board').addEventListener('dragstart',e=>e.preventDefault());
+for(const el of [$('#board'),$('#sidebar')]){el.addEventListener('touchmove',e=>{if(gesture?.active)e.preventDefault();},{passive:false});el.addEventListener('dragstart',e=>e.preventDefault());}
 document.addEventListener('contextmenu',e=>{if(gesture?.touch)e.preventDefault();});
-document.addEventListener('dblclick',e=>{const edge=e.target.closest('#board .resize-edge');if(!edge||edge.dataset.edge==='x')return;const b=state.blocks.find(x=>x.id===edge.closest('.block').dataset.block);if(!b?.height)return;checkpoint();b.height=null;save();render();toast('已恢复自适应高度',true);});
+// ⌥ + arrows: a row moves one place within its group (grids also take ←/→); a sidebar category moves up or down.
 document.addEventListener('keydown',e=>{
  if(!e.altKey||e.metaKey||e.ctrlKey||query||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))return;
- const step=['ArrowLeft','ArrowUp'].includes(e.key)?-1:1,opener=e.target.closest?.('#board .card-open,#board .compact-repo-open');
- if(opener){e.preventDefault();const source=opener.closest('[data-asset]'),id=source.dataset.asset,siblings=[...source.parentElement.children].filter(n=>n.dataset.asset);if(commitAssetOrder(source,siblings[siblings.indexOf(source)+step],step>0)){document.querySelector(`#board [data-asset="${CSS.escape(id)}"] :is(.card-open,.compact-repo-open)`)?.focus();toast(step<0?'已向前移动':'已向后移动',true);}return;}
- const title=!focusCategory&&e.target.closest?.('#board .block-title');
- if(title){e.preventDefault();const id=title.dataset.id;if(moveBlock(id,step))document.querySelector(`#board .block-title[data-id="${id}"]`)?.focus();}
+ const step=['ArrowLeft','ArrowUp'].includes(e.key)?-1:1,opener=e.target.closest?.('#board [data-reorder] .item-open');
+ if(opener){
+  e.preventDefault();if((e.key==='ArrowLeft'||e.key==='ArrowRight')&&!opener.closest('.group-body.grid'))return;
+  const source=opener.closest('[data-asset]'),id=source.dataset.asset,siblings=[...source.parentElement.children].filter(n=>n.dataset.asset);
+  if(commitAssetOrder(source,siblings[siblings.indexOf(source)+step],step>0)){focusAsset(id);toast(step<0?'已向前移动':'已向后移动',true);}return;
+ }
+ const nav=e.target.closest?.('#sidebar .nav-item[data-block]')||(e.key==='ArrowUp'||e.key==='ArrowDown')&&e.target.closest?.('#board .group-title[data-action="collapse"]');
+ if(nav&&(e.key==='ArrowUp'||e.key==='ArrowDown')){e.preventDefault();const id=nav.dataset.block||nav.dataset.id,fromBoard=!!nav.closest('#board');if(moveBlock(id,step))document.querySelector(fromBoard?`#board .group-title[data-id="${CSS.escape(id)}"]`:`#sidebar .nav-item[data-block="${CSS.escape(id)}"]`)?.focus();}
 });
-// Hovering or focusing a linked card draws lines to the records it is linked with.
-function edgePoint(r,x,y){const cx=r.left+r.width/2,cy=r.top+r.height/2,dx=x-cx,dy=y-cy;if(!dx&&!dy)return [cx,cy];const scale=Math.min(dx?Math.abs(r.width/2/dx):Infinity,dy?Math.abs(r.height/2/dy):Infinity);return [cx+dx*scale,cy+dy*scale];}
-let peekTimer=0;
-function clearLinks(){clearTimeout(peekTimer);$('#board').classList.remove('peeking');if(!linkFocus)return;linkFocus=null;document.querySelectorAll('.link-source,.link-peer').forEach(n=>n.classList.remove('link-source','link-peer'));if(linkLayer)linkLayer.innerHTML='';}
-function showLinks(el){
- if(el===linkFocus)return;clearLinks();if(!el||gesture)return;
- const a=state.assets.find(x=>x.id===el.dataset.asset),cardOf=x=>document.querySelector(`#board [data-asset="${CSS.escape(x.id)}"]`),visible=n=>n&&n.style.visibility!=='hidden';
- const peers=a?linkedAssets(state.assets,a).filter(x=>!relationKind(a,x)).map(cardOf).filter(visible):[];
- // Server relations show no lines on the board: related cards get a dashed outline and the rest step back (v13 Peek, 120ms after the pointer settles).
- const chain=a&&!a.hiddenAt?[...peekSet(state.assets,a)].map(id=>state.assets.find(x=>x.id===id)).filter(x=>x&&!x.hiddenAt).map(cardOf).filter(visible):[];
- if(!peers.length&&!chain.length)return;
- linkFocus=el;el.classList.add('link-source');peers.forEach(n=>n.classList.add('link-peer'));
- if(chain.length)peekTimer=setTimeout(()=>{if(linkFocus!==el)return;chain.forEach(n=>n.classList.add('link-peer'));$('#board').classList.add('peeking');},120);
- if(!peers.length)return;
- if(!linkLayer){linkLayer=document.createElementNS('http://www.w3.org/2000/svg','svg');linkLayer.setAttribute('class','link-lines');linkLayer.setAttribute('aria-hidden','true');document.body.append(linkLayer);}
- const from=el.getBoundingClientRect();
- linkLayer.innerHTML=peers.map(n=>{const to=n.getBoundingClientRect(),[x1,y1]=edgePoint(from,to.left+to.width/2,to.top+to.height/2),[x2,y2]=edgePoint(to,from.left+from.width/2,from.top+from.height/2),length=Math.hypot(x2-x1,y2-y1)||1,bend=Math.min(40,length*.15),mx=(x1+x2)/2-(y2-y1)/length*bend,my=(y1+y2)/2+(x2-x1)/length*bend;return `<path d="M${x1} ${y1}Q${mx} ${my} ${x2} ${y2}"/><circle cx="${x1}" cy="${y1}" r="3"/><circle cx="${x2}" cy="${y2}" r="3"/>`;}).join('');
-}
-$('#board').addEventListener('pointerover',e=>{if(e.pointerType==='mouse')showLinks(e.target.closest('#board [data-asset]:not(.flip-card)'));});
-$('#board').addEventListener('pointerleave',clearLinks);
-$('#board').addEventListener('focusin',e=>showLinks(e.target.closest('#board [data-asset]:not(.flip-card)')));
-$('#board').addEventListener('focusout',e=>{if(!e.relatedTarget?.closest?.('#board [data-asset]'))clearLinks();});
-addEventListener('scroll',clearLinks,{passive:true});
-let viewportFrame=0;
-window.addEventListener('resize',()=>{if(gesture?.active)dropDrag(gesture,true);if(viewportFrame)return;viewportFrame=requestAnimationFrame(()=>{viewportFrame=0;updateOverflow();});});render();
+window.addEventListener('resize',()=>{if(gesture?.active)dropDrag(gesture,true);});
+// Row columns follow the width of the main area (the sidebar and a docked inspector take their share), set as a class so the DOM is not rebuilt.
+new ResizeObserver(([entry])=>{const w=entry.contentRect.width,size=w<600?'s':w<860?'m':'l';if($('#board').dataset.size!==size)$('#board').dataset.size=size;}).observe($('#main'));
+render();
 installImportDropPaste();
 if(nativeStore){document.documentElement.classList.add('native-app');if(!demoMode)requestEvidence();document.querySelectorAll('.form-note').forEach(el=>{el.textContent=el.textContent.replaceAll('当前浏览器','此 Mac').replaceAll('此浏览器','此 Mac');});if(!nativeStore.data||migratedLegacyData)save();}
 else if(migratedLegacyData)save();
-if(demoMode){document.documentElement.classList.add('demo-mode');const badge=document.createElement('span');badge.className='demo-badge';badge.setAttribute('role','note');badge.setAttribute('aria-label','演示模式：全部为虚构数据，不会保存');badge.title='演示模式：全部为虚构数据，不会保存';badge.textContent='演示';document.querySelector('#topbar').append(badge);}
+if(demoMode){document.documentElement.classList.add('demo-mode');const badge=document.createElement('span');badge.className='demo-badge';badge.setAttribute('role','note');badge.setAttribute('aria-label','演示模式：全部为虚构数据，不会保存');badge.title='演示模式：全部为虚构数据，不会保存';badge.textContent='演示';document.querySelector('#topbar .view-head').append(badge);}
 
 document.body.classList.add('first-paint');setTimeout(()=>document.body.classList.remove('first-paint'),600);

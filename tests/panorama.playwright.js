@@ -6,7 +6,7 @@ async (page) => {
   await p.goto('http://127.0.0.1:4317/?demo');await p.waitForFunction(()=>typeof panoramaOpen==='function');await p.waitForTimeout(300);
   const open=()=>p.evaluate(()=>!document.querySelector('#panorama').hidden);
   // Entry by key and by the toolbar button; focus lands inside, the board stays out of reach.
-  await p.focus('#board [data-asset="demo-d2"] .card-open');await p.keyboard.press('p');await p.waitForTimeout(250);
+  await p.focus('#board [data-asset="demo-d2"] .item-open');await p.keyboard.press('p');await p.waitForTimeout(250);
   check(await open(),'P opens the panorama');
   const st=await p.evaluate(()=>({role:document.querySelector('#panorama').getAttribute('role'),label:document.querySelector('#panorama').getAttribute('aria-label'),inert:document.querySelector('main').inert,mainHidden:getComputedStyle(document.querySelector('main')).visibility,focusIn:!!document.activeElement.closest('#panorama'),title:document.querySelector('.pano-tag').textContent,tip:document.querySelector('.pano-tag').title}));
   check(st.role==='dialog'&&/登记状态，非实时/.test(st.label)&&st.inert&&st.mainHidden==='hidden'&&st.focusIn,'A named dialog; the board is inert and hidden: '+JSON.stringify(st));

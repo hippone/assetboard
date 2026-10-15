@@ -75,8 +75,10 @@ async (page) => {
   await p.evaluate(()=>showDetail('d1'));
   check(await p.locator('#detail .form-note').count()===0,'Detail has no note paragraphs');
   check(!(await p.locator('#detail').innerText()).includes('待补充'),'Detail hides empty facts');
-  check(await p.locator('#detail [data-action="delete-asset"]').getAttribute('title').then(t=>t.includes('只删除')),'Delete button states its scope');
-  await p.locator('#detail [data-action="delete-asset"]').click();
+  check(await p.locator('#detail .main-actions .button').count()===2&&await p.locator('#detail [data-action="asset-menu"]').getAttribute('aria-label')==='更多操作','The inspector shows one primary action, 编辑 and a named ⋯');
+  await p.locator('#detail [data-action="asset-menu"]').click();
+  check((await p.locator('#menu').innerText()).split('\n').every(line=>line.length<=8),'Menu items are short verbs');
+  await p.locator('#menu [data-action="delete-asset"]').click();
   check((await p.locator('.confirm-message').innerText()).includes('不取消订阅'),'Delete confirm keeps the one clear sentence');
   await p.locator('#confirm-no').click();
 

@@ -15,22 +15,28 @@ async (page) => {
     {id:'quiet',type:'subscription',name:'Hidden tool',provider:'Tool',account:'',purpose:'',date:day(3),hiddenAt:'2026-01-01',art:'generic',source:'manual'}
    ]};render();
   });
-  const agenda=await p.locator('#agenda').innerText();
-  check(await p.locator('#agenda').isVisible(),'Agenda must be visible when assets exist');
-  check(/late\.dev[\s\S]*过期 2 天/.test(agenda),'Overdue asset must lead the agenda: '+agenda);
-  check(/soon\.dev[\s\S]*7 天[\s\S]*客户站点仍在使用/.test(agenda),'Soon asset shows relative date and keep reason');
-  check(!agenda.includes('Hidden tool'),'Hidden assets stay out of the agenda');
-  check(/\d+ 天|今天|明天/.test(agenda)&&await p.locator('#agenda [aria-label*="扣款"]').count()>0,'Monthly renewal rolls forward to its next charge');
-  check((await p.locator('.domain .block-summary').getAttribute('aria-label'))==='1 项已过期 · 1 项即将到期'&&(await p.locator('.domain .block-summary .dot').count())===2,'Block summary counts computed dates as two dots');
-  check((await p.locator('[data-asset="soon"] .card-event').getAttribute('class')).includes('warn'),'Soon card is marked');
+  // The overview: a group summary per category and coloured dates on the rows.
+  check((await p.locator('.group[data-group="domain"] .g-sum').getAttribute('aria-label'))==='1 项已过期，1 项 30 天内到期'&&(await p.locator('.group[data-group="domain"] .g-sum .dot').count())===2,'Group summary counts computed dates as two dots');
+  check((await p.locator('[data-asset="soon"] .r-date').getAttribute('class')).includes('warn'),'Soon row is marked');
+  // The sidebar counts what needs attention; 即将到来 lists every dated record in bands, overdue first.
+  const nav=p.locator('#sidebar .nav-item[data-id="upcoming"]');
+  check(/1 项已过期/.test(await nav.getAttribute('aria-label'))&&(await nav.locator('.nav-count.overdue').innerText())==='3','Sidebar counts overdue and soon dates, red while any is overdue');
+  await nav.click();
+  const agenda=await p.locator('#board').innerText();
+  check(/已过期[\s\S]*late\.dev[\s\S]*已过期 2 天/.test(agenda),'Overdue band leads: '+agenda);
+  check(/7 天内[\s\S]*soon\.dev[\s\S]*客户站点仍在使用[\s\S]*7 天后到期/.test(agenda),'Soon asset shows its keep reason and relative date');
+  check(!agenda.includes('Hidden tool'),'Hidden assets stay out of 即将到来');
+  check(/Editor Pro[\s\S]*天后扣款/.test(agenda),'Monthly renewal rolls forward to its next charge');
+  check(await p.locator('#layout-toggle').isHidden(),'即将到来 is always a list');
 
   // Delete asks in-page (works in WKWebView) and can be undone from the toast.
-  await p.locator('[data-asset="late"] .card-open').click();
-  await p.locator('#detail [data-action="delete-asset"]').click();
+  await p.locator('[data-asset="late"] .item-open').click();
+  const menu=async action=>{await p.locator('#detail [data-action="asset-menu"]').click();await p.locator(`#menu [data-action="${action}"]`).click();};
+  await menu('delete-asset');
   check(await p.locator('#modal[open] #confirm-yes').isVisible(),'Delete must open the in-page confirmation');
   await p.locator('#confirm-no').click();
   check(await p.evaluate(()=>state.assets.some(a=>a.id==='late')),'Cancel keeps the record');
-  await p.locator('#detail [data-action="delete-asset"]').click();
+  await menu('delete-asset');
   await p.locator('#confirm-yes').click();
   check(await p.evaluate(()=>!state.assets.some(a=>a.id==='late')),'Confirm deletes the record');
   check(await p.locator('#detail').isHidden(),'Detail closes after deleting its asset');
@@ -38,8 +44,8 @@ async (page) => {
   check(await p.evaluate(()=>state.assets.some(a=>a.id==='late')),'Toast undo restores the deleted record');
 
   // Cmd/Ctrl+Z undoes outside text fields.
-  await p.locator('[data-asset="soon"] .card-open').click();
-  await p.locator('#detail [data-action="hide-asset"]').click();
+  await p.locator('[data-asset="soon"] .item-open').click();
+  await menu('hide-asset');
   check(await p.evaluate(()=>!!state.assets.find(a=>a.id==='soon').hiddenAt),'Hide from detail');
   await p.locator('body').press('ControlOrMeta+z');
   check(await p.evaluate(()=>!state.assets.find(a=>a.id==='soon').hiddenAt),'Keyboard undo restores the hidden asset');
@@ -61,16 +67,17 @@ async (page) => {
   check(created&&created.type==='subscription'&&created.cost==='$15.00 / 月'&&created.cycle==='monthly'&&created.reason==='设计稿都在这里','Paste creates a complete asset');
   check(await p.evaluate(()=>!state.evidenceDecisions||!Object.keys(state.evidenceDecisions).length),'Pasted text leaves no evidence decision behind');
 
-  // Changing the category moves a manual asset to the matching block.
+  // Changing the category moves a manual asset to the matching category.
   await p.evaluate(id=>assetForm('subscription',id),created.id);
   await p.locator('#asset-form [name="type"]').selectOption('license');
   await p.locator('#asset-form [type="submit"]').click();
-  check(await p.evaluate(()=>state.assets.find(a=>a.name==='Figma').type==='license'&&state.blocks.some(b=>b.id==='license')),'Category change adds the target block');
+  check(await p.evaluate(()=>state.assets.find(a=>a.name==='Figma').type==='license'&&state.blocks.some(b=>b.id==='license')),'Category change adds the target category');
 
-  // Blocks can move backward as well as forward.
-  await p.locator('[data-action="settings"][data-id="domain"]').click();
+  // Categories can move down as well as up, from the category view's ⋯.
+  await p.locator('#sidebar .nav-item[data-block="domain"]').click();
+  await p.locator('#view-menu').click();
   await p.locator('[data-action="move-down"]').click();
-  check(await p.evaluate(()=>state.blocks[1].id==='domain'),'Move down swaps with the next block');
+  check(await p.evaluate(()=>state.blocks[1].id==='domain')&&(await p.locator('#sidebar .nav-item[data-block]').evaluateAll(n=>n.map(x=>x.dataset.block).join()))==='subscription,domain,license','Move down swaps with the next category, in the sidebar too');
 
   // Name collisions are confirmed in one list instead of one native prompt per record.
   await p.evaluate(()=>{state.assets.push({id:'manual-repo',type:'repository',name:'me/tool',provider:'Git',account:'',source:'manual',art:'generic'});syncFollowUp('GitHub',{read:1,collisions:[{assetId:'manual-repo',name:'me/tool',fields:{source:'github',externalId:'9',provider:'GitHub',type:'repository'}}]},[]);});
@@ -104,6 +111,6 @@ async (page) => {
   await p.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))).then(()=>Promise.all(document.getAnimations().map(animation=>animation.finished))));
   await p.setViewportSize({width:390,height:844});
   check(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Mobile horizontal overflow');
-  return 'PASS: agenda, computed summaries, in-page delete confirm, toast and keyboard undo, paste review, category change, move down, collision list, grouped evidence, unsaved-changes prompt, mobile bounds';
+  return 'PASS: 即将到来 bands and sidebar count, computed summaries, in-page delete confirm, toast and keyboard undo, paste review, category change, move down, collision list, grouped evidence, unsaved-changes prompt, mobile bounds';
  } finally { await p.close(); }
 }

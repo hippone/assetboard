@@ -1,6 +1,7 @@
 // Panorama view (v13b P2): the read-only whole-board overview. Everything is derived from `state` by panorama.js; this file only draws it.
 // Status here is the registered status (expiry, manual stop), never a live probe, and the view says so (DESIGN-PRINCIPLES: no probing, not real-time).
-uiGlyphs.grid='<rect x="4" y="4" width="7" height="7" rx="1.8"/><rect x="13" y="4" width="7" height="7" rx="1.8"/><rect x="4" y="13" width="7" height="7" rx="1.8"/><rect x="13" y="13" width="7" height="7" rx="1.8"/>';
+// The panorama is a treemap; its glyph is a split rectangle so it never reads as the board's grid layout.
+uiGlyphs.treemap='<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M11 4.5v15M11 11.5h9.5M15.5 11.5v8"/>';
 uiGlyphs.expand='<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>';
 uiGlyphs.eyeOff='<path d="M3.5 12s3-5.5 8.5-5.5c1.2 0 2.3.3 3.2.7M20.5 12s-1.1 2-3.2 3.6M9.9 9.9a3 3 0 0 0 4.2 4.2M4 4l16 16"/>';
 let panoNative=false,panoShow=false,panoAlt=false,panoIdleTimer=0,panoFocus=null,panoOrigin=null,panoOpen=false,panoReturn=null,panoFrame=0,panoObserver=null,panoKey='',panoLooseOpen=false;
@@ -163,7 +164,7 @@ function panoramaHtml(model,fit){
  const sync=panoSyncTime(),tag=`登记状态 · 非实时${sync?' · 同步 '+sync:''}`;
  const body=model.lanes.length?panoTreemapHtml(model):`<div class="pano-empty"><p>还没有服务器</p><button class="button icon-only" data-action="pano-add" aria-label="添加服务器" title="添加服务器">${ui('plus')}</button></div>`;
  const focusLane=panoFocus&&model.lanes.find(l=>l.id===panoFocus);if(panoFocus&&!focusLane)panoFocus=null;
- return `<header class="pano-bar"><h2 class="pano-title">${ui('grid')}全景</h2><div class="pano-totals">${panoTotals(model.totals)}</div><span class="pano-spacer"></span>${model.lanes.length&&!panoFocus?panoMetricToggle(model):''}<div class="pano-legend" aria-hidden="true"><span>${panoDot('red')}已过期</span><span>${panoDot('amber')}即将到期</span><span>${panoDot('')}登记中</span><span>${panoDot('',true)}已停用</span></div><span class="pano-tag" title="只显示你登记和同步的数据，不探测网络">${tag}</span><button class="button icon-only pano-show" data-action="pano-show" aria-pressed="${panoShow}" aria-label="展示模式" title="展示模式：遮住地址中间两段，顶栏自动淡出">${ui('expand')}</button><button class="button icon-only pano-close" data-action="pano-close" aria-label="关闭全景" title="关闭全景（Esc）">×</button></header>${focusLane?panoFocusHtml(model,focusLane,fit):`<div class="pano-body tm" data-level="t" data-layout="treemap">${body}${panoLoose(model)}</div>`}`;
+ return `<header class="pano-bar"><h2 class="pano-title">${ui('treemap')}全景</h2><div class="pano-totals">${panoTotals(model.totals)}</div><span class="pano-spacer"></span>${model.lanes.length&&!panoFocus?panoMetricToggle(model):''}<div class="pano-legend" aria-hidden="true"><span>${panoDot('red')}已过期</span><span>${panoDot('amber')}即将到期</span><span>${panoDot('')}登记中</span><span>${panoDot('',true)}已停用</span></div><span class="pano-tag" title="只显示你登记和同步的数据，不探测网络">${tag}</span><button class="button icon-only pano-show" data-action="pano-show" aria-pressed="${panoShow}" aria-label="展示模式" title="展示模式：遮住地址中间两段，顶栏自动淡出">${ui('expand')}</button><button class="button icon-only pano-close" data-action="pano-close" aria-label="关闭全景" title="关闭全景（Esc）">×</button></header>${focusLane?panoFocusHtml(model,focusLane,fit):`<div class="pano-body tm" data-level="t" data-layout="treemap">${body}${panoLoose(model)}</div>`}`;
 }
 function panoramaRender(){
  const root=$('#panorama');if(!panoOpen||!root)return;
@@ -272,7 +273,7 @@ document.addEventListener('pointerover',e=>{if(panoOpen&&e.pointerType==='mouse'
 document.addEventListener('pointerout',e=>{if(panoOpen&&e.target.closest?.('#panorama .pano-chip'))panoRing(null);});
 document.addEventListener('focusin',e=>{if(panoOpen)panoRing(e.target.closest?.('#panorama .pano-chip[data-shared]')?.dataset.chip);});
 document.addEventListener('focusout',()=>{if(panoOpen)panoRing(null);});
-setIconButton($('#panorama-button'),'grid','全景（P）');
+setIconButton($('#panorama-button'),'treemap','全景（P）');
 
 // ---- P4: drag a chip onto another server (the one write the panorama allows) -------------------------------------------------------------
 // Default drop = move here, ⌥ = also here, onto the unmounted strip = unlink from the server it came out of. Esc or a drop on empty space cancels. One drag = one undo step.

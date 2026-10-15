@@ -32,7 +32,6 @@ function arrangeAssets(assets,ids){
 }
 // Manual orders only keep the part a person actually changed, so everything after it stays in recency order.
 function touchedPrefix(before,after){let last=-1;for(let i=0;i<after.length;i++)if(before[i]!==after[i])last=i;return after.slice(0,last+1);}
-function swapInOrder(ids,first,second){const next=[...ids],a=next.indexOf(first),b=next.indexOf(second);if(a<0||b<0||a===b)return next;[next[a],next[b]]=[next[b],next[a]];return next;}
 function bringToFront(ids,id){return [id,...(Array.isArray(ids)?ids:[]).filter(other=>other!==id)];}
 
 // Category quick actions (DESIGN-PRINCIPLES §5): read-only, local actions only — open a link, copy a value, open an existing local folder.
@@ -137,32 +136,6 @@ function quickActions(asset,{link='',native=false}={}){
   :[open('打开管理页')];
  return list.filter(Boolean);
 }
-function repositoryGroups(assets, preferredIds, limit=6){
- const repositories=assets.filter(asset=>asset.type==='repository').sort((left,right)=>{
-  const difference=recencyTime(right)-recencyTime(left);
-  return difference||left.name.localeCompare(right.name);
- });
- const byId=new Map(repositories.map(asset=>[asset.id,asset]));
- const preferred=Array.isArray(preferredIds)?preferredIds.filter(id=>byId.has(id)):[];
- const featuredIds=[...new Set(preferred)].slice(0,limit);
- for(const asset of repositories)if(featuredIds.length<limit&&!featuredIds.includes(asset.id))featuredIds.push(asset.id);
- const featured=featuredIds.map(id=>byId.get(id));
- return {featured,compact:repositories.filter(asset=>!featuredIds.includes(asset.id))};
-}
-
-function swapRepositoryDisplay(assets,preferredIds,id,limit=6){
- const {featured,compact}=repositoryGroups(assets,preferredIds,limit);
- const ids=featured.map(asset=>asset.id);
- const position=ids.indexOf(id);
- if(position>=0){
-  ids.splice(position,1);
-  if(compact[0])ids.splice(position,0,compact[0].id);
- }else if(compact.some(asset=>asset.id===id)){
-  if(ids.length>=limit)ids.pop();
-  ids.unshift(id);
- }
- return ids;
-}
 
 function orderAssets(assets,ids){
  if(!Array.isArray(ids)||!ids.length)return assets;
@@ -261,8 +234,6 @@ function findNameCollision(board,source,name,type,externalId){
 
 function ensureBlock(board,type){if(!board.blocks.some(block=>block.id===type))board.blocks.push({id:type,width:50,height:null,density:'full',folded:false});}
 // Blocks saved before 2026-09-29 used collapsed:true for what is now the compact card style.
-function blockDensity(block){return block?.density==='compact'||block?.density==='full'?block.density:block?.collapsed?'compact':'full';}
-function setBlockDensity(block,density){block.density=density==='compact'?'compact':'full';delete block.collapsed;}
 
 function applySyncedFields(asset,fields){Object.assign(asset,fields);asset.syncMissing=false;}
 
@@ -819,21 +790,10 @@ function iconPlan(assets,{overwrite=false}={}){
  return {hosts:[...groups.values()].sort((a,b)=>b.ids.length-a.ids.length||a.host.localeCompare(b.host)),skipped};
 }
 
-// Display limits: how much the board shows at once, so large collections never flood the one-screen board.
-// Data is never truncated; search and "查看全部" always show everything.
-const DISPLAY_LIMITS={count:99,columns:4,cardRows:3,compactRows:4,listRows:2,featuredRows:2,strongDates:3};
+// Display limits. Counts read 99+ beyond this (the real number stays in title and labels); data is never truncated.
+// The v15 overview lists every record and groups fold instead, so no row or column cap is left.
+const DISPLAY_LIMITS={count:99};
 function formatCount(value){const n=Math.max(0,Math.floor(Number(value)||0));return n>DISPLAY_LIMITS.count?DISPLAY_LIMITS.count+'+':String(n);}
-// How many items fit in `rows` rows of `columns`; everything when it already fits.
-function rowLimit(total,columns,rows){const max=Math.max(1,columns|0)*Math.max(1,rows|0);return total>max?max:total;}
-// Featured cards fill whole rows only (no lone card on a last row), at most `maxRows` rows; the rest move to the list.
-function wholeRows(total,columns,maxRows){const cols=Math.max(1,columns|0);if(total<=cols)return total;return cols*Math.max(1,Math.min(maxRows,Math.floor(total/cols)));}
-// Overdue dates always keep their colour; of the "soon" ones only the most urgent few do, so a block never turns all amber.
-function strongDateIds(assets,now=new Date(),limit=DISPLAY_LIMITS.strongDates){
- const rows=assets.filter(asset=>!asset.hiddenAt).map(asset=>({id:asset.id,status:assetDateStatus(asset,now)}));
- const soon=rows.filter(row=>row.status.level==='soon').sort((left,right)=>left.status.days-right.status.days).slice(0,limit);
- return new Set([...rows.filter(row=>row.status.level==='overdue'),...soon].map(row=>row.id));
-}
-
 
 // Batch import (2026-10-09): CSV/table paste, JSON backup restore. Pure; the UI decides when to preview.
 const IMPORT_ROW_LIMIT=100;
@@ -1257,4 +1217,4 @@ function demoImportSampleCsv(){
  return ['名称,类别,平台,到期日,费用,备注','sample-studio.com,域名,Namecheap,2026-10-21,$10.98 / 年,演示用域名','demo-box-tokyo,服务器,Example VPS,2026-11-04,$6.00 / 月,演示用服务器','Example Notes Pro,订阅与工具,Example Notes,2026-11-06,$8.00 / 月,演示用订阅'].join('\n');
 }
 
-if(typeof module!=='undefined')module.exports={MOUNT_TYPES,relationKind,linkAllowed,serverChain,serverChainCount,linkRelation,linkMetaOf,setLinkMeta,serverTone,peekSet,dropLinkMeta,IP_LIMIT,normalizeIp,parseIps,assetIps,primaryIp,maskIp,validIpList,ACTION_FIELDS,QUICK_LIMIT,validActionField,sshCommand,cloneUrl,quickActions,recencyTime,recentFirst,arrangeAssets,touchedPrefix,swapInOrder,bringToFront,DISPLAY_LIMITS,formatCount,rowLimit,wholeRows,strongDateIds,blockDensity,setBlockDensity,ensureBlock,iconHost,iconVendor,iconVendors,vendorForHost,iconPlan,guessAssetType,regionList,regionName,regionFlag,phoneParts,regionFromPhone,maskPhone,maskEmail,cardExpiry,expiryText,looksLikeCardNumber,linkAssets,unlinkAssets,linkedAssets,removeLinksTo,assetFingerprint,removeUntouchedDemo,repositoryGroups,swapRepositoryDisplay,orderAssets,moveAsset,dateKinds,billingCycles,dayNumber,localDay,isoDay,addMonths,nextOccurrence,assetDateStatus,upcomingEvents,syncKey,assetSyncKey,isBlacklisted,findByExternal,findNameCollision,mergeCloudflare,mergeGitHub,applyCollision,parseSender,registrableDomain,cleanMerchant,findAmounts,findDates,findDomains,evidenceFacts,inferCycle,formatCost,matchAsset,buildCandidates,evidencePayload,parseAiItems,applyAiItem,IMPORT_ROW_LIMIT,parseDelimitedText,importHeaderField,rowsToImportItems,classifyImportPayload,planImport,applyImport,parseBoardBackup,planBoardBackup,applyBoardBackup,demoImportSampleCsv,csvSyncKey,VENDOR_CSV_PRESETS,cloudflareTokenTemplateUrl,githubTokenTemplateUrl,CLOUDFLARE_TOKEN_PERMISSIONS,parseSshConfig,mergeSshConfig,parseEml};
+if(typeof module!=='undefined')module.exports={MOUNT_TYPES,relationKind,linkAllowed,serverChain,serverChainCount,linkRelation,linkMetaOf,setLinkMeta,serverTone,peekSet,dropLinkMeta,IP_LIMIT,normalizeIp,parseIps,assetIps,primaryIp,maskIp,validIpList,ACTION_FIELDS,QUICK_LIMIT,validActionField,sshCommand,cloneUrl,quickActions,recencyTime,recentFirst,arrangeAssets,touchedPrefix,bringToFront,DISPLAY_LIMITS,formatCount,ensureBlock,iconHost,iconVendor,iconVendors,vendorForHost,iconPlan,guessAssetType,regionList,regionName,regionFlag,phoneParts,regionFromPhone,maskPhone,maskEmail,cardExpiry,expiryText,looksLikeCardNumber,linkAssets,unlinkAssets,linkedAssets,removeLinksTo,assetFingerprint,removeUntouchedDemo,orderAssets,moveAsset,dateKinds,billingCycles,dayNumber,localDay,isoDay,addMonths,nextOccurrence,assetDateStatus,upcomingEvents,syncKey,assetSyncKey,isBlacklisted,findByExternal,findNameCollision,mergeCloudflare,mergeGitHub,applyCollision,parseSender,registrableDomain,cleanMerchant,findAmounts,findDates,findDomains,evidenceFacts,inferCycle,formatCost,matchAsset,buildCandidates,evidencePayload,parseAiItems,applyAiItem,IMPORT_ROW_LIMIT,parseDelimitedText,importHeaderField,rowsToImportItems,classifyImportPayload,planImport,applyImport,parseBoardBackup,planBoardBackup,applyBoardBackup,demoImportSampleCsv,csvSyncKey,VENDOR_CSV_PRESETS,cloudflareTokenTemplateUrl,githubTokenTemplateUrl,CLOUDFLARE_TOKEN_PERMISSIONS,parseSshConfig,mergeSshConfig,parseEml};

@@ -1,4 +1,4 @@
-// v13b P5: the manual "stopped" mark. A registered fact: hollow ring, muted name, same place, S key, detail button, undo, panorama in step.
+// v13b P5: the manual "stopped" mark. A registered fact: hollow ring, muted name, same place, S key, inspector menu item, undo, panorama in step.
 async (page) => {
  const check=(ok,message)=>{if(!ok)throw new Error(message);};
  const context=await page.context().browser().newContext({viewport:{width:1320,height:822}});const p=await context.newPage();const errors=[];p.on('pageerror',e=>errors.push(e.message));
@@ -7,26 +7,28 @@ async (page) => {
   const order=()=>p.evaluate(()=>[...document.querySelectorAll('#board [data-asset]')].map(n=>n.dataset.asset).join());
   const stopped=id=>p.evaluate(i=>!!state.assets.find(a=>a.id===i).stopped,id);
   const before=await order();
-  // Detail: one quiet button, no confirmation.
-  await p.click('#board [data-asset="demo-d2"] .card-open');await p.waitForSelector('#detail:not([hidden])');
-  check(await p.evaluate(()=>document.querySelector('#detail [data-action="toggle-stopped"]')?.textContent)==='停用','Detail offers 停用');
-  await p.click('#detail [data-action="toggle-stopped"]');await p.waitForTimeout(200);
+  // Inspector: one quiet item in the ⋯ menu, no confirmation.
+  await p.click('#board [data-asset="demo-d2"] .item-open');await p.waitForSelector('#detail:not([hidden])');
+  const menuItem=async()=>{await p.click('#detail [data-action="asset-menu"]');await p.waitForSelector('#menu:not([hidden])');return p.evaluate(()=>document.querySelector('#menu [data-action="toggle-stopped"]')?.textContent);};
+  check((await menuItem()).startsWith('标为停用'),'Inspector menu offers 标为停用');
+  await p.click('#menu [data-action="toggle-stopped"]');await p.waitForTimeout(200);
   check(await stopped('demo-d2'),'Marked stopped');
-  check(await p.evaluate(()=>document.querySelector('#detail [data-action="toggle-stopped"]').textContent)==='启用'&&await p.evaluate(()=>/已标为停用/.test(document.querySelector('#toast').textContent)&&!!document.querySelector('#toast .toast-undo')),'Button flips to 启用, toast with undo');
+  check(await p.evaluate(()=>/已标为停用/.test(document.querySelector('#toast').textContent)&&!!document.querySelector('#toast .toast-undo')),'Toast with undo');
+  check((await menuItem()).startsWith('恢复启用'),'The item flips to 恢复启用');await p.keyboard.press('Escape');
   await p.keyboard.press('Escape');await p.waitForTimeout(150);
-  const st=await p.evaluate(()=>{const c=document.querySelector('#board [data-asset="demo-d2"]'),o=document.querySelector('#board [data-asset="demo-d1"]');return {cls:c.classList.contains('stopped'),ring:c.querySelector('.stop-ring')?.getAttribute('aria-label'),label:c.querySelector('.card-open').getAttribute('aria-label'),color:getComputedStyle(c.querySelector('.card-name')).color,other:getComputedStyle(o.querySelector('.card-name')).color,ringBox:getComputedStyle(c.querySelector('.stop-ring')).backgroundColor};});
+  const st=await p.evaluate(()=>{const c=document.querySelector('#board [data-asset="demo-d2"]'),o=document.querySelector('#board [data-asset="demo-d1"]');return {cls:c.classList.contains('stopped'),ring:c.querySelector('.stop-ring')?.getAttribute('aria-label'),label:c.querySelector('.item-open').getAttribute('aria-label'),color:getComputedStyle(c.querySelector('.r-text')).color,other:getComputedStyle(o.querySelector('.r-text')).color,ringBox:getComputedStyle(c.querySelector('.stop-ring')).backgroundColor};});
   check(st.cls&&st.ring==='已停用'&&/已停用/.test(st.label),'Ring, class and spoken label: '+JSON.stringify(st));
   check(st.color!==st.other,'The name goes muted: '+st.color+' vs '+st.other);
   check(await order()===before,'Nothing moves: a stopped card keeps its place');
   await p.keyboard.press('Control+z');await p.waitForTimeout(200);
   check(!(await stopped('demo-d2')),'⌘Z restores');
   // S on a focused board card toggles and keeps focus on the card.
-  await p.focus('#board [data-asset="demo-d2"] .card-open');await p.keyboard.press('s');await p.waitForTimeout(200);
+  await p.focus('#board [data-asset="demo-d2"] .item-open');await p.keyboard.press('s');await p.waitForTimeout(200);
   check(await stopped('demo-d2')&&await p.evaluate(()=>document.activeElement.closest('[data-asset]')?.dataset.asset==='demo-d2'),'S marks it and focus stays');
   await p.keyboard.press('s');await p.waitForTimeout(200);check(!(await stopped('demo-d2')),'S again brings it back');
   // Accounts cannot be stopped: a short note, no change.
   const sub=await p.evaluate(()=>state.assets.find(a=>a.type==='subscription'&&!a.hiddenAt).id);
-  await p.focus(`#board [data-asset="${sub}"] .card-open`);await p.keyboard.press('s');await p.waitForTimeout(150);
+  await p.focus(`#board [data-asset="${sub}"] .item-open`);await p.keyboard.press('s');await p.waitForTimeout(150);
   check(!(await stopped(sub))&&await p.evaluate(()=>/不用标停用/.test(document.querySelector('#toast').textContent)),'Accounts have no stopped state, with a short note');
   // Panorama stays in step and S works there too.
   await p.keyboard.press('Escape');
@@ -45,6 +47,6 @@ async (page) => {
   // Persisted with the asset, so backups carry it.
   check(await p.evaluate(()=>JSON.stringify(state).includes('"stopped":true')),'Stored on the asset');
   check(!errors.length,'No page errors: '+errors.join());
-  return 'PASS: detail button, ring + muted name + spoken label, nothing moves, undo, S on board and panorama, accounts excluded, stopped lane/hero/rail, stored on the asset';
+  return 'PASS: inspector menu item, ring + muted name + spoken label, nothing moves, undo, S on board and panorama, accounts excluded, stopped lane/hero/rail, stored on the asset';
  }finally{await context.close();}
 }
