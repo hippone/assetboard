@@ -108,6 +108,89 @@
   return {ok:changed,changed,kind:keep||!origin?'also':'move',server:target};
  }
 
- const api={moveMount,PANORAMA_GROUPS:GROUPS,PANORAMA_UNMOUNTED_CAP:UNMOUNTED_CAP,PANORAMA_DOT_CAP:DOT_CAP,buildPanorama,capChips,capUnmounted,panoramaFit,laneView,panoramaOrder};
+ // ---- v14b treemap. Pure geometry: rectangles in px, nothing drawn here. ----
+ // Squarified treemap (Bruls et al.). items: [{id,value}] ; value ≤ 0 counts as 0. Order is stable: bigger first, ties keep input order.
+ function squarify(items,rect){
+  const R={x:rect.x||0,y:rect.y||0,w:Math.max(0,rect.w||0),h:Math.max(0,rect.h||0)};
+  const total=items.reduce((s,i)=>s+Math.max(0,+i.value||0),0);
+  if(!items.length)return [];
+  if(!total||!R.w||!R.h)return items.map(i=>({id:i.id,x:R.x,y:R.y,w:0,h:0}));
+  const scale=R.w*R.h/total;
+  const list=items.map((i,n)=>({id:i.id,n,area:Math.max(0,+i.value||0)*scale})).sort((a,b)=>b.area-a.area||a.n-b.n);
+  const out=[];
+  const worst=(row,side)=>{if(!row.length)return Infinity;const s=row.reduce((a,r)=>a+r.area,0);let mx=0,mn=Infinity;for(const r of row){mx=Math.max(mx,r.area);mn=Math.min(mn,r.area);}if(!mn)return Infinity;return Math.max(side*side*mx/(s*s),s*s/(side*side*mn));};
+  const place=row=>{
+   const s=row.reduce((a,r)=>a+r.area,0);
+   if(R.w>=R.h){const cw=R.h?s/R.h:0;let cy=R.y;for(const r of row){const rh=cw?r.area/cw:0;out.push({id:r.id,n:r.n,x:R.x,y:cy,w:cw,h:rh});cy+=rh;}R.x+=cw;R.w=Math.max(0,R.w-cw);}
+   else{const ch=R.w?s/R.w:0;let cx=R.x;for(const r of row){const rw=ch?r.area/ch:0;out.push({id:r.id,n:r.n,x:cx,y:R.y,w:rw,h:ch});cx+=rw;}R.y+=ch;R.h=Math.max(0,R.h-ch);}
+  };
+  let row=[],i=0;
+  while(i<list.length){const side=Math.min(R.w,R.h),next=[...row,list[i]];if(!row.length||worst(next,side)<=worst(row,side)){row=next;i++;}else{place(row);row=[];}}
+  if(row.length)place(row);
+  return out.sort((a,b)=>a.n-b.n).map(({id,x,y,w,h})=>({id,x,y,w,h}));
+ }
+ // A monthly figure from a free-text cost like "$6/月" or "€40 / 年". Currency is ignored on purpose: it only sizes blocks.
+ function monthlyCost(asset){
+  const text=String(asset?.cost||''),m=/(\d+(?:[.,]\d+)?)/.exec(text);if(!m)return 0;
+  const v=parseFloat(m[1].replace(',','.'));if(!(v>0))return 0;
+  const cycle=/年|yr|year/i.test(text)?'yearly':/季|quarter/i.test(text)?'quarterly':/月|mo/i.test(text)?'monthly':asset.cycle||'monthly';
+  return v/({monthly:1,quarterly:3,halfyearly:6,yearly:12}[cycle]||1);
+ }
+ // Subdomains sit inside their parent when both hang on the same server. → [{chip,kids:[chip]}]
+ function nestDomains(chips){
+  const names=new Map(chips.map(c=>[String(c.asset.name).toLowerCase(),c]));
+  const parentOf=c=>{const parts=String(c.asset.name).toLowerCase().split('.');for(let k=1;k<parts.length-1;k++){const p=names.get(parts.slice(k).join('.'));if(p&&p!==c)return p;}return null;};
+  const roots=[],kids=new Map();
+  for(const c of chips){const p=parentOf(c);if(p){if(!kids.has(p.id))kids.set(p.id,[]);kids.get(p.id).push(c);}else roots.push(c);}
+  return roots.map(c=>({chip:c,kids:kids.get(c.id)||[]}));
+ }
+ // How much a block can say. icon: glyph only; compact: glyph + name; full: name + one fact (days, port, target) + bar.
+ function leafForm(w,h){return w<64||h<30?'icon':w<132||h<50?'compact':'full';}
+ const TM={BAND_HEAD:28,LANE_HEAD:52,GAP:6,PAD:8,LEAF_CAP:8,SUB_HEAD:52,MIN_SHARE:.12,MIN_COUNT:.2,MIN_BAND:.14};
+ // model → {bands:[{id,rect,acc}],lanes:[{id,rect,lane}],leaves:[{id,lane,rect,form,chip,kind,parent,more}],metric}
+ // metric 'count' sizes by how many things a server carries, 'cost' by the server's monthly cost (servers without one get a floor so they stay findable).
+ function treemapLayout(model,{width=1200,height=700,metric='count',expanded=new Set(),cap=TM.LEAF_CAP}={}){
+  const bands=[],lanes=[],leaves=[];
+  const costs=new Map(model.lanes.map(l=>[l.id,monthlyCost(l.server)]));
+  const maxCost=Math.max(0,...costs.values()),useCost=metric==='cost'&&maxCost>0;
+  const maxCount=Math.max(1,...model.lanes.map(l=>l.total+1));
+  const laneValue=l=>useCost?Math.max(costs.get(l.id),maxCost*TM.MIN_SHARE):Math.max(l.total+1,maxCount*TM.MIN_COUNT);
+  const accs=model.accounts.filter(a=>a.lanes.length);
+  const one=accs.length===1&&!accs[0].id;
+  const bandVals=accs.map(a=>a.lanes.reduce((s,l)=>s+laneValue(l),0)),bandSum=bandVals.reduce((s,v)=>s+v,0);
+  // A band never shrinks below a sliver that can still carry its name.
+  const bandRects=squarify(bandVals.map((v,i)=>({id:i,value:Math.max(v,bandSum*TM.MIN_BAND)})),{x:0,y:0,w:width,h:height});
+  accs.forEach((acc,i)=>{
+   const r=inset(bandRects[i],TM.GAP/2);bands.push({id:acc.id,rect:r,acc});
+   const head=one?0:TM.BAND_HEAD,inner={x:r.x+TM.PAD/2,y:r.y+head+(one?0:0),w:r.w-TM.PAD,h:r.h-head-TM.PAD/2};
+   const lr=squarify(acc.lanes.map(l=>({id:l.id,value:laneValue(l)})),inner);
+   acc.lanes.forEach((lane,k)=>{
+    const rect=inset(lr[k],TM.GAP/2);lanes.push({id:lane.id,rect,lane});
+    const body={x:rect.x+TM.PAD,y:rect.y+TM.LANE_HEAD,w:rect.w-2*TM.PAD,h:rect.h-TM.LANE_HEAD-TM.PAD};
+    if(body.w<24||body.h<20)return;
+    const units=[];
+    for(const g of lane.groups){
+     const open=expanded.has(lane.id+':'+g.key);
+     const roots=g.key==='domain'?nestDomains(g.chips):g.chips.map(c=>({chip:c,kids:[]}));
+     const shown=open?roots:roots.slice(0,cap),more=roots.length-shown.length;
+     for(const u of shown)units.push({id:u.chip.id,value:1+u.kids.length*.6,chip:u.chip,kids:u.kids});
+     if(more>0)units.push({id:lane.id+':'+g.key,value:.8,more,group:g.key});
+    }
+    const ur=squarify(units,body);
+    units.forEach((u,j)=>{
+     const rr=inset(ur[j],TM.GAP/2);
+     if(u.more){leaves.push({id:u.id,lane:lane.id,rect:rr,form:leafForm(rr.w,rr.h),kind:'more',more:u.more,group:u.group});return;}
+     const room=u.kids.length&&rr.h>=TM.SUB_HEAD+26&&rr.w>=110;
+     leaves.push({id:u.id,lane:lane.id,rect:rr,form:room?'full':leafForm(rr.w,rr.h),chip:u.chip,kind:u.chip.type,kids:room?0:u.kids.length,nest:room});
+     if(room){const kr=squarify(u.kids.map(c=>({id:c.id,value:1})),{x:rr.x+4,y:rr.y+TM.SUB_HEAD,w:rr.w-8,h:rr.h-TM.SUB_HEAD-4});
+      u.kids.forEach((c,q)=>{const kk=inset(kr[q],2);leaves.push({id:c.id,lane:lane.id,rect:kk,form:leafForm(kk.w,kk.h),chip:c,kind:c.type,parent:u.id,kids:0});});}
+    });
+   });
+  });
+  return {bands,lanes,leaves,metric:useCost?'cost':'count',costAvailable:maxCost>0};
+ }
+ function inset(r,d){return {x:r.x+d,y:r.y+d,w:Math.max(0,r.w-2*d),h:Math.max(0,r.h-2*d)};}
+
+ const api={squarify,monthlyCost,nestDomains,leafForm,treemapLayout,PANORAMA_TM:TM,moveMount,PANORAMA_GROUPS:GROUPS,PANORAMA_UNMOUNTED_CAP:UNMOUNTED_CAP,PANORAMA_DOT_CAP:DOT_CAP,buildPanorama,capChips,capUnmounted,panoramaFit,laneView,panoramaOrder};
  if(typeof module!=='undefined'&&module.exports)module.exports=api;else Object.assign(window,api);
 })();

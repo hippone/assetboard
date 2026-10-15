@@ -131,3 +131,53 @@ test('moveMount: move here, also here, unlink, and the refusals',()=>{
  for(const args of [['s1',{from:'',to:'s2'}],['u1',{from:'',to:'s2'}],['d1',{from:'s1',to:'u2'}],['d1',{from:'s1',to:'d2'}],['d1',{from:'s1',to:'missing'}]]){const out=P.moveMount(a,args[0],args[1]);assert.deepEqual([out.ok,out.kind],[false,'illegal'],JSON.stringify(args));}
  assert.equal(JSON.stringify(a),before2);
 });
+
+// ---- v14b treemap ----
+const area=r=>r.w*r.h,inside=(r,o)=>r.x>=o.x-1e-6&&r.y>=o.y-1e-6&&r.x+r.w<=o.x+o.w+1e-6&&r.y+r.h<=o.y+o.h+1e-6;
+const overlap=(a,b)=>Math.max(0,Math.min(a.x+a.w,b.x+b.w)-Math.max(a.x,b.x))*Math.max(0,Math.min(a.y+a.h,b.y+b.h)-Math.max(a.y,b.y));
+test('squarify fills the rect, keeps proportions and input order, no overlap',()=>{
+ const items=[6,6,4,3,2,2,1].map((value,i)=>({id:'i'+i,value})),rect={x:10,y:20,w:600,h:400},out=P.squarify(items,rect);
+ assert.deepEqual(out.map(r=>r.id),items.map(i=>i.id));
+ assert.ok(Math.abs(out.reduce((s,r)=>s+area(r),0)-area(rect))<1e-6);
+ out.forEach((r,i)=>{assert.ok(inside(r,rect));assert.ok(Math.abs(area(r)-area(rect)*items[i].value/24)<1e-6);});
+ for(let i=0;i<out.length;i++)for(let j=i+1;j<out.length;j++)assert.ok(overlap(out[i],out[j])<1e-6);
+ // Aspect ratios stay reasonable on the textbook example.
+ assert.ok(out.every(r=>Math.max(r.w/r.h,r.h/r.w)<4));
+});
+test('squarify is stable and tolerant',()=>{
+ const items=[{id:'a',value:1},{id:'b',value:1},{id:'c',value:1}];
+ assert.deepEqual(P.squarify(items,{x:0,y:0,w:300,h:100}),P.squarify(items,{x:0,y:0,w:300,h:100}));
+ assert.deepEqual(P.squarify([],{x:0,y:0,w:10,h:10}),[]);
+ assert.ok(P.squarify([{id:'z',value:0},{id:'y',value:2}],{x:0,y:0,w:10,h:10}).every(r=>Number.isFinite(r.w)));
+ assert.deepEqual(P.squarify(items,{x:0,y:0,w:0,h:10}).map(r=>r.w),[0,0,0]);
+});
+test('monthlyCost reads free-text prices',()=>{
+ assert.equal(P.monthlyCost({cost:'$6/月'}),6);
+ assert.equal(P.monthlyCost({cost:'€48 / 年'}),4);
+ assert.equal(P.monthlyCost({cost:'12',cycle:'yearly'}),1);
+ assert.equal(P.monthlyCost({}),0);
+});
+test('nestDomains puts subdomains under a parent on the same server',()=>{
+ const c=(id,name)=>({id,asset:{name}});
+ const out=P.nestDomains([c('a','example.test'),c('b','api.example.test'),c('x','other.test'),c('d','a.b.example.test')]);
+ assert.deepEqual(out.map(u=>[u.chip.id,u.kids.map(k=>k.id)]),[['a',['b','d']],['x',[]]]);
+});
+test('leafForm grades by size',()=>{
+ assert.equal(P.leafForm(40,40),'icon');assert.equal(P.leafForm(100,40),'compact');assert.equal(P.leafForm(200,80),'full');
+});
+test('treemapLayout: bands per account, lanes inside bands, leaves inside lanes, capped with overflow',()=>{
+ const a=board(),m=P.buildPanorama(a),t=P.treemapLayout(m,{width:1200,height:700,cap:2});
+ assert.equal(t.lanes.length,m.lanes.length);
+ for(const l of t.lanes){const band=t.bands.find(b=>b.acc.lanes.some(x=>x.id===l.id));assert.ok(inside(l.rect,band.rect));}
+ for(const f of t.leaves){const l=t.lanes.find(x=>x.id===f.lane);assert.ok(inside(f.rect,l.rect));}
+ const more=t.leaves.filter(f=>f.kind==='more');assert.ok(more.length>0);
+ const opened=P.treemapLayout(m,{width:1200,height:700,cap:2,expanded:new Set(more.map(f=>f.id))});
+ assert.equal(opened.leaves.filter(f=>f.kind==='more').length,0);
+ assert.equal(t.metric,'count');
+});
+test('treemapLayout cost metric sizes servers by monthly cost, falls back to count without prices',()=>{
+ const a=board();a.find(x=>x.id==='s1').cost='$40/月';a.find(x=>x.id==='s2').cost='$5/月';
+ const m=P.buildPanorama(a),t=P.treemapLayout(m,{width:1200,height:700,metric:'cost'}),A=id=>area(t.lanes.find(l=>l.id===id).rect);
+ assert.equal(t.metric,'cost');assert.ok(A('s1')>A('s2'));
+ const none=P.treemapLayout(P.buildPanorama(board()),{metric:'cost'});assert.equal(none.metric,'count');assert.equal(none.costAvailable,false);
+});
