@@ -16,7 +16,7 @@ window.assetboardDemoBoard=function(){
   {...base,id:'demo-u2',updatedAt:ago(15),type:'subscription',name:'Design Studio',provider:'Acme',purpose:'界面设计',date:day(48),dateKind:'renew',cycle:'yearly'},
   {...base,id:'demo-u3',updatedAt:ago(7),type:'subscription',name:'Acme Cloud',provider:'Acme',purpose:'云账号',date:day(70),dateKind:'renew',cycle:'monthly',cost:'$12/月'},
   {...base,id:'demo-a1',updatedAt:ago(4),type:'ai',name:'AI Pro',provider:'Acme AI',account:'someone@example.net',date:day(9),dateKind:'renew',cycle:'monthly',cost:'$20/月'},
-  {...base,id:'demo-db1',updatedAt:ago(12),type:'database',name:'postgres-main',provider:'ManagedDB',purpose:'主库',date:day(70),dateKind:'renew',cycle:'yearly'},
+  {...base,id:'demo-db1',updatedAt:ago(12),type:'database',name:'postgres-main',provider:'ManagedDB',purpose:'主库',port:'5432',date:day(70),dateKind:'renew',cycle:'yearly'},
   ...repos.map((name,i)=>({...base,id:'demo-r'+i,type:'repository',name:'acme-labs/'+name,provider:'GitHub',account:'acme-labs',purpose:'代码仓库',source:'github',externalId:'demo-'+i,syncStatus:i%3?'私有仓库':'公开仓库',event:i%3?'私有仓库':'公开仓库',updatedAt:new Date(Date.now()-i*86400000*3).toISOString()}))
  ];
  // Server relations: two VPS, one account, domains and repositories mounted on them, two orphans (v13).

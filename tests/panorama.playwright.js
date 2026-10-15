@@ -19,7 +19,7 @@ async (page) => {
   await p.click('#panorama-button');await p.waitForTimeout(250);check(await open(),'The toolbar icon opens it');
   check(await p.evaluate(()=>document.querySelector('#panorama-button').getAttribute('aria-label')==='全景（P）'),'The icon is named');
   // Content: accounts as trays, one lane per server, caps and real totals, unmounted strip.
-  const m=await p.evaluate(()=>({trays:[...document.querySelectorAll('.pano-tray')].map(t=>(t.querySelector('.pano-tray-head b')?.textContent||'')+':'+t.querySelectorAll('.pano-lane').length),lanes:[...document.querySelectorAll('.pano-lane')].map(l=>l.dataset.lane),totals:[...document.querySelectorAll('.pano-total')].map(t=>t.getAttribute('aria-label')),tokyo:[...document.querySelectorAll('[data-lane="demo-s1"] .pano-chip')].map(c=>c.dataset.chip),ip:document.querySelector('[data-lane="demo-s1"] .pl-ip').textContent.trim(),loose:document.querySelector('.pano-loose').getAttribute('aria-label'),looseChips:document.querySelectorAll('.pano-loose .pano-chip').length,more:document.querySelector('.pano-loose [data-loose-more]')?.textContent}));
+  const m=await p.evaluate(()=>({trays:[...document.querySelectorAll('.pano-tray')].map(t=>(t.querySelector('.pano-tray-head b')?.textContent||'')+':'+document.querySelectorAll(`.pano-lane[data-account="${t.dataset.account}"]`).length),lanes:[...document.querySelectorAll('.pano-lane')].map(l=>l.dataset.lane),totals:[...document.querySelectorAll('.pano-total')].map(t=>t.getAttribute('aria-label')),tokyo:[...document.querySelectorAll('.pano-chip[data-lane="demo-s1"]')].map(c=>c.dataset.chip),ip:document.querySelector('[data-lane="demo-s1"] .pl-ip').textContent.trim(),loose:document.querySelector('.pano-loose').getAttribute('aria-label'),looseChips:document.querySelectorAll('.pano-loose .pano-chip').length,more:document.querySelector('.pano-loose [data-loose-more]')?.textContent}));
   check(m.trays.join()==='Acme Cloud:2,无账号:1','Account tray with two servers, the unaccounted one last: '+m.trays.join());
   check(m.totals.join()==='服务器 3,域名 3,仓库 14,数据库 1','Totals count visible things: '+m.totals.join());
   check(m.tokyo.join()==='demo-d1,demo-d2,demo-r0,demo-r1,demo-db1','tokyo-vps lists its domains, repositories and database (the hidden domain stays out): '+m.tokyo.join());
@@ -65,18 +65,18 @@ async (page) => {
   check(!(await open()),'P toggles');
   // P never fires while typing or with a dialog open.
   await p.focus('#search');await p.keyboard.type('p');check(!(await open())&&await p.inputValue('#search')==='p','P types into the search box');await p.fill('#search','');
-  // Density follows the window: tall = full lanes, short = compact, many lanes = tiles, narrow = stacked.
+  // v14b treemap: block size grades what a block says (full → compact → icon), many servers shrink instead of scrolling sideways.
   await p.keyboard.press('Escape');await p.evaluate(()=>document.activeElement.blur());
-  const level=async(w,h)=>{await p.setViewportSize({width:w,height:h});await p.evaluate(()=>{panoramaOpen(false);panoramaOpen(true);});await p.waitForTimeout(250);return p.evaluate(()=>({level:document.querySelector('.pano-body').dataset.level,layout:document.querySelector('.pano-body').dataset.layout,overflowX:document.querySelector('.pano-body').scrollWidth>document.querySelector('.pano-body').clientWidth+1}));};
-  let d=await level(1320,822);check(d.level==='1','Roomy window: full lanes');
-  d=await level(1320,360);check(d.level==='2','Short window: compact lanes ('+JSON.stringify(d)+')');
-  check(await p.evaluate(()=>document.querySelectorAll('.pano-lane.l2 .pdot').length>0&&!document.querySelector('.pano-lane.l2 .pano-chip')),'Compact lanes show a dot per mount, no chips');
-  d=await level(390,800);check(d.layout==='stack','Narrow window stacks the lanes: '+JSON.stringify(d));
-  check(!d.overflowX,'No sideways scroll when stacked');
+  const level=async(w,h)=>{await p.setViewportSize({width:w,height:h});await p.evaluate(()=>{panoramaOpen(false);panoramaOpen(true);});await p.waitForTimeout(250);return p.evaluate(()=>({layout:document.querySelector('.pano-body').dataset.layout,forms:[...new Set([...document.querySelectorAll('.tm-leaf')].map(n=>[...n.classList].find(c=>c.startsWith('f-'))))].sort().join(),overflowX:document.querySelector('.pano-body').scrollWidth>document.querySelector('.pano-body').clientWidth+1}));};
+  let d=await level(1320,822);check(d.layout==='treemap'&&/f-full/.test(d.forms),'Roomy window: full blocks '+JSON.stringify(d));
+  check(await p.evaluate(()=>{const b=[...document.querySelectorAll('.tm-leaf')].map(n=>n.getBoundingClientRect());return b.every((x,i)=>b.every((y,j)=>i>=j||Math.max(0,Math.min(x.right,y.right)-Math.max(x.left,y.left))*Math.max(0,Math.min(x.bottom,y.bottom)-Math.max(x.top,y.top))<1));}),'Blocks never overlap');
+  check(await p.evaluate(()=>[...document.querySelectorAll('.tm-leaf')].every(n=>n.querySelector('.pc-ic svg'))),'Every block keeps its type glyph');
+  d=await level(1320,420);check(!/f-full/.test(d.forms)||/f-compact|f-icon/.test(d.forms),'Short window: blocks step down ('+JSON.stringify(d)+')');
+  d=await level(390,800);check(!d.overflowX,'No sideways scroll when narrow: '+JSON.stringify(d));
   await p.setViewportSize({width:1320,height:822});
-  await p.evaluate(()=>{panoramaOpen(false);const s=state.assets.filter(a=>a.type==='server');for(let i=0;i<30;i++)state.assets.push({id:'bulk'+i,type:'server',name:'node-'+i,provider:'Vultr',ips:['198.51.100.'+(i+1)],updatedAt:new Date(Date.now()-i*3600e3).toISOString(),source:'manual'});render();panoramaOpen(true);});await p.waitForTimeout(300);
-  d=await p.evaluate(()=>({level:document.querySelector('.pano-body').dataset.level,tiles:document.querySelectorAll('.pano-lane.tile').length,overflowX:document.querySelector('.pano-body').scrollWidth>document.querySelector('.pano-body').clientWidth+1}));
-  check(d.level==='3'&&d.tiles===33&&!d.overflowX,'Many servers collapse to tiles without sideways scroll: '+JSON.stringify(d));
+  await p.evaluate(()=>{panoramaOpen(false);for(let i=0;i<30;i++)state.assets.push({id:'bulk'+i,type:'server',name:'node-'+i,provider:'Vultr',ips:['198.51.100.'+(i+1)],updatedAt:new Date(Date.now()-i*3600e3).toISOString(),source:'manual'});render();panoramaOpen(true);});await p.waitForTimeout(300);
+  d=await p.evaluate(()=>({lanes:document.querySelectorAll('.pano-lane.tm-lane').length,small:document.querySelectorAll('.pano-lane.tm-lane.small').length,overflowX:document.querySelector('.pano-body').scrollWidth>document.querySelector('.pano-body').clientWidth+1}));
+  check(d.lanes===33&&d.small>0&&!d.overflowX,'Many servers shrink to small containers without sideways scroll: '+JSON.stringify(d));
   // Empty board: a quiet line and one add button; no lanes.
   await p.evaluate(()=>{panoramaOpen(false);state.assets=state.assets.filter(a=>a.type!=='server');render();panoramaOpen(true);});await p.waitForTimeout(200);
   check(await p.evaluate(()=>!!document.querySelector('.pano-empty button[aria-label="添加服务器"]')&&!document.querySelector('.pano-lane')),'No servers: one add button');
@@ -85,6 +85,6 @@ async (page) => {
   await p.emulateMedia({reducedMotion:'reduce'});await p.evaluate(()=>panoramaOpen(true));
   check(await p.evaluate(()=>getComputedStyle(document.querySelector('#panorama')).animationName)==='none','Reduced motion: no animation');
   check(!errors.length,'No page errors: '+errors.join());
-  return 'PASS: entry by P and icon, Esc layers with focus return, trays/lanes/chips/caps, unmounted strip, status wording and no green, marks, shared rings, keyboard, read-only, density levels, stacked narrow, many servers, empty, reduced motion';
+  return 'PASS: entry by P and icon, Esc layers with focus return, trays/lanes/chips/caps, unmounted strip, status wording and no green, marks, shared rings, keyboard, read-only, treemap grading, no overlap, narrow, many servers, empty, reduced motion';
  }finally{await context.close();}
 }

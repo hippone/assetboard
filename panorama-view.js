@@ -99,11 +99,71 @@ function panoramaUnfocus(){
  const root=$('#panorama'),head=root.querySelector(`[data-lane-head="${CSS.escape(id)}"]`);head?.focus({preventScroll:true});
  if(head&&!matchMedia('(prefers-reduced-motion:reduce)').matches)root.querySelector('.pano-body')?.animate([{opacity:.4},{opacity:1}],{duration:150,easing:'ease-out'});
 }
+// ---- v14b treemap overview: account band → server container → leaves. Geometry from treemapLayout(); this only draws it.
+// Each type has its own shape (v14b-T): server = container with address and registered state, domain = remaining-days bar, repository = deploy target + shared mark,
+// database/service = compact block with port or a registered dot, account = outer band with its charge date. Small blocks fall back to the type glyph.
+let panoMetric='count';
+const PANO_NEXT_W=232,PANO_NEXT_MIN=1100;
+const px=r=>`left:${r.x.toFixed(1)}px;top:${r.y.toFixed(1)}px;width:${r.w.toFixed(1)}px;height:${r.h.toFixed(1)}px`;
+function panoDaysLeft(a){if(!a.date)return null;const s=assetDateStatus(a);return s.days;}
+function panoLeafFact(chip,lanesById){
+ const a=chip.asset;
+ if(chip.type==='domain'){const d=panoDaysLeft(a);return d===null?'':d<0?`过期 ${-d} 天`:`${d} 天`;}
+ if(chip.type==='repository')return chip.alsoOn?`共 ${chip.alsoOn+1} 台`:'';
+ if(a.port)return ':'+a.port;
+ return '';
+}
+function panoLeaf(f,lanesById){
+ const c=f.chip,a=c.asset,lane=lanesById.get(f.lane),status=panoStatus(a),fact=panoLeafFact(c,lanesById);
+ const shared=panoShared&&panoShared.has(a.id),others=shared?panoShared.get(a.id).filter(id=>id!==f.lane).map(id=>lanesById.get(id)?.server.name).filter(Boolean):[];
+ const label=[displayName(a),cats[a.type].name,c.type==='repository'&&lane?`部署到 ${lane.server.name}`:'',others.length?`另挂在 ${others.length} 台服务器（${others.join('、')}）`:'',c.standby?'备用':'',c.proxied?'经代理':'',status.text,a.port?`端口 ${a.port}`:'',f.kids?`另有 ${f.kids} 个子域名`:''].filter(Boolean).join('，');
+ let extra='';
+ if(f.form==='full'){
+  if(c.type==='domain'){const d=panoDaysLeft(a);extra=`${fact?`<small class="tm-k">${esc(fact)}</small>`:''}${d!==null?`<i class="tm-bar" aria-hidden="true"><i style="width:${Math.max(3,Math.min(100,Math.round((d<0?0:d)/365*100)))}%"></i></i>`:''}`;}
+  else if(c.type==='repository')extra=`<small class="tm-k">→ ${esc(displayName(lane.server))}</small>`;
+  else extra=fact?`<small class="tm-k">${esc(fact)}</small>`:`<small class="tm-k">${panoDot(c.tone,c.stopped)}</small>`;
+ }else if(f.form==='compact'&&c.type==='domain'&&fact&&c.tone)extra=`<small class="tm-k">${esc(fact)}</small>`;
+ const badge=shared?`<em class="tm-share pc-alt" aria-hidden="true">${panoShared.get(a.id).length}</em>`:f.kids?`<em class="tm-share sub" aria-hidden="true">+${f.kids}</em>`:'';
+ const marks=f.form==='icon'?'':`${c.standby?'<small class="pc-flag" aria-hidden="true">备</small>':''}${c.proxied?'<svg class="pc-px" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4.2"/><circle cx="6" cy="6" r="1.3"/></svg>':''}`;
+ const tone=c.stopped||(f.form==='icon'&&c.tone)?panoDot(c.tone,c.stopped):'';
+ return `<button class="pano-chip tm-leaf f-${f.form} t-${c.group||c.type}${f.parent?' sub':''}${f.nest?' nest':''}${c.stopped?' stopped':''}${c.tone?' '+c.tone:''}" style="${px(f.rect)}" data-nav data-chip="${esc(a.id)}" data-lane="${esc(f.lane)}" ${shared?'data-shared="1"':''} aria-label="${esc(label)}" title="${esc(label)}"><span class="pc-ic" aria-hidden="true">${icon(a.type)}</span>${f.form==='icon'?tone:`<span class="tm-row"><span class="pc-nm">${esc(displayName(a))}</span>${marks}</span>${tone}`}${extra}${badge}</button>`;
+}
+function panoTmLane(l){
+ const lane=l.lane,a=lane.server,status=panoStatus(a),ip=lane.ip,r=l.rect,small=r.w<150||r.h<84;
+ const label=[a.name,ip&&pIp(ip.ip),`挂载 ${lane.total} 项`,status.text||'登记中'].filter(Boolean).join('，');
+ return `<article class="pano-lane tm-lane${small?' small':''}${lane.stopped?' stopped':''}${lane.tone?' '+lane.tone:''}" style="${px(r)}" data-lane="${esc(lane.id)}" data-account="${esc(lane.account||'')}"><button class="pano-lane-head" data-nav data-lane-head="${esc(lane.id)}" aria-label="${esc(label)}" title="${esc(label)}">${panoDot(status.tone,lane.stopped)}<span class="pl-tx"><b class="pl-nm">${esc(displayName(a))}</b>${ip&&!small?`<span class="pl-sub"><span class="pl-ip">${ip.inner?'<em class="ip-inner" title="内网地址">内</em>':''}<span class="ip-text" data-full="${esc(ip.ip)}">${esc(pIp(ip.ip))}</span></span></span>`:''}</span>${!small&&r.w>=230&&(status.text||lane.stopped)?`<span class="pl-state ${status.tone}">${esc(status.text)}</span>`:''}<small class="tm-n">${lane.total}</small></button></article>`;
+}
+function panoTmBand(b,one){
+ if(one&&!b.id)return '';
+ const a=b.acc.asset,s=a?panoStatus(a):{text:'',tone:''};
+ const when=a&&a.date?assetDateStatus(a):null,charge=when?(when.kind==='renew'?`扣款 ${agendaWhen(when)}`:when.label):'';
+ return `<section class="pano-tray tm-band" style="${px(b.rect)}" data-account="${esc(b.id||'')}"${a?` aria-label="${esc(displayName(a))}${charge?'，'+esc(charge):''}"`:''}><div class="pano-tray-head${a?'':' none'}">${a?`${icon('subscription')}<b>${esc(displayName(a))}</b>${charge?`<small class="${s.tone}">${s.tone?panoDot(s.tone):''}${esc(charge)}</small>`:''}`:'<b>无账号</b>'}</div></section>`;
+}
+function panoMore(f){return `<button class="pano-more tm-more f-${f.form}" style="${px(f.rect)}" data-nav data-lane="${esc(f.lane)}" data-more="${esc(f.id)}" aria-label="另外 ${f.more} 项，展开" title="展开">+${f.more}</button>`;}
+function panoNext(){
+ const events=upcomingEvents(state.assets).slice(0,8);
+ return `<aside class="pano-next" aria-label="接下来"><h3>接下来</h3>${events.length?events.map(({asset,status})=>`<button class="pn-row${status.level==='overdue'?' red':status.level==='soon'?' amber':''}" data-nav data-open="${esc(asset.id)}" title="${esc(displayName(asset)+'，'+status.label)}"><span class="pc-ic" aria-hidden="true">${icon(asset.type)}</span><span class="pn-nm">${esc(displayName(asset))}</span><small>${esc(agendaWhen(status))}</small></button>`).join(''):'<p class="pn-none">60 天内没有</p>'}</aside>`;
+}
+function panoTreemapSize(){
+ const z=panoZoom(),W=innerWidth/z,H=innerHeight/z,side=W>=PANO_NEXT_MIN?PANO_NEXT_W+14:0;
+ return {width:Math.max(240,W-48-side),height:Math.max(260,H-56-34-(W<=760?0:78)),side:!!side};
+}
+function panoTreemapHtml(model){
+ const size=panoTreemapSize(),t=treemapLayout(model,{width:size.width,height:size.height,metric:panoMetric,expanded:panoExpanded});
+ const one=model.accounts.length===1&&!model.accounts[0].id,byId=new Map(model.lanes.map(l=>[l.id,l]));
+ // DOM order = reading order: band, then each server head followed by its leaves (keyboard ↑↓ walks a server, ←→ jumps servers).
+ const html=t.lanes.map(l=>panoTmLane(l)+t.leaves.filter(f=>f.lane===l.id).map(f=>f.kind==='more'?panoMore(f):panoLeaf(f,byId)).join('')).join('');
+ return `<div class="pano-tmwrap"><div class="pano-tm" data-metric="${t.metric}" style="width:${size.width}px;height:${size.height}px">${t.bands.map(b=>panoTmBand(b,one)).join('')}${html}</div>${size.side?panoNext():''}</div>`;
+}
+function panoMetricToggle(model){
+ const has=model.lanes.some(l=>monthlyCost(l.server)>0);
+ return `<div class="pano-metric" role="group" aria-label="面积按"><button class="seg" data-metric="count" aria-pressed="${panoMetric!=='cost'||!has}">数量</button><button class="seg" data-metric="cost" aria-pressed="${panoMetric==='cost'&&has}" ${has?'':'disabled title="还没有登记金额"'}>费用</button></div>`;
+}
 function panoramaHtml(model,fit){
  const sync=panoSyncTime(),tag=`登记状态 · 非实时${sync?' · 同步 '+sync:''}`;
- const body=model.lanes.length?`<div class="pano-trays">${model.accounts.map(acc=>panoTray(acc,fit,model.accounts.length===1)).join('')}</div>`:`<div class="pano-empty"><p>还没有服务器</p><button class="button icon-only" data-action="pano-add" aria-label="添加服务器" title="添加服务器">${ui('plus')}</button></div>`;
+ const body=model.lanes.length?panoTreemapHtml(model):`<div class="pano-empty"><p>还没有服务器</p><button class="button icon-only" data-action="pano-add" aria-label="添加服务器" title="添加服务器">${ui('plus')}</button></div>`;
  const focusLane=panoFocus&&model.lanes.find(l=>l.id===panoFocus);if(panoFocus&&!focusLane)panoFocus=null;
- return `<header class="pano-bar"><h2 class="pano-title">${ui('grid')}全景</h2><div class="pano-totals">${panoTotals(model.totals)}</div><span class="pano-spacer"></span><div class="pano-legend" aria-hidden="true"><span>${panoDot('red')}已过期</span><span>${panoDot('amber')}即将到期</span><span>${panoDot('')}登记中</span><span>${panoDot('',true)}已停用</span></div><span class="pano-tag" title="只显示你登记和同步的数据，不探测网络">${tag}</span><button class="button icon-only pano-show" data-action="pano-show" aria-pressed="${panoShow}" aria-label="展示模式" title="展示模式：遮住地址中间两段，顶栏自动淡出">${ui('expand')}</button><button class="button icon-only pano-close" data-action="pano-close" aria-label="关闭全景" title="关闭全景（Esc）">×</button></header>${focusLane?panoFocusHtml(model,focusLane,fit):`<div class="pano-body" data-level="${fit.level}" data-layout="${fit.layout}">${body}${panoLoose(model)}</div>`}`;
+ return `<header class="pano-bar"><h2 class="pano-title">${ui('grid')}全景</h2><div class="pano-totals">${panoTotals(model.totals)}</div><span class="pano-spacer"></span>${model.lanes.length&&!panoFocus?panoMetricToggle(model):''}<div class="pano-legend" aria-hidden="true"><span>${panoDot('red')}已过期</span><span>${panoDot('amber')}即将到期</span><span>${panoDot('')}登记中</span><span>${panoDot('',true)}已停用</span></div><span class="pano-tag" title="只显示你登记和同步的数据，不探测网络">${tag}</span><button class="button icon-only pano-show" data-action="pano-show" aria-pressed="${panoShow}" aria-label="展示模式" title="展示模式：遮住地址中间两段，顶栏自动淡出">${ui('expand')}</button><button class="button icon-only pano-close" data-action="pano-close" aria-label="关闭全景" title="关闭全景（Esc）">×</button></header>${focusLane?panoFocusHtml(model,focusLane,fit):`<div class="pano-body tm" data-level="t" data-layout="treemap">${body}${panoLoose(model)}</div>`}`;
 }
 function panoramaRender(){
  const root=$('#panorama');if(!panoOpen||!root)return;
@@ -198,6 +258,7 @@ document.addEventListener('click',e=>{
  const close=e.target.closest('[data-action="pano-close"]');if(close){panoramaOpen(false);return;}
  if(e.target.closest('[data-action="pano-add"]')){panoramaOpen(false);assetForm('server');return;}
  const more=e.target.closest('[data-more]');if(more){const k=more.dataset.more;panoExpanded.has(k)?panoExpanded.delete(k):panoExpanded.add(k);panoramaRender();return;}
+ const met=e.target.closest('.pano-metric [data-metric]');if(met){if(!met.disabled){panoMetric=met.dataset.metric;panoramaRender();}return;}
  if(e.target.closest('[data-loose-more]')){panoLooseOpen=!panoLooseOpen;panoramaRender();return;}
  const pick=e.target.closest('[data-pick]');if(pick){if(pick.dataset.pick!==panoFocus)panoramaFocus(pick.dataset.pick,pick.getBoundingClientRect(),true);return;}
  const opener=e.target.closest('[data-open]');if(opener){showDetail(opener.dataset.open);return;}
@@ -230,6 +291,7 @@ function panoTargets(id,from){
 function panoMark(targets,on){for(const t of targets){t.el.classList.toggle('drop-ok',!!on);if(!on)t.el.classList.remove('drop-on');}}
 function panoSlot(t,asset){
  document.querySelectorAll('#panorama .pano-slot').forEach(n=>n.remove());
+ if(t&&t.id&&t.el.classList.contains('tm-lane')){const slot=document.createElement('div');slot.className='pano-slot tm-slot';slot.setAttribute('aria-hidden','true');t.el.append(slot);return;}
  if(!t||!t.id||!t.el.classList.contains('pano-lane')||!t.el.classList.contains('l1'))return;
  const key=asset.type==='domain'?'domain':asset.type==='repository'?'repository':'database',kids=t.el.querySelector('.pl-kids');if(!kids)return;
  let group=kids.querySelector(`.pl-grp[data-group="${key}"]`);if(!group){group=document.createElement('div');group.className='pl-grp';group.dataset.group=key;kids.append(group);}
