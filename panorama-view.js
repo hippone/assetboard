@@ -149,8 +149,12 @@ function panoNext(){
  const events=upcomingEvents(state.assets).slice(0,8);
  return `<aside class="pano-next" aria-label="接下来"><h3>接下来</h3>${events.length?events.map(({asset,status})=>`<button class="pn-row${status.level==='overdue'?' red':status.level==='soon'?' amber':''}" data-nav data-open="${esc(asset.id)}" title="${esc(displayName(asset)+'，'+status.label)}"><span class="pc-ic" aria-hidden="true">${icon(asset.type)}</span><span class="pn-nm">${esc(displayName(asset))}</span><small>${esc(agendaWhen(status))}</small></button>`).join(''):'<p class="pn-none">60 天内没有</p>'}</aside>`;
 }
+// The map takes the space its wrapper really has (bar, padding and the unmounted strip vary with the window and the Mac toolbar);
+// the first pass estimates, panoramaRender() measures the wrapper and redraws once when the estimate was off.
+let panoRoom=null;
 function panoTreemapSize(){
  const z=panoZoom(),W=panoW()/z,H=innerHeight/z,side=W>=PANO_NEXT_MIN?PANO_NEXT_W+14:0;
+ if(panoRoom)return {width:Math.max(240,panoRoom.w-side),height:Math.max(200,panoRoom.h),side:!!side};
  return {width:Math.max(240,W-48-side),height:Math.max(260,H-56-34-(W<=760?0:78)),side:!!side};
 }
 function panoTreemapHtml(model){
@@ -176,7 +180,8 @@ function panoramaRender(){
  const model=buildPanorama(state.assets,{cardOrder:state.cardOrder||{}});panoShared=model.shared;
  const fit=panoramaFit({lanes:model.lanes.length,accounts:model.accounts.length,width:panoW()/panoZoom(),height:innerHeight/panoZoom()});
  const keep=document.activeElement?.closest?.('#panorama')?document.activeElement:null,saved=keep&&{pick:keep.dataset.pick,hero:'heroHead' in keep.dataset,open:keep.dataset.open,chip:keep.dataset.chip,lane:keep.dataset.laneHead,more:keep.dataset.more,loose:'looseMore' in keep.dataset,close:keep.classList.contains('pano-close')};
- root.innerHTML=panoramaHtml(model,fit);root.dataset.level=fit.level;root.classList.toggle('show',panoShow);const z=panoZoom(),body=root.querySelector('.pano-body');if(body&&z!==1)body.style.zoom=z;
+ panoRoom=null;root.innerHTML=panoramaHtml(model,fit);
+ {const zz=panoZoom(),b0=root.querySelector('.pano-body');if(b0&&zz!==1)b0.style.zoom=zz;const wrap=root.querySelector('.pano-tmwrap'),tm=wrap?.querySelector('.pano-tm');if(wrap&&tm){const box=wrap.getBoundingClientRect(),room={w:box.width/zz,h:box.height/zz},used={w:tm.offsetWidth+(wrap.querySelector('.pano-next')?PANO_NEXT_W+14:0),h:tm.offsetHeight};if(room.h>0&&(Math.abs(room.h-used.h)>2||Math.abs(room.w-used.w)>2)){panoRoom=room;root.innerHTML=panoramaHtml(model,fit);}}}root.dataset.level=fit.level;root.classList.toggle('show',panoShow);const z=panoZoom(),body=root.querySelector('.pano-body');if(body&&z!==1)body.style.zoom=z;
  if(saved){const sel=saved.pick?`[data-pick="${CSS.escape(saved.pick)}"]`:saved.hero?'[data-hero-head]':saved.open?`[data-open="${CSS.escape(saved.open)}"]`:saved.chip?`[data-chip="${CSS.escape(saved.chip)}"]`:saved.lane?`[data-lane-head="${CSS.escape(saved.lane)}"]`:saved.more?`[data-more="${CSS.escape(saved.more)}"]`:saved.loose?'[data-loose-more]':saved.close?'.pano-close':'';(sel&&root.querySelector(sel)||root.querySelector('[data-nav]')||root.querySelector('.pano-close'))?.focus({preventScroll:true});}
 }
 function panoramaOpen(show=!panoOpen,serverId=null){

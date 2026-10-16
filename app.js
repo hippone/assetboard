@@ -141,7 +141,7 @@ function liveAssets(){return state.assets.filter(a=>!isHidden(a));}
 function dueLevels(list){let overdue=0,soon=0;for(const a of list){const level=assetDateStatus(a).level;if(level==='overdue')overdue++;else if(level==='soon')soon++;}return {overdue,soon};}
 function dueWords({overdue,soon}){return [overdue&&`${overdue} 项已过期`,soon&&`${soon} 项 30 天内到期`].filter(Boolean).join('，');}
 function navCount(n,level=''){return `<span class="nav-count${level?' '+level:''}"${n>DISPLAY_LIMITS.count?` title="${n}"`:''}>${formatCount(n)}</span>`;}
-function navItem(id,label,glyph,count,attrs=''){const on=!query&&currentView()===id;return `<button class="nav-item${on?' active':''}" data-action="view" data-id="${id}"${on?' aria-current="page"':''} ${attrs}>${glyph}<span class="nav-label">${esc(label)}</span>${count}</button>`;}
+function navItem(id,label,glyph,count,attrs=''){const on=!query&&currentView()===id&&!(typeof panoOpen!=='undefined'&&panoOpen);return `<button class="nav-item${on?' active':''}" data-action="view" data-id="${id}"${on?' aria-current="page"':''} ${attrs}>${glyph}<span class="nav-label">${esc(label)}</span>${count}</button>`;}
 function renderSidebar(){
  const live=liveAssets(),hidden=state.assets.length-live.length,due=dueLevels(live),dueCount=due.overdue+due.soon;
  const catItems=categoryIds().map(id=>{const own=live.filter(a=>a.type===id),l=dueLevels(own),words=dueWords(l);return navItem(id,cats[id].name,`<span class="nav-icon">${icon(id)}</span>`,`${l.overdue||l.soon?`<i class="nav-dot ${l.overdue?'overdue':'soon'}" aria-hidden="true"></i>`:''}${navCount(own.length)}`,`data-block="${id}" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" aria-label="${esc(cats[id].name)}，${own.length} 项${words?'，'+words:''}"`);}).join('');

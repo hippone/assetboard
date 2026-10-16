@@ -33,6 +33,9 @@ async (page) => {
   await p.keyboard.press('p');await p.waitForTimeout(250);
   const n=await p.evaluate(()=>{const strip=document.querySelector('.pano-loose-chips'),r=strip.getBoundingClientRect();return {fit:[...strip.children].every(x=>x.getBoundingClientRect().right<=r.right+1),more:document.querySelector('.pano-loose [data-loose-more]')?.textContent};});
   check(n.fit&&/^\+\d+$/.test(n.more||''),'Narrow strip shows what fits and +N: '+JSON.stringify(n));
+  const g=await p.evaluate(()=>{const tm=document.querySelector('.pano-tm').getBoundingClientRect(),strip=document.querySelector('.pano-loose').getBoundingClientRect(),lanes=[...document.querySelectorAll('.tm-lane')].map(n=>n.getBoundingClientRect().bottom);return {clear:Math.max(...lanes)<=strip.top+1&&tm.bottom<=strip.top+1,active:[...document.querySelectorAll('#sidebar .nav-item.active')].map(n=>n.dataset.id).join()};});
+  check(g.clear,'The map and its idle row stay above the unmounted strip: '+JSON.stringify(g));
+  check(g.active==='panorama','Only the 全景 entry is active while it is open: '+g.active);
   check(!errors.length,'No page errors: '+errors.join());
   return 'PASS: first item selected on wide only, focus kept, status+amount column, group rhythm, panorama in the middle column with sidebar entry and opaque surface, idle row, name+IP heads, no repeated server, sidebar view leaves panorama, narrow strip +N';
  }finally{await c.close();}
