@@ -9,7 +9,9 @@ const panoExpanded=new Set();
 const PANO_FOCUS_CAP=6;
 // Presentation (v13b P6): addresses lose their middle (hover or ⌥ shows them), the bar fades after 3 s, the body scales up to 1.5× on big screens.
 const pIp=ip=>panoShow&&!panoAlt?maskIp(ip):ip;
-const panoZoom=()=>panoShow&&innerWidth>=1500?Math.min(1.5,innerWidth/1200):1;
+// Width of the panorama itself: the middle column beside the sidebar (the whole window when the sidebar folds into a strip).
+const panoW=()=>$('#panorama')?.clientWidth||innerWidth;
+const panoZoom=()=>panoShow&&panoW()>=1500?Math.min(1.5,panoW()/1200):1;
 const PANO_TYPE_LABEL={domain:'域名',repository:'仓库',database:'数据库'};
 const panoDot=(tone,stopped)=>`<i class="pd${tone?' '+tone:''}${stopped?' off':''}" aria-hidden="true"></i>`;
 function panoSyncTime(){const times=state.assets.map(a=>Date.parse(a.syncedAt)).filter(Boolean);if(!times.length)return '';return new Date(Math.max(...times)).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false});}
@@ -53,9 +55,11 @@ function panoTray(acc,fit,onlyOne){
  const head=a?`<div class="pano-tray-head">${icon('subscription')}<b>${esc(displayName(a))}</b>${status.text&&status.tone?`<small class="${status.tone}">${panoDot(status.tone)}${esc(status.text)}</small>`:''}</div>`:onlyOne?'':`<div class="pano-tray-head none"><b>无账号</b></div>`;
  return `<section class="pano-tray" style="flex:${acc.lanes.length} 1 0" data-account="${esc(acc.id||'')}"${a?` aria-label="${esc(displayName(a))}"`:''}>${head}<div class="pano-lanes">${acc.lanes.map(l=>panoLane(l,fit)).join('')}</div></section>`;
 }
+function panoLooseFit(items){let room=panoW()/panoZoom()-48-120-48,n=0;for(const c of items.slice(0,PANORAMA_UNMOUNTED_CAP)){const w=54+displayName(c.asset).length*7.2+8;if(room<w)break;room-=w;n++;}return Math.max(1,n);}
 function panoLoose(model){
  if(!model.unmounted.total)return '';
- const cap=capUnmounted(model,panoLooseOpen);
+ // Fit the strip to its width: chips are measured by name length, the rest collapse into +N.
+ const cap=panoLooseOpen?capUnmounted(model,true):capChips(model.unmounted.items,panoLooseFit(model.unmounted.items));
  return `<aside class="pano-loose${panoLooseOpen?' open':''}" aria-label="未挂载，${model.unmounted.total} 项"><div class="pano-loose-head">${icon('server')}<span>未挂载</span><b>${model.unmounted.total>99?'99+':model.unmounted.total}</b></div><div class="pano-loose-chips">${cap.shown.map(c=>panoChip(c,'')).join('')}${cap.more?`<button class="pano-more" data-nav data-loose-more aria-label="另外 ${cap.more} 项，展开" title="展开">+${cap.more}</button>`:panoLooseOpen&&model.unmounted.total>PANORAMA_UNMOUNTED_CAP?'<button class="pano-more" data-nav data-loose-more aria-label="收起" title="收起">−</button>':''}</div></aside>`;
 }
 function panoTotals(t){return [['server','服务器',t.server],['domain','域名',t.domain],['repository','仓库',t.repository],['database','数据库',t.database]].map(([type,name,n])=>`<span class="pano-total" title="${name} ${n}" aria-label="${name} ${n}">${icon(type)}${n}</span>`).join('');}
@@ -104,7 +108,7 @@ function panoramaUnfocus(){
 // Each type has its own shape (v14b-T): server = container with address and registered state, domain = remaining-days bar, repository = deploy target + shared mark,
 // database/service = compact block with port or a registered dot, account = outer band with its charge date. Small blocks fall back to the type glyph.
 let panoMetric='count';
-const PANO_NEXT_W=232,PANO_NEXT_MIN=1100;
+const PANO_NEXT_W=232,PANO_NEXT_MIN=1000;
 const px=r=>`left:${r.x.toFixed(1)}px;top:${r.y.toFixed(1)}px;width:${r.w.toFixed(1)}px;height:${r.h.toFixed(1)}px`;
 function panoDaysLeft(a){if(!a.date)return null;const s=assetDateStatus(a);return s.days;}
 function panoLeafFact(chip,lanesById){
@@ -120,19 +124,19 @@ function panoLeaf(f,lanesById){
  const label=[displayName(a),cats[a.type].name,c.type==='repository'&&lane?`部署到 ${lane.server.name}`:'',others.length?`另挂在 ${others.length} 台服务器（${others.join('、')}）`:'',c.standby?'备用':'',c.proxied?'经代理':'',status.text,a.port?`端口 ${a.port}`:'',f.kids?`另有 ${f.kids} 个子域名`:''].filter(Boolean).join('，');
  let extra='';
  if(f.form==='full'){
-  if(c.type==='domain'){const d=panoDaysLeft(a);extra=`${fact?`<small class="tm-k">${esc(fact)}</small>`:''}${d!==null?`<i class="tm-bar" aria-hidden="true"><i style="width:${Math.max(3,Math.min(100,Math.round((d<0?0:d)/365*100)))}%"></i></i>`:''}`;}
-  else if(c.type==='repository')extra=`<small class="tm-k">→ ${esc(displayName(lane.server))}</small>`;
+  if(c.type==='domain'){const d=panoDaysLeft(a);extra=`${fact?`<small class="tm-k">${esc(fact)}</small>`:''}${d!==null?`<i class="tm-bar" aria-hidden="true"><i style="width:${Math.max(10,Math.min(100,Math.round((d<0?0:d)/365*100)))}%"></i></i>`:''}`;}
+  else if(c.type==='repository')extra=fact?`<small class="tm-k">${esc(fact)}</small>`:'';
   else extra=fact?`<small class="tm-k">${esc(fact)}</small>`:`<small class="tm-k">${panoDot(c.tone,c.stopped)}</small>`;
- }else if(f.form==='compact'&&c.type==='domain'&&fact&&c.tone)extra=`<small class="tm-k">${esc(fact)}</small>`;
+ }
  const badge=shared?`<em class="tm-share pc-alt" aria-hidden="true">${panoShared.get(a.id).length}</em>`:f.kids?`<em class="tm-share sub" aria-hidden="true">+${f.kids}</em>`:'';
- const marks=f.form==='icon'?'':`${c.standby?'<small class="pc-flag" aria-hidden="true">备</small>':''}${c.proxied?'<svg class="pc-px" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4.2"/><circle cx="6" cy="6" r="1.3"/></svg>':''}`;
- const tone=c.stopped||(f.form==='icon'&&c.tone)?panoDot(c.tone,c.stopped):'';
- return `<button class="pano-chip tm-leaf f-${f.form} t-${c.group||c.type}${f.parent?' sub':''}${f.nest?' nest':''}${c.stopped?' stopped':''}${c.tone?' '+c.tone:''}" style="${px(f.rect)}" data-nav data-chip="${esc(a.id)}" data-lane="${esc(f.lane)}" ${shared?'data-shared="1"':''} aria-label="${esc(label)}" title="${esc(label)}"><span class="pc-ic" aria-hidden="true">${icon(a.type)}</span>${f.form==='icon'?tone:`<span class="tm-row"><span class="pc-nm">${esc(displayName(a))}</span>${marks}</span>${tone}`}${extra}${badge}</button>`;
+ const marks=f.form!=='full'?'':`${c.standby?'<small class="pc-flag" aria-hidden="true">备</small>':''}${c.proxied?'<svg class="pc-px" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4.2"/><circle cx="6" cy="6" r="1.3"/></svg>':''}`;
+ const tone=c.stopped||(f.form!=='full'&&c.tone)?panoDot(c.tone,c.stopped):'';
+ return `<button class="pano-chip tm-leaf f-${f.form} t-${c.group||c.type}${f.parent?' sub':''}${f.nest?' nest':''}${c.stopped?' stopped':''}${c.tone?' '+c.tone:''}" style="${px(f.rect)}" data-nav data-chip="${esc(a.id)}" data-lane="${esc(f.lane)}" ${shared?'data-shared="1"':''} aria-label="${esc(label)}" title="${esc(label)}"><span class="pc-ic" aria-hidden="true">${icon(a.type)}</span>${f.form==='icon'?tone:`<span class="tm-row"><span class="pc-nm">${esc(displayName(a))}</span>${marks}</span>${tone}`}${extra}${badge}${f.form==='full'?`<span class="tm-wm" aria-hidden="true">${icon(a.type)}</span>`:''}</button>`;
 }
 function panoTmLane(l){
- const lane=l.lane,a=lane.server,status=panoStatus(a),ip=lane.ip,r=l.rect,small=r.w<150||r.h<84;
+ const lane=l.lane,a=lane.server,status=panoStatus(a),ip=lane.ip,r=l.rect,small=r.w<150||r.h<84||!!l.idle;
  const label=[a.name,ip&&pIp(ip.ip),`挂载 ${lane.total} 项`,status.text||'登记中'].filter(Boolean).join('，');
- return `<article class="pano-lane tm-lane${small?' small':''}${lane.stopped?' stopped':''}${lane.tone?' '+lane.tone:''}" style="${px(r)}" data-lane="${esc(lane.id)}" data-account="${esc(lane.account||'')}"><button class="pano-lane-head" data-nav data-lane-head="${esc(lane.id)}" aria-label="${esc(label)}" title="${esc(label)}">${panoDot(status.tone,lane.stopped)}<span class="pl-tx"><b class="pl-nm">${esc(displayName(a))}</b>${ip&&!small?`<span class="pl-sub"><span class="pl-ip">${ip.inner?'<em class="ip-inner" title="内网地址">内</em>':''}<span class="ip-text" data-full="${esc(ip.ip)}">${esc(pIp(ip.ip))}</span></span></span>`:''}</span>${!small&&r.w>=230&&(status.text||lane.stopped)?`<span class="pl-state ${status.tone}">${esc(status.text)}</span>`:''}<small class="tm-n">${lane.total}</small></button></article>`;
+ return `<article class="pano-lane tm-lane${small?' small':''}${l.idle?' idle':''}${lane.stopped?' stopped':''}${lane.tone?' '+lane.tone:''}" style="${px(r)}" data-lane="${esc(lane.id)}" data-account="${esc(lane.account||'')}"><button class="pano-lane-head" data-nav data-lane-head="${esc(lane.id)}" aria-label="${esc(label)}" title="${esc(label)}">${panoDot(status.tone,lane.stopped)}<span class="pl-tx"><b class="pl-nm">${esc(displayName(a))}</b>${ip&&!small?`<span class="pl-sub"><span class="pl-ip">${ip.inner?'<em class="ip-inner" title="内网地址">内</em>':''}<span class="ip-text" data-full="${esc(ip.ip)}">${esc(pIp(ip.ip))}</span></span></span>`:''}</span></button></article>`;
 }
 function panoTmBand(b,one){
  if(one&&!b.id)return '';
@@ -146,7 +150,7 @@ function panoNext(){
  return `<aside class="pano-next" aria-label="接下来"><h3>接下来</h3>${events.length?events.map(({asset,status})=>`<button class="pn-row${status.level==='overdue'?' red':status.level==='soon'?' amber':''}" data-nav data-open="${esc(asset.id)}" title="${esc(displayName(asset)+'，'+status.label)}"><span class="pc-ic" aria-hidden="true">${icon(asset.type)}</span><span class="pn-nm">${esc(displayName(asset))}</span><small>${esc(agendaWhen(status))}</small></button>`).join(''):'<p class="pn-none">60 天内没有</p>'}</aside>`;
 }
 function panoTreemapSize(){
- const z=panoZoom(),W=innerWidth/z,H=innerHeight/z,side=W>=PANO_NEXT_MIN?PANO_NEXT_W+14:0;
+ const z=panoZoom(),W=panoW()/z,H=innerHeight/z,side=W>=PANO_NEXT_MIN?PANO_NEXT_W+14:0;
  return {width:Math.max(240,W-48-side),height:Math.max(260,H-56-34-(W<=760?0:78)),side:!!side};
 }
 function panoTreemapHtml(model){
@@ -170,7 +174,7 @@ function panoramaRender(){
  const root=$('#panorama');if(!panoOpen||!root)return;
  if(panoDrag)panoDragEnd(true);if(panoLink)panoLinkEnd();
  const model=buildPanorama(state.assets,{cardOrder:state.cardOrder||{}});panoShared=model.shared;
- const fit=panoramaFit({lanes:model.lanes.length,accounts:model.accounts.length,width:innerWidth/panoZoom(),height:innerHeight/panoZoom()});
+ const fit=panoramaFit({lanes:model.lanes.length,accounts:model.accounts.length,width:panoW()/panoZoom(),height:innerHeight/panoZoom()});
  const keep=document.activeElement?.closest?.('#panorama')?document.activeElement:null,saved=keep&&{pick:keep.dataset.pick,hero:'heroHead' in keep.dataset,open:keep.dataset.open,chip:keep.dataset.chip,lane:keep.dataset.laneHead,more:keep.dataset.more,loose:'looseMore' in keep.dataset,close:keep.classList.contains('pano-close')};
  root.innerHTML=panoramaHtml(model,fit);root.dataset.level=fit.level;root.classList.toggle('show',panoShow);const z=panoZoom(),body=root.querySelector('.pano-body');if(body&&z!==1)body.style.zoom=z;
  if(saved){const sel=saved.pick?`[data-pick="${CSS.escape(saved.pick)}"]`:saved.hero?'[data-hero-head]':saved.open?`[data-open="${CSS.escape(saved.open)}"]`:saved.chip?`[data-chip="${CSS.escape(saved.chip)}"]`:saved.lane?`[data-lane-head="${CSS.escape(saved.lane)}"]`:saved.more?`[data-more="${CSS.escape(saved.more)}"]`:saved.loose?'[data-loose-more]':saved.close?'.pano-close':'';(sel&&root.querySelector(sel)||root.querySelector('[data-nav]')||root.querySelector('.pano-close'))?.focus({preventScroll:true});}
@@ -182,12 +186,12 @@ function panoramaOpen(show=!panoOpen,serverId=null){
   if(!$('#detail').hidden)closeDetail();
   panoReturn=document.activeElement;panoOpen=true;panoShow=panoNative;panoFocus=serverId&&state.assets.some(a=>a.id===serverId&&a.type==='server'&&!a.hiddenAt)?serverId:null;panoLooseOpen=false;panoExpanded.clear();
   root.hidden=false;document.body.classList.add('pano-open');$('main').inert=true;
-  panoramaRender();(root.querySelector(panoFocus?'.ph-head':'[data-nav]')||root.querySelector('.pano-close')).focus({preventScroll:true});
+  renderSidebar();panoramaRender();(root.querySelector(panoFocus?'.ph-head':'[data-nav]')||root.querySelector('.pano-close')).focus({preventScroll:true});
   panoObserver||=new ResizeObserver(()=>{if(!panoOpen||panoFrame)return;panoFrame=requestAnimationFrame(()=>{panoFrame=0;const key=innerWidth+'x'+innerHeight;if(key===panoKey)return;panoKey=key;panoramaRender();});});
   panoKey=innerWidth+'x'+innerHeight;panoObserver.observe(root);
  }else{
   panoOpen=false;panoFocus=null;panoShow=panoNative;panoAlt=false;clearTimeout(panoIdleTimer);root.classList.remove('show','idle');panoObserver?.disconnect();cancelAnimationFrame(panoFrame);panoFrame=0;
-  root.hidden=true;root.innerHTML='';document.body.classList.remove('pano-open');$('main').inert=false;
+  root.hidden=true;root.innerHTML='';document.body.classList.remove('pano-open');$('main').inert=false;renderSidebar();
   if(panoReturn?.isConnected)panoReturn.focus({preventScroll:true});panoReturn=null;
  }
 }
@@ -239,6 +243,8 @@ document.addEventListener('keydown',e=>{
  const dialogs=$('#modal').open||!$('#keys-help').hidden;
  if(key==='p'&&!mod&&!e.altKey&&!e.shiftKey&&!dialogs&&!typing(e)&&!e.target.closest?.('#detail')){e.preventDefault();e.stopImmediatePropagation();if(panoOpen){panoramaOpen(false);return;}const card=document.activeElement?.closest?.('#board [data-asset]'),a=card&&state.assets.find(x=>x.id===card.dataset.asset),server=a&&(a.type==='server'?a:serverChain(state.assets,a).servers.find(x=>!x.hiddenAt));panoramaOpen(true,server?.id||null);return;}
  if(!panoOpen)return;
+ // The sidebar stays usable beside the panorama: its own keys work there; Esc still closes the panorama.
+ if(e.target.closest?.('#sidebar')&&key!=='Escape')return;
  if(panoDrag||panoLink){if(panoKeys(e,key))return;}
  if(mod&&key==='k'){panoramaOpen(false);return;}
  if(key==='Escape'){if(dialogs||!$('#detail').hidden)return;e.preventDefault();e.stopImmediatePropagation();if(panoFocus)panoramaUnfocus();else if(panoShow)panoramaPresent(false);else panoramaOpen(false);return;}
@@ -390,3 +396,6 @@ let panoRevealed=null;
 const panoCover=()=>{if(panoRevealed?.isConnected&&!panoAlt)panoRevealed.textContent=maskIp(panoRevealed.dataset.full);panoRevealed=null;};
 document.addEventListener('pointerover',e=>{if(!panoOpen||!panoShow||e.pointerType!=='mouse')return;const n=e.target.closest?.('#panorama .ip-text[data-full]');if(n===panoRevealed)return;panoCover();if(n){n.textContent=n.dataset.full;panoRevealed=n;}},true);
 document.addEventListener('pointerleave',()=>panoCover(),true);
+
+// Picking a view in the sidebar leaves the panorama for that view (capture: the board re-renders the sidebar on the same click).
+document.addEventListener('click',e=>{if(panoOpen&&e.target.closest?.('#sidebar [data-action="view"]'))panoramaOpen(false);},true);

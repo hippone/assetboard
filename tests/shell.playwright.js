@@ -19,7 +19,7 @@ async (page) => {
 
   // Sidebar: two views, then the categories in board order with counts and urgency; 已隐藏 only when something is hidden.
   const nav=await p.evaluate(()=>[...document.querySelectorAll('#sidebar .nav-item')].map(n=>`${n.dataset.id}:${n.querySelector('.nav-count')?.textContent||''}`).join());
-  check(nav==='upcoming:3,all:99+,domain:99+,server:1,repository:40,license:0,hidden:1','Sidebar lists views, categories and counts (99+ cap): '+nav);
+  check(nav==='upcoming:3,all:99+,panorama:,domain:99+,server:1,repository:40,license:0,hidden:1','Sidebar lists views, categories and counts (99+ cap): '+nav);
   check(await p.evaluate(()=>document.querySelector('#sidebar .nav-item[data-id="all"] .nav-count').title==='161'),'A capped count shows the real number on hover');
   check(await p.evaluate(()=>document.querySelector('#sidebar .nav-item[data-id="all"]').getAttribute('aria-current')==='page'&&document.querySelector('#sidebar .nav-item[data-id="domain"]').getAttribute('aria-label').includes('120 项')),'The current view is marked and labels carry real counts');
   check(await p.evaluate(()=>!!document.querySelector('#sidebar .nav-item[data-id="domain"] .nav-dot.overdue')&&!!document.querySelector('#sidebar .nav-item[data-id="server"] .nav-dot.soon')),'Categories with urgent dates carry a red or amber dot');
@@ -28,7 +28,7 @@ async (page) => {
   check(await p.locator('#board [data-asset]').count()===161&&await p.locator('#board [data-action="all"]').count()===0,'Every visible record is listed in the overview');
   check(await groups()==='domain,server,repository','Groups follow the sidebar order and skip empty categories: '+await groups());
   check(await p.evaluate(()=>document.querySelector('#view-title').textContent==='全部资产'&&/99\+ 项/.test(document.querySelector('#view-meta').textContent)&&document.querySelector('#view-meta span').title==='161 项'&&/1 已过期/.test(document.querySelector('#view-meta').textContent)),'The bar names the view and its counts');
-  const cols=await p.evaluate(()=>{const xs=sel=>new Set([...document.querySelectorAll(sel)].slice(0,20).map(n=>Math.round(n.getBoundingClientRect().left)));return [xs('#board .group[data-group="domain"] .r-sub').size,xs('#board .group[data-group="domain"] .r-date').size,xs('#board .group[data-group="domain"] .r-text').size];});
+  const cols=await p.evaluate(()=>{const xs=sel=>new Set([...document.querySelectorAll(sel)].slice(0,20).map(n=>Math.round(n.getBoundingClientRect().left)));return [xs('#board .group[data-group="domain"] .r-sub').size,new Set([...document.querySelectorAll('#board .group[data-group="domain"] .r-date')].slice(0,20).map(n=>Math.round(n.getBoundingClientRect().right))).size,xs('#board .group[data-group="domain"] .r-text').size];});
   check(cols.every(n=>n===1),'Columns line up row to row: '+cols);
 
   // Group headers stick under the bar while their rows scroll.

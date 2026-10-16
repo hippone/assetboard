@@ -36,7 +36,7 @@ async (page) => {
   await p.focus('.pano-chip[data-chip="demo-d2"]');await p.keyboard.press('s');await p.waitForTimeout(200);
   check(await stopped('demo-d2')&&await p.evaluate(()=>document.querySelector('.pano-chip[data-chip="demo-d2"]').classList.contains('stopped')&&!!document.querySelector('.pano-chip[data-chip="demo-d2"] .pd.off')&&document.activeElement.dataset.chip==='demo-d2'),'S in the panorama: hollow dot, muted chip, focus kept');
   await p.focus('[data-lane-head="demo-s2"]');await p.keyboard.press('s');await p.waitForTimeout(200);
-  check(await p.evaluate(()=>document.querySelector('.pano-lane[data-lane="demo-s2"]').classList.contains('stopped')&&/已停用/.test(document.querySelector('.pano-lane[data-lane="demo-s2"] .pl-state').textContent)),'A stopped server lane says 已停用');
+  check(await p.evaluate(()=>document.querySelector('.pano-lane[data-lane="demo-s2"]').classList.contains('stopped')&&!!document.querySelector('.pano-lane[data-lane="demo-s2"] .pano-lane-head .pd.off')&&/已停用/.test(document.querySelector('.pano-lane[data-lane="demo-s2"] .pano-lane-head').getAttribute('aria-label'))),'A stopped server lane says 已停用');
   await p.click('[data-lane-head="demo-s2"]');await p.waitForTimeout(250);
   check(await p.evaluate(()=>document.querySelector('.pano-hero').classList.contains('stopped')&&/已停用/.test(document.querySelector('.pano-hero .ph-st').textContent)&&!!document.querySelector('.pf-srv.on .pd.off')),'Focused: hero and rail show it');
   await p.keyboard.press('s');await p.waitForTimeout(200);

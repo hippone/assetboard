@@ -20,11 +20,11 @@ async (page) => {
   check(await p.evaluate(()=>document.querySelector('#panorama-button').getAttribute('aria-label')==='全景（P）'),'The icon is named');
   // Content: accounts as trays, one lane per server, caps and real totals, unmounted strip.
   const m=await p.evaluate(()=>({trays:[...document.querySelectorAll('.pano-tray')].map(t=>(t.querySelector('.pano-tray-head b')?.textContent||'')+':'+document.querySelectorAll(`.pano-lane[data-account="${t.dataset.account}"]`).length),lanes:[...document.querySelectorAll('.pano-lane')].map(l=>l.dataset.lane),totals:[...document.querySelectorAll('.pano-total')].map(t=>t.getAttribute('aria-label')),tokyo:[...document.querySelectorAll('.pano-chip[data-lane="demo-s1"]')].map(c=>c.dataset.chip),ip:document.querySelector('[data-lane="demo-s1"] .pl-ip').textContent.trim(),loose:document.querySelector('.pano-loose').getAttribute('aria-label'),looseChips:document.querySelectorAll('.pano-loose .pano-chip').length,more:document.querySelector('.pano-loose [data-loose-more]')?.textContent}));
-  check(m.trays.join()==='Acme Cloud:2,无账号:1','Account tray with two servers, the unaccounted one last: '+m.trays.join());
+  check(m.trays.join()==='Acme Cloud:2'&&m.lanes.at(-1)==='demo-s3','Account band with two servers; the empty home-nas sits in the idle row last: '+m.trays.join());
   check(m.totals.join()==='服务器 3,域名 3,仓库 14,数据库 1','Totals count visible things: '+m.totals.join());
   check(m.tokyo.join()==='demo-d1,demo-d2,demo-r0,demo-r1,demo-db1','tokyo-vps lists its domains, repositories and database (the hidden domain stays out): '+m.tokyo.join());
   check(/203\.0\.113\.10/.test(m.ip),'Lane shows the address: '+m.ip);
-  check(m.loose==='未挂载，12 项'&&m.looseChips===7&&m.more==='+5','Unmounted strip: 12 things, seven shown and +5: '+JSON.stringify(m));
+  check(m.loose==='未挂载，12 项'&&m.looseChips>=3&&m.more==='+'+(12-m.looseChips),'Unmounted strip: 12 things, as many as fit then +N: '+JSON.stringify(m));
   check(await p.evaluate(()=>!document.querySelector('.pano-loose .warn,.pano-loose .red,.pano-loose .amber')),'The unmounted strip raises no warning');
   // Honest wording and no green.
   const words=await p.evaluate(()=>document.querySelector('#panorama').innerText);

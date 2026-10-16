@@ -844,7 +844,7 @@ dialog[open]::backdrop{animation:v12-fade .15s var(--ease) both}
 
 
 .link-group+.link-group{margin-top:8px}
-.link-group-title{display:flex;align-items:baseline;gap:6px;padding:2px 8px;font-size:11px;color:var(--faint)}
+.link-group-title{display:flex;align-items:baseline;gap:6px;padding:2px 8px;font-size:11px;color:var(--muted)}
 .link-group-title i{font-style:normal;font-variant-numeric:tabular-nums}
 .link-row.is-hidden .link-open{opacity:.6}
 .link-tag{flex:none;font:inherit;font-size:11px;line-height:16px;padding:0 6px;border-radius:5px;border:1px solid var(--border);background:none;color:var(--muted);cursor:pointer}
@@ -891,7 +891,7 @@ body.pano-open main{visibility:hidden}
 .pl-sub{display:flex;align-items:baseline;gap:6px;min-width:0;overflow:hidden;white-space:nowrap}
 .pl-ip{flex:none;display:flex;align-items:baseline;gap:5px;font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .pl-ip .ip-inner{font-style:normal;font-size:11px;line-height:14px;padding:0 3px;border:1px solid var(--border-strong);border-radius:4px;color:var(--muted)}
-.pl-ip .ip-more{font-style:normal;font-size:11px;color:var(--faint)}
+.pl-ip .ip-more{font-style:normal;font-size:11px;color:var(--muted)}
 .pl-prov{flex:0 1 auto;min-width:0;font-size:11px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pl-st{display:flex;align-items:center;gap:8px;min-height:18px;padding-bottom:8px;border-bottom:1px solid var(--border)}
 .pl-state{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:500;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
@@ -1067,7 +1067,7 @@ body.pano-open main{visibility:hidden}
 /* v15 · shell (2026-10-15, user-confirmed; DESIGN-PRINCIPLES §三 rewritten): a sidebar of views and categories, every asset grouped by category as a list or a grid,
    a docked inspector. The sidebar shows the canvas (the window's glass in the Mac app); the content area is one opaque surface; rows have no card chrome.
    Rules here are scoped by id or :root so the board-era layers above (trays, block edges, card walls) never apply to the new structure. */
-:root{--sidebar-w:228px;--inspector-w:380px;--bar-h:56px;--row-h:42px;--surface-content:rgb(var(--tone-card));--sidebar-fill:rgba(var(--tone-ink),.025);--hairline:rgba(var(--tone-ink),.075);--selected:rgba(var(--tone-primary),.12);--selected-nav:rgba(var(--tone-primary),.09);--selected-strong:rgba(var(--tone-primary),.2);--bar:rgba(var(--tone-card),.8);--bar-edge:var(--hairline)}
+:root{--sidebar-w:228px;--inspector-w:380px;--bar-h:56px;--row-h:38px;--surface-content:rgb(var(--tone-card));--sidebar-fill:rgba(var(--tone-ink),.025);--hairline:rgba(var(--tone-ink),.075);--selected:rgba(var(--tone-primary),.12);--selected-nav:rgba(var(--tone-primary),.09);--selected-strong:rgba(var(--tone-primary),.2);--bar:rgba(var(--tone-card),.8);--bar-edge:var(--hairline)}
 :root[data-scheme=dark]{--surface-content:rgb(var(--tone-canvas));--sidebar-fill:rgba(255,255,255,.06);--hairline:rgba(255,255,255,.065);--selected:rgba(var(--tone-primary),.2);--selected-nav:rgba(var(--tone-primary),.2);--selected-strong:rgba(var(--tone-primary),.3);--bar:rgba(var(--tone-canvas),.8)}
 .native-app{--bar-h:44px}
 /* sidebar */
@@ -1115,18 +1115,18 @@ body.pano-open main{visibility:hidden}
 /* board: groups of rows or cards */
 :root #board{display:block;min-height:0;padding:4px 20px 72px 28px;gap:0;background:none}
 :root #board[hidden]{display:none}
-.group+.group{margin-top:10px}
-.group-head{position:sticky;top:var(--bar-h);z-index:6;display:flex;align-items:center;gap:10px;min-height:40px;margin:0 -8px;padding:0 8px;background:var(--surface-content);box-shadow:0 1px 0 var(--hairline)}
+.group+.group{margin-top:22px}
+.group-head{position:sticky;top:var(--bar-h);z-index:6;display:flex;align-items:center;gap:10px;min-height:46px;margin:0 -8px;padding:0 8px;background:var(--surface-content);box-shadow:0 1px 0 var(--hairline)}
 .group.folded .group-head{box-shadow:none}
-.group-title{display:flex;align-items:center;gap:7px;min-width:0;height:28px;margin:0 0 0 -6px;padding:0 8px 0 4px;border:0;border-radius:6px;background:none;color:var(--ink);font:inherit;font-size:13px;font-weight:600;text-align:left}
+.group-title{display:flex;align-items:center;gap:7px;min-width:0;height:28px;margin:0 0 0 -6px;padding:0 8px 0 4px;border:0;border-radius:6px;background:none;color:var(--ink);font:inherit;font-size:15px;font-weight:650;text-align:left}
 button.group-title:hover{background:var(--hover)}
 .group-title.static{margin-left:0;padding-left:0}
 .g-chevron{display:inline-grid;place-items:center;width:14px;color:var(--faint)}
 .g-chevron .ui-icon{width:12px;height:12px;transform:rotate(90deg);transition:transform var(--motion-base) var(--ease)}
 .group.folded .g-chevron .ui-icon{transform:none}
-.g-icon{display:inline-grid;place-items:center}.g-icon svg{width:16px;height:16px;color:var(--muted)}
+.g-icon{display:inline-grid;place-items:center}.g-icon svg{width:17px;height:17px;color:var(--ink);opacity:.72}
 .g-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.g-count{font-size:12px;font-weight:400;color:var(--muted);font-variant-numeric:tabular-nums}
+.g-count{font-size:13px;font-weight:400;color:var(--muted);font-variant-numeric:tabular-nums}
 .g-sum{display:flex;align-items:center;gap:10px;font-size:12px;font-weight:500;font-variant-numeric:tabular-nums}
 .g-flag{display:inline-flex;align-items:center;gap:5px}
 .g-flag .dot{width:6px;height:6px;border-radius:50%}
@@ -1146,8 +1146,10 @@ button.group-title:hover{background:var(--hover)}
 .row.selected{background:var(--selected)}
 :is(.row:hover,.row:focus-within,.row.selected)::before,:is(.row:hover,.row:focus-within,.row.selected)+.row::before{opacity:0}
 .item-open{display:grid;align-items:center;min-width:0;border:0;background:none;color:var(--ink);font:inherit;text-align:left;cursor:default}
-.row .item-open{flex:1;grid-template-columns:20px minmax(0,1fr) minmax(0,15em) 10.5em 6em;column-gap:14px;min-height:var(--row-h);padding:0 4px 0 12px;border-radius:8px}
-.row .r-main,.row .r-when{display:contents}
+.row .item-open{flex:1;grid-template-columns:20px minmax(0,1fr) minmax(0,14em) 11.5em;column-gap:14px;min-height:var(--row-h);padding:0 4px 0 12px;border-radius:8px}
+.row .r-main{display:contents}
+.row .r-when{grid-column:4;grid-row:1;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:1px;min-width:0}
+.row .r-cost:empty{display:none}.row .r-cost{font-size:11px}
 .r-name{display:flex;align-items:center;gap:6px;min-width:0;font-size:13px;line-height:18px;font-weight:500;color:var(--ink)}
 .r-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .r-sub{display:flex;align-items:center;gap:5px;min-width:0;font-size:12px;line-height:16px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
@@ -1159,7 +1161,6 @@ button.group-title:hover{background:var(--hover)}
 .r-date.warn{color:var(--warning);font-weight:500}.r-date.overdue{color:var(--danger)}
 .r-date .dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--dot-amber)}.r-date.overdue .dot{background:var(--dot-red)}
 .r-cost{font-size:12px;line-height:16px;color:var(--muted);text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
-.row .r-date{grid-column:4;grid-row:1}.row .r-cost{grid-column:5;grid-row:1}
 .row .card-hit{grid-column:2/-1;grid-row:2;margin:-6px 0 6px;font-size:11px;color:var(--muted)}
 .r-actions{flex:none;display:flex;align-items:center;justify-content:flex-end;gap:2px;width:64px;padding-right:8px}
 .r-actions .quick-action{width:28px;height:28px;border-radius:6px}
@@ -1176,9 +1177,9 @@ body.drag-active .r-actions{visibility:hidden}
 .item-open .rel-mark{position:static;flex:none;height:auto;margin-left:4px;font-weight:400}
 .item-open .lock-mark{margin-left:0}
 .item-open .stop-ring{margin-left:0}
-#board[data-size=m] .row .item-open,#board[data-size=s] .row .item-open{grid-template-columns:20px minmax(0,1fr) auto;padding-block:6px}
+#board[data-size=m] .row .item-open,#board[data-size=s] .row .item-open{grid-template-columns:20px minmax(0,1fr) auto;padding-block:4px}
 #board[data-size=m] .row .r-main,#board[data-size=s] .row .r-main{display:flex;flex-direction:column;gap:1px;min-width:0}
-#board[data-size=m] .row .r-when,#board[data-size=s] .row .r-when{display:flex;flex-direction:column;align-items:flex-end;gap:1px;max-width:12em}
+#board[data-size=m] .row .r-when,#board[data-size=s] .row .r-when{grid-column:auto;grid-row:auto;display:flex;flex-direction:column;align-items:flex-end;gap:1px;max-width:12em}
 #board[data-size=m] .row+.row::before,#board[data-size=s] .row+.row::before{left:44px}
 #board[data-size=s] .row:not(.is-hidden) .r-actions{display:none}
 #board[data-size=s] .row .item-open{padding-right:12px}
@@ -1235,7 +1236,10 @@ body.drag-active .r-actions{visibility:hidden}
 .menu-item.danger{color:var(--danger)}
 .menu-item.danger:focus,.menu-item.danger:hover{background:var(--danger);color:var(--on-danger)}
 .menu-sep{height:1px;margin:4px 6px;background:var(--border)}
-body.pano-open #sidebar{visibility:hidden}
+@media(max-width:760px){body.pano-open #sidebar{visibility:hidden}}
+/* the panorama fills the middle column beside the sidebar, on the content surface (opaque in the Mac app too) */
+@media(min-width:761px){:root .panorama{left:var(--sidebar-w);background:var(--surface-content)}:root .native-app .pano-bar,.native-app .panorama .pano-bar{background:var(--bar)}}
+:root .nav-item .nav-key{flex:none;padding:0;background:none;border:0;box-shadow:none;font:inherit;font-size:11px;color:var(--muted)}
 body.first-paint #sidebar,body.first-paint .group{animation:v12-fade .15s var(--ease) both}
 /* narrow window: the sidebar turns into one scrolling strip of pills above the bar; the bar wraps under the title */
 @media(max-width:760px){
@@ -1255,3 +1259,14 @@ body.first-paint #sidebar,body.first-paint .group{animation:v12-fade .15s var(--
  :root #detail{width:100%;border-radius:0}
 }
 @media(prefers-reduced-motion:reduce){.g-chevron .ui-icon,.row,.gcard,.nav-item{transition:none}.nav-item.drop-flash{animation:none}}
+/* v0.3.0 polish · panorama: a faint type glyph anchors big blocks, bars stay visible, dark tints step down, idle servers are a row of small cards */
+.tm-wm{position:absolute;right:10px;bottom:8px;display:inline-flex;opacity:.13;color:rgb(var(--c));pointer-events:none}
+.tm-wm svg{width:44px;height:44px;stroke-width:1.1}
+.tm-bar{height:4px;margin-top:6px;background:rgba(var(--c),.22)}
+.tm-lane.small>.pano-lane-head{height:auto}
+.pano-tm .tm-lane.idle{box-shadow:var(--shadow-card),0 0 0 1px var(--card-ring);background:var(--surface-tray)}
+.pano-tm .tm-lane.idle>.pano-lane-head{height:100%;padding:0 10px}
+:root[data-scheme=dark]{--tm-domain:104,140,204;--tm-repository:150,126,196;--tm-database:86,160,148}
+:root[data-scheme=dark] .pano-tm .tm-leaf{background:rgba(var(--c),.08);box-shadow:inset 0 0 0 1px rgba(var(--c),.2)}
+:root[data-scheme=dark] .pano-tm .tm-leaf:hover{background:rgba(var(--c),.14)}
+:root[data-scheme=dark] .tm-wm{opacity:.09}

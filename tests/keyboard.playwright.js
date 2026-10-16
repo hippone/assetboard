@@ -47,7 +47,7 @@ async (page) => {
   await key('ArrowDown');f=await focused();check(f.id==='s0','↓ again enters the group');
   await key('ArrowRight');f=await focused();check(f.id==='s0','→ in a list does nothing');
   await key('ArrowLeft');f=await focused();check(f.nav==='all','← moves to the active sidebar item: '+JSON.stringify(f));
-  await key('ArrowDown');f=await focused();check(f.nav==='domain','↓ in the sidebar moves to the next item');
+  await key('ArrowDown');f=await focused();check(f.nav==='panorama','↓ in the sidebar moves to the next item (the panorama entry)');await key('ArrowDown');f=await focused();check(f.nav==='domain','↓ again reaches the categories');
   await key('ArrowRight');f=await focused();check(!!f.id||/group-title/.test(f.cls),'→ from the sidebar returns to the board');
   // Enter on a sidebar item switches the view.
   await p.focus('#sidebar .nav-item[data-id="server"]');await key('Enter');
