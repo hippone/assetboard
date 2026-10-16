@@ -145,8 +145,8 @@
   return roots.map(c=>({chip:c,kids:kids.get(c.id)||[]}));
  }
  // How much a block can say. icon: glyph only; compact: glyph + name; full: name + one fact (days, port, target) + bar.
- function leafForm(w,h){return w<64||h<30?'icon':w<132||h<50?'compact':'full';}
- const TM={BAND_HEAD:28,LANE_HEAD:52,GAP:6,PAD:8,LEAF_CAP:8,SUB_HEAD:52,MIN_SHARE:.12,MIN_COUNT:.2,MIN_BAND:.14};
+ function leafForm(w,h){return w<84||h<30?'icon':w<150||h<56?'compact':'full';}
+ const TM={BAND_HEAD:28,LANE_HEAD:52,GAP:6,PAD:8,LEAF_CAP:8,SUB_HEAD:52,MIN_SHARE:.12,MIN_COUNT:.2,MIN_BAND:.14,IDLE_H:40,IDLE_W:200};
  // model → {bands:[{id,rect,acc}],lanes:[{id,rect,lane}],leaves:[{id,lane,rect,form,chip,kind,parent,more}],metric}
  // metric 'count' sizes by how many things a server carries, 'cost' by the server's monthly cost (servers without one get a floor so they stay findable).
  function treemapLayout(model,{width=1200,height=700,metric='count',expanded=new Set(),cap=TM.LEAF_CAP}={}){
@@ -155,7 +155,10 @@
   const maxCost=Math.max(0,...costs.values()),useCost=metric==='cost'&&maxCost>0;
   const maxCount=Math.max(1,...model.lanes.map(l=>l.total+1));
   const laneValue=l=>useCost?Math.max(costs.get(l.id),maxCost*TM.MIN_SHARE):Math.max(l.total+1,maxCount*TM.MIN_COUNT);
-  const accs=model.accounts.filter(a=>a.lanes.length);
+  // Servers with nothing on them take no area: they line up as small cards in one row under the map.
+  const idleLanes=[],idle=model.lanes.filter(l=>!l.total),busy=new Set(model.lanes.filter(l=>l.total).map(l=>l.id));
+  if(idle.length&&busy.size){const w=Math.min(TM.IDLE_W,(width-TM.GAP*(idle.length-1))/idle.length);idle.forEach((lane,k)=>idleLanes.push({id:lane.id,rect:{x:k*(w+TM.GAP),y:height-TM.IDLE_H,w,h:TM.IDLE_H},lane,idle:true}));height-=TM.IDLE_H+TM.GAP;}
+  const accs=model.accounts.map(a=>busy.size?{...a,lanes:a.lanes.filter(l=>busy.has(l.id))}:a).filter(a=>a.lanes.length);
   const one=accs.length===1&&!accs[0].id;
   const bandVals=accs.map(a=>a.lanes.reduce((s,l)=>s+laneValue(l),0)),bandSum=bandVals.reduce((s,v)=>s+v,0);
   // A band never shrinks below a sliver that can still carry its name.
@@ -187,6 +190,7 @@
     });
    });
   });
+  lanes.push(...idleLanes);
   return {bands,lanes,leaves,metric:useCost?'cost':'count',costAvailable:maxCost>0};
  }
  function inset(r,d){return {x:r.x+d,y:r.y+d,w:Math.max(0,r.w-2*d),h:Math.max(0,r.h-2*d)};}

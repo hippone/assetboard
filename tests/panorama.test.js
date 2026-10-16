@@ -163,12 +163,12 @@ test('nestDomains puts subdomains under a parent on the same server',()=>{
  assert.deepEqual(out.map(u=>[u.chip.id,u.kids.map(k=>k.id)]),[['a',['b','d']],['x',[]]]);
 });
 test('leafForm grades by size',()=>{
- assert.equal(P.leafForm(40,40),'icon');assert.equal(P.leafForm(100,40),'compact');assert.equal(P.leafForm(200,80),'full');
+ assert.equal(P.leafForm(40,40),'icon');assert.equal(P.leafForm(110,40),'compact');assert.equal(P.leafForm(200,80),'full');
 });
 test('treemapLayout: bands per account, lanes inside bands, leaves inside lanes, capped with overflow',()=>{
  const a=board(),m=P.buildPanorama(a),t=P.treemapLayout(m,{width:1200,height:700,cap:2});
  assert.equal(t.lanes.length,m.lanes.length);
- for(const l of t.lanes){const band=t.bands.find(b=>b.acc.lanes.some(x=>x.id===l.id));assert.ok(inside(l.rect,band.rect));}
+ for(const l of t.lanes.filter(x=>!x.idle)){const band=t.bands.find(b=>b.acc.lanes.some(x=>x.id===l.id));assert.ok(inside(l.rect,band.rect));}
  for(const f of t.leaves){const l=t.lanes.find(x=>x.id===f.lane);assert.ok(inside(f.rect,l.rect));}
  const more=t.leaves.filter(f=>f.kind==='more');assert.ok(more.length>0);
  const opened=P.treemapLayout(m,{width:1200,height:700,cap:2,expanded:new Set(more.map(f=>f.id))});
@@ -181,3 +181,15 @@ test('treemapLayout cost metric sizes servers by monthly cost, falls back to cou
  assert.equal(t.metric,'cost');assert.ok(A('s1')>A('s2'));
  const none=P.treemapLayout(P.buildPanorama(board()),{metric:'cost'});assert.equal(none.metric,'count');assert.equal(none.costAvailable,false);
 });
+test('treemapLayout: servers with nothing on them take no area, they sit in one row of small cards',()=>{
+ const m=P.buildPanorama(board()),t=P.treemapLayout(m,{width:1200,height:700});
+ const idle=t.lanes.filter(l=>l.idle);
+ assert.deepEqual(idle.map(l=>l.id).sort(),['s3','s4']);
+ assert.ok(idle.every(l=>l.rect.h===P.PANORAMA_TM.IDLE_H&&l.rect.y+l.rect.h<=700&&l.rect.w<=P.PANORAMA_TM.IDLE_W));
+ assert.ok(t.bands.every(b=>b.rect.y+b.rect.h<=700-P.PANORAMA_TM.IDLE_H),'bands stay above the row');
+ assert.ok(!t.bands.some(b=>b.id===null),'an account band made only of idle servers disappears');
+ // A board with only empty servers still draws them as the map.
+ const empty=P.treemapLayout(P.buildPanorama([{id:'z',type:'server',name:'z',updatedAt:ago(1)}]));
+ assert.equal(empty.lanes.length,1);assert.ok(!empty.lanes[0].idle);
+});
+test('leafForm: narrow blocks drop to the glyph before the name crowds',()=>{assert.equal(P.leafForm(80,250),'icon');assert.equal(P.leafForm(127,257),'compact');assert.equal(P.leafForm(160,60),'full');});
